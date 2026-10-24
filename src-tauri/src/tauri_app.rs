@@ -591,7 +591,17 @@ fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error> {
         None::<&str>,
     )?;
     let quit = MenuItem::with_id(app, "tray_quit", lbl_quit, true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&dashboard, &clipboard, &translator_item, &ink, &sticky, &pin])?;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &dashboard,
+            &clipboard,
+            &translator_item,
+            &ink,
+            &sticky,
+            &pin,
+        ],
+    )?;
     for (id, label) in quick_scripts {
         let item = MenuItem::with_id(app, id, label, true, None::<&str>)?;
         menu.append(&item)?;
@@ -709,15 +719,16 @@ pub fn run() {
                 );
             })));
             let trans_app = app.handle().clone();
-            host.translator.set_event_sink(Arc::new(move |req_id, event| {
-                let _ = trans_app.emit(
-                    "translator://stream-chunk",
-                    serde_json::json!({
-                        "request_id": req_id,
-                        "event": event,
-                    }),
-                );
-            }));
+            host.translator
+                .set_event_sink(Arc::new(move |req_id, event| {
+                    let _ = trans_app.emit(
+                        "translator://stream-chunk",
+                        serde_json::json!({
+                            "request_id": req_id,
+                            "event": event,
+                        }),
+                    );
+                }));
             app.manage(host);
 
             register_global_shortcuts(app.handle())?;

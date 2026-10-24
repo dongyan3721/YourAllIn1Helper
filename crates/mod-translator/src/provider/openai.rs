@@ -167,8 +167,11 @@ impl TranslationProvider for OpenAIProvider {
         if key.is_empty() && !self.is_local_endpoint() {
             let tx = tx.clone();
             return Box::pin(async move {
-                let err_msg = "OpenAI API Key 未配置，请在「设置 → 翻译服务」中填写凭据".to_string();
-                let _ = tx.send(TranslationStreamEvent::Error(err_msg.clone())).await;
+                let err_msg =
+                    "OpenAI API Key 未配置，请在「设置 → 翻译服务」中填写凭据".to_string();
+                let _ = tx
+                    .send(TranslationStreamEvent::Error(err_msg.clone()))
+                    .await;
                 Err(CoreError::Config(err_msg))
             });
         }

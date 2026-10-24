@@ -15,8 +15,6 @@ impl OcrProvider for NativeOsHal {
     }
 }
 
-
-
 impl BiometricAuthenticator for NativeOsHal {
     fn is_biometric_available(&self) -> bool {
         false

@@ -18,6 +18,8 @@ pub fn extract_selected_text_windows(
     }
     #[cfg(not(target_os = "windows"))]
     {
-        Err(HalError::Unsupported("windows_selection_extraction_on_non_windows"))
+        Err(HalError::Unsupported(
+            "windows_selection_extraction_on_non_windows",
+        ))
     }
 }

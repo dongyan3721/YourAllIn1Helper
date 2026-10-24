@@ -13,9 +13,7 @@ pub mod provider;
 pub mod service;
 pub mod stream;
 
-use app_core::{
-    AppModule, CoreError, CoreResult, ModuleContext, ShortcutSpec, WindowSpec,
-};
+use app_core::{AppModule, CoreError, CoreResult, ModuleContext, ShortcutSpec, WindowSpec};
 use config::TranslatorConfig;
 use credentials::{CredentialStorage, SessionCredentialStore};
 use os_hal::{HalError, HalResult, SelectionExtractor, SelectionTextResult};
@@ -173,7 +171,10 @@ impl AppModule for TranslatorModule {
         // 1. 严禁先弹窗抢占焦点！先通过无障碍提取前台选区
         let selection_opt = match self.extract_selected_text() {
             Ok(s) => s,
-            Err(HalError::PermissionDenied { capability, guidance }) => {
+            Err(HalError::PermissionDenied {
+                capability,
+                guidance,
+            }) => {
                 // 权限拒绝：唤起气泡展示权限指引
                 let spec = WindowSpec::translate_popover(300.0, 200.0);
                 let _ = ctx.window_pool.open_window(spec);
@@ -188,10 +189,7 @@ impl AppModule for TranslatorModule {
                 None
             }
             Err(e) => {
-                return Err(CoreError::Internal(anyhow::anyhow!(
-                    "选区读取失败: {}",
-                    e
-                )));
+                return Err(CoreError::Internal(anyhow::anyhow!("选区读取失败: {}", e)));
             }
         };
 
@@ -204,7 +202,11 @@ impl AppModule for TranslatorModule {
             let this_module = self.is_active.clone();
             let cfg = self.config();
             let service = self.service.clone();
-            let sink = self.event_sink.read().clone().unwrap_or_else(|| Arc::new(|_, _| {}));
+            let sink = self
+                .event_sink
+                .read()
+                .clone()
+                .unwrap_or_else(|| Arc::new(|_, _| {}));
 
             tokio::spawn(async move {
                 if !this_module.load(Ordering::SeqCst) {
@@ -241,4 +243,3 @@ impl AppModule for TranslatorModule {
 #[cfg(test)]
 #[path = "../tests/unit/lib.rs"]
 mod tests;
-

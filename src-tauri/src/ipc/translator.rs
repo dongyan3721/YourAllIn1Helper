@@ -21,7 +21,10 @@ impl DesktopHost {
                 // 持久化非敏感设置到磁盘 config.json
                 self.kernel.update_config(|config| {
                     if let Ok(val) = serde_json::to_value(&new_cfg) {
-                        config.modules.settings.insert("translator".to_string(), val);
+                        config
+                            .modules
+                            .settings
+                            .insert("translator".to_string(), val);
                     }
                 })?;
                 Ok(json!({ "updated": true }))
@@ -35,10 +38,7 @@ impl DesktopHost {
                     .get("provider_id")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| CoreError::Config("缺失 provider_id 参数".to_string()))?;
-                let api_key = args
-                    .get("api_key")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let api_key = args.get("api_key").and_then(|v| v.as_str()).unwrap_or("");
 
                 self.translator
                     .service()
@@ -46,36 +46,33 @@ impl DesktopHost {
                     .set_api_key(provider_id, api_key)?;
                 Ok(json!({ "saved": true }))
             }
-            "translator_extract_selection" => {
-                match self.translator.extract_selected_text() {
-                    Ok(Some(selection)) => Ok(json!({
-                        "has_selection": true,
-                        "text": selection.text,
-                        "source": selection.source,
-                        "app_name": selection.source_app_name,
-                    })),
-                    Ok(None) => Ok(json!({
-                        "has_selection": false,
-                        "text": null,
-                    })),
-                    Err(os_hal::HalError::PermissionDenied { capability, guidance }) => {
-                        Ok(json!({
-                            "has_selection": false,
-                            "permission_denied": true,
-                            "capability": capability,
-                            "guidance": guidance,
-                        }))
-                    }
-                    Err(os_hal::HalError::Unsupported(reason)) => {
-                        Ok(json!({
-                            "has_selection": false,
-                            "unsupported": true,
-                            "reason": reason,
-                        }))
-                    }
-                    Err(e) => Err(CoreError::Internal(anyhow::anyhow!("选区提取失败: {}", e))),
-                }
-            }
+            "translator_extract_selection" => match self.translator.extract_selected_text() {
+                Ok(Some(selection)) => Ok(json!({
+                    "has_selection": true,
+                    "text": selection.text,
+                    "source": selection.source,
+                    "app_name": selection.source_app_name,
+                })),
+                Ok(None) => Ok(json!({
+                    "has_selection": false,
+                    "text": null,
+                })),
+                Err(os_hal::HalError::PermissionDenied {
+                    capability,
+                    guidance,
+                }) => Ok(json!({
+                    "has_selection": false,
+                    "permission_denied": true,
+                    "capability": capability,
+                    "guidance": guidance,
+                })),
+                Err(os_hal::HalError::Unsupported(reason)) => Ok(json!({
+                    "has_selection": false,
+                    "unsupported": true,
+                    "reason": reason,
+                })),
+                Err(e) => Err(CoreError::Internal(anyhow::anyhow!("选区提取失败: {}", e))),
+            },
             "translator_translate" => {
                 let text = args
                     .get("text")
@@ -84,10 +81,7 @@ impl DesktopHost {
                 let from = args.get("from").and_then(|v| v.as_str());
                 let to = args.get("to").and_then(|v| v.as_str());
                 let provider_id = args.get("provider_id").and_then(|v| v.as_str());
-                let stream = args
-                    .get("stream")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(true);
+                let stream = args.get("stream").and_then(|v| v.as_bool()).unwrap_or(true);
 
                 let translator = self.translator.clone();
                 let text_owned = text.to_string();
@@ -129,7 +123,10 @@ impl DesktopHost {
                     .destroy_window("translate-popover")?;
                 Ok(json!({ "closed": true }))
             }
-            _ => Err(CoreError::Config(format!("Unknown translator command: {}", cmd))),
+            _ => Err(CoreError::Config(format!(
+                "Unknown translator command: {}",
+                cmd
+            ))),
         }
     }
 }

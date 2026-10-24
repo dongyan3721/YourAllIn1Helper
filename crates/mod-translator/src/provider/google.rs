@@ -65,7 +65,8 @@ impl TranslationProvider for GoogleProvider {
             _ => {
                 return Box::pin(async {
                     Err(CoreError::Config(
-                        "Google Translate API Key 未配置，请在「设置 → 翻译服务」中填写官方凭据".to_string(),
+                        "Google Translate API Key 未配置，请在「设置 → 翻译服务」中填写官方凭据"
+                            .to_string(),
                     ))
                 });
             }

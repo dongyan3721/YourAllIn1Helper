@@ -155,9 +155,7 @@ impl TranslatorService {
         let handle = tokio::spawn(async move {
             let key_ref = api_key.as_deref();
             if req.stream {
-                let _ = provider
-                    .translate_stream(&client, &req, key_ref, tx)
-                    .await;
+                let _ = provider.translate_stream(&client, &req, key_ref, tx).await;
             } else {
                 match provider.translate(&client, &req, key_ref).await {
                     Ok(translated) => {

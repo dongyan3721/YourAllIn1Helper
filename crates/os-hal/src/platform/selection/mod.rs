@@ -9,12 +9,12 @@
 pub mod macos;
 pub mod windows;
 
+use super::NativeOsHal;
 use crate::{
     traits::SelectionExtractor,
     types::{HalError, HalResult, SelectionTextResult},
     WindowController,
 };
-use super::NativeOsHal;
 
 impl SelectionExtractor for NativeOsHal {
     fn is_available(&self) -> bool {
@@ -45,8 +45,14 @@ impl SelectionExtractor for NativeOsHal {
         {
             match macos::extract_selected_text_macos(fg_pid, fg_name) {
                 Ok(result) => return Ok(result),
-                Err(HalError::PermissionDenied { capability, guidance }) => {
-                    return Err(HalError::PermissionDenied { capability, guidance });
+                Err(HalError::PermissionDenied {
+                    capability,
+                    guidance,
+                }) => {
+                    return Err(HalError::PermissionDenied {
+                        capability,
+                        guidance,
+                    });
                 }
                 Err(HalError::Unsupported(_)) => {
                     // 原生通道不支持此应用（如某些终端或非标准画布控件）

@@ -1,8 +1,6 @@
 //! `mod-translator` 模块生命周期、窗口启停与快捷键集成测试。
 
-use app_core::{
-    AppKernelBuilder, AppModule, CoreResult, TargetOs, WindowBackend, WindowSpec,
-};
+use app_core::{AppKernelBuilder, AppModule, CoreResult, TargetOs, WindowBackend, WindowSpec};
 use mod_translator::TranslatorModule;
 use os_hal::MockOsHal;
 use std::sync::{

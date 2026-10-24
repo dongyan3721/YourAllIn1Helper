@@ -6,9 +6,7 @@
 //! 3. 通过 AXUIElementCopyAttributeValue 查询当前焦点控件及选中文本。
 //! 4. 选区为空或不支持时准确返回 Ok(None) 或 Unsupported，严禁虚构选区文本。
 
-use crate::{
-    types::{HalError, HalResult, SelectionSource, SelectionTextResult},
-};
+use crate::types::{HalError, HalResult, SelectionSource, SelectionTextResult};
 use std::ffi::c_void;
 
 #[link(name = "ApplicationServices", kind = "framework")]
