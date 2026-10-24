@@ -21,7 +21,7 @@
 ### FFmpeg / FFprobe 与生命周期
 
 - 仅通过 `EnvProbeService` 探测系统或用户配置的 FFmpeg/FFprobe；没有自动安装、下载或打包运行时。
-- 实现 FFprobe JSON 媒体信息、音视频格式转换、快速/精准时间裁剪、提取音频、音量调整；全部使用参数数组，无 shell 拼接。
+- 实现 FFprobe JSON 媒体信息、音视频格式转换、快速/精准时间裁剪、提取音频、音量调整；全部使用参数数组，无 shell 拼接。音量调整明确使用 `-vn`，纯音频输出不会残留视频流。
 - 消费 `-progress pipe:1` 的 `out_time_us`、`speed`、`progress=end`；裁剪使用裁剪区间时长计算进度。
 - 模块自有后台线程，不阻塞同步 IPC；并发信号量、64 KiB stderr 有界日志、FFprobe 输出上限、任务取消、子进程 kill/reap、线程 join、停用清理均已实现。
 - 子进程发布后再次检查取消标志，关闭 spawn/publish 竞态；图片解码、缩放、编码、flush、落盘之间设置取消检查点。
@@ -38,10 +38,10 @@
 
 ## 真实测试结果
 
-最终验收在功能提交对应源码上执行：
+最终验收在当前分支源码上执行；安装 Homebrew FFmpeg 后补充了真实运行时集成测试：
 
 1. `CARGO_TARGET_DIR=/Users/santa_antilles/Desktop/your_all_in_one/target cargo test --workspace --offline --all-targets`
-   - **通过**：33 passed，0 failed，1 ignored。
+   - **通过**：34 passed，0 failed，1 ignored。
    - ignored 为既有 `test_native_windows_list`，要求登录桌面会话，不属于媒体测试。
    - 覆盖真实五种图片编码/解码与缩放、参数验证、输出冲突、SQLite 重启持久化、禁用拒绝 IPC、并发限制、失败原因、取消和停用清理。
    - 进程控制测试使用测试目录内明确标注的测试专用可执行替身，仅验证生产进程管理逻辑，不冒充真实 FFmpeg 处理能力。
@@ -52,14 +52,18 @@
    - 额外配置仅用于 pnpm 11 对符号链接 `node_modules` 的自动依赖校验；没有安装新依赖。
 4. `pnpm --config.verify-deps-before-run=false --dir src-ui test`
    - **通过**：2 passed，0 failed；三语言键集合一致，Logo 检查通过。
-5. `command -v ffmpeg && command -v ffprobe`
-   - **未探测到运行时**（退出码 1）；因此没有执行真实 FFmpeg/FFprobe 音视频样本测试，也没有安装它们。
+5. `command -v ffmpeg && command -v ffprobe && ffmpeg -version && ffprobe -version`
+   - **通过**：`/opt/homebrew/bin/ffmpeg` 与 `/opt/homebrew/bin/ffprobe`，版本均为 9.0.2；运行时由用户通过 Homebrew 安装，模块未执行安装。
+6. `CARGO_TARGET_DIR=/Users/santa_antilles/Desktop/your_all_in_one/target cargo test -p mod-media-proc --test real_ffmpeg --offline -- --nocapture`
+   - **通过**：1 passed，0 failed；使用 FFmpeg 临时合成 2 秒无版权音视频样本，通过模块完成 FFprobe 探测、MKV 转换、快速/精准 MP4 裁剪、MP3 音频提取、M4A 音量调整。
+   - 所有最终输出均再次由真实 FFprobe 解码并校验流类型；精准裁剪时长为 1 秒（容差 0.25 秒），音量输出仅含音频流；事件包含 0–100 进度和速度，且没有遗留 `.partial` 文件。
+   - 首次实测发现音量调整保留视频流的问题，已在生产命令中补 `-vn` 并回归通过。测试源码为 `crates/mod-media-proc/tests/real_ffmpeg.rs`，在未安装运行时的机器会明确打印未执行并返回，不伪造运行结果。
 
 ## GUI 状态与缺口
 
 - **GUI 未执行**：未进行真实桌面点击、原生拖拽、文件对话框、窗口重启、主题切换或播放验证，不能把 IPC/单测视为 GUI 通过。
 - 功能专属用例在 `docs/testing/MEDIA_GUI_TEST_PLAN.md`，12 项均明确标记未执行；后续实测需补构建 SHA-256 与截图。
-- 当前机器没有 FFmpeg/FFprobe，真实音视频探测、转换、裁剪、提取音频、音量、进度和播放结果仍须在有既有运行时的机器验收。
+- 真实 FFmpeg/FFprobe 后端链路已验证；GUI 内的音视频操作、事件展示及输出播放仍未执行，不能以集成测试替代。
 - 图片取消在流水线检查点生效；单个非常大的 Rust 编码调用无法像外部子进程一样被强制中途 kill，停用会等待该调用返回后再完成清理。
 
 ## 修改的公共文件

@@ -163,6 +163,7 @@ pub fn process_av(
             command.arg("-vn");
         }
         crate::types::AvOperation::AdjustVolume => {
+            command.arg("-vn");
             command
                 .arg("-af")
                 .arg(format!("volume={:.6}", request.volume.unwrap_or(1.0)));
