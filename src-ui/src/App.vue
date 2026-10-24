@@ -15,6 +15,12 @@
     <!-- macOS 原生置顶镜像画中画视图 -->
     <PinMirror v-else-if="nativeWindowType === 'pin-mirror'" />
 
+    <!-- 桌面屏幕注释透明画布视图 -->
+    <ScreenInkCanvas v-else-if="nativeWindowType === 'screen-ink-canvas'" />
+
+    <!-- 桌面屏幕注释独立工具栏视图 -->
+    <ScreenInkToolbar v-else-if="nativeWindowType === 'screen-ink-toolbar'" />
+
     <!-- 默认主控台视图 -->
     <Dashboard v-else />
   </div>
@@ -28,6 +34,8 @@ import StickyNote from './components/StickyNote.vue';
 import WindowPinPicker from './components/WindowPinPicker.vue';
 import PinMirror from './components/PinMirror.vue';
 import PinBadge from './components/PinBadge.vue';
+import ScreenInkCanvas from './components/ScreenInkCanvas.vue';
+import ScreenInkToolbar from './components/ScreenInkToolbar.vue';
 import { initTheme } from './utils/theme';
 import { initI18n } from './utils/i18n';
 

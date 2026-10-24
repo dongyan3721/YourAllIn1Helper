@@ -254,6 +254,111 @@
         </div>
       </section>
 
+      <!-- Tab: 桌面屏幕注释 (03 mod-screen-ink) -->
+      <section v-else-if="currentTab === 'screen_ink'" class="tab-pane">
+        <div class="pane-toolbar">
+          <div class="card-desc">
+            {{ t('screen_ink.dashboard.toolbarDesc') }}
+          </div>
+          <div class="toolbar-actions">
+            <button
+              class="macos-button"
+              :disabled="!inkSessionStatus?.is_active"
+              @click="toggleInkPassthrough"
+            >
+              <Icons name="mouse-pointer" size="12" />
+              <span>{{ inkSessionStatus?.is_passthrough ? t('screen_ink.dashboard.resumeDrawBtn') : t('screen_ink.dashboard.passthroughBtn') }}</span>
+            </button>
+            <button
+              class="macos-button"
+              :disabled="!inkSessionStatus?.is_active"
+              @click="clearInkCanvas"
+            >
+              <Icons name="trash" size="12" />
+              <span>{{ t('screen_ink.dashboard.clearBtn') }}</span>
+            </button>
+            <button
+              class="macos-button"
+              :class="{ danger: inkSessionStatus?.is_active, primary: !inkSessionStatus?.is_active }"
+              @click="toggleInkSession"
+            >
+              <Icons :name="inkSessionStatus?.is_active ? 'close' : 'brush'" size="12" />
+              <span>{{ inkSessionStatus?.is_active ? t('screen_ink.dashboard.exitBtn') : t('screen_ink.dashboard.startBtn') }}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 屏幕注释核心特性与运行状态卡片 -->
+        <div class="section-card" style="margin-top: 10px;">
+          <div class="card-header-bar">
+            <span class="card-title">{{ t('screen_ink.dashboard.statusTitle') }}</span>
+            <span class="card-desc">{{ t('screen_ink.dashboard.statusDesc') }}</span>
+          </div>
+          <div class="metrics-grid" style="grid-template-columns: repeat(3, 1fr); margin-top: 10px;">
+            <div class="metric-card">
+              <span class="metric-label">{{ t('screen_ink.dashboard.sessionStateLabel') }}</span>
+              <span class="metric-val" :style="{ color: inkSessionStatus?.is_active ? '#10b981' : '#6b7280' }">
+                {{ inkSessionStatus?.is_active ? t('screen_ink.dashboard.activeState') : t('screen_ink.dashboard.inactiveState') }}
+              </span>
+              <span class="metric-sub">{{ t('screen_ink.dashboard.sessionStateSub') }}</span>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">{{ t('screen_ink.dashboard.canvasModeLabel') }}</span>
+              <span class="metric-val" :style="{ color: inkSessionStatus?.is_passthrough ? '#3b82f6' : '#8b5cf6' }">
+                {{ inkSessionStatus?.is_passthrough ? t('screen_ink.dashboard.passthroughMode') : t('screen_ink.dashboard.drawingMode') }}
+              </span>
+              <span class="metric-sub">{{ t('screen_ink.dashboard.canvasModeSub') }}</span>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">{{ t('screen_ink.dashboard.dualWindowLabel') }}</span>
+              <span class="metric-val">{{ t('screen_ink.dashboard.dualWindowVal') }}</span>
+              <span class="metric-sub">{{ t('screen_ink.dashboard.dualWindowSub') }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 屏幕注释功能说明与快捷键指南 -->
+        <div class="section-card">
+          <div class="card-header-bar">
+            <span class="card-title">{{ t('screen_ink.dashboard.guideTitle') }}</span>
+            <span class="card-desc">{{ t('screen_ink.dashboard.guideDesc') }}</span>
+          </div>
+          <div class="table-container">
+            <table class="macos-table">
+              <thead>
+                <tr>
+                  <th>{{ t('screen_ink.dashboard.colFeature') }}</th>
+                  <th>{{ t('screen_ink.dashboard.colDetail') }}</th>
+                  <th>{{ t('screen_ink.dashboard.colHotkey') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>{{ t('screen_ink.dashboard.featDualWindow') }}</strong></td>
+                  <td>{{ t('screen_ink.dashboard.descDualWindow') }}</td>
+                  <td><kbd class="hotkey-pill">⇧⌘D</kbd></td>
+                </tr>
+                <tr>
+                  <td><strong>{{ t('screen_ink.dashboard.featPassthrough') }}</strong></td>
+                  <td>{{ t('screen_ink.dashboard.descPassthrough') }}</td>
+                  <td><kbd class="hotkey-pill">⇧⌘E</kbd></td>
+                </tr>
+                <tr>
+                  <td><strong>{{ t('screen_ink.dashboard.featLaser') }}</strong></td>
+                  <td>{{ t('screen_ink.dashboard.descLaser') }}</td>
+                  <td><span class="type-pill text">{{ t('screen_ink.dashboard.laserAutoFade') }}</span></td>
+                </tr>
+                <tr>
+                  <td><strong>{{ t('screen_ink.dashboard.featComposite') }}</strong></td>
+                  <td>{{ t('screen_ink.dashboard.descComposite') }}</td>
+                  <td><span class="type-pill image">{{ t('screen_ink.dashboard.compositeReal') }}</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       <!-- Tab 3: 置顶便笺库 (04 mod-sticky-note) -->
       <section v-else-if="currentTab === 'sticky'" class="tab-pane">
         <div class="pane-toolbar">
@@ -459,6 +564,7 @@ import {
 const tabs = [
   { id: 'overview', labelKey: 'tabs.overview', icon: 'dashboard' },
   { id: 'clipboard', module: 'clipboard', labelKey: 'tabs.clipboard', icon: 'clipboard' },
+  { id: 'screen_ink', module: 'screen_ink', labelKey: 'tabs.screen_ink', icon: 'brush' },
   { id: 'sticky', module: 'sticky_note', labelKey: 'tabs.sticky', icon: 'sticky' },
   { id: 'scripts', module: 'script_runner', labelKey: 'tabs.scripts', icon: 'terminal' },
   { id: 'winpin', module: 'window_pin', labelKey: 'tabs.winpin', icon: 'pin' },
@@ -473,6 +579,7 @@ const clipItems = ref<ClipboardRecord[]>([]);
 const notes = ref<StickyNoteRecord[]>([]);
 const externalWindows = ref<ExternalWindowInfo[]>([]);
 const pinnedWindows = ref<PinnedWindowEntry[]>([]);
+const inkSessionStatus = ref<{ is_active: boolean; is_passthrough: boolean } | null>(null);
 
 const moduleEnabled = (id: string) =>
   status.value?.module_catalog.some((module) => module.id === id && module.enabled) ?? false;
@@ -523,7 +630,7 @@ async function refreshDashboard() {
       syncLocaleFromBackendConfig(s.config.general.language);
     }
     if (!visibleTabs.value.some((tab) => tab.id === currentTab.value)) currentTab.value = 'overview';
-    const [c, n, w] = await Promise.all([
+    const [c, n, w, i] = await Promise.all([
       moduleEnabled('clipboard')
         ? invokeIpc<ClipboardRecord[]>('clipboard_list_items', { limit: 100 })
         : Promise.resolve([]),
@@ -533,11 +640,15 @@ async function refreshDashboard() {
       moduleEnabled('window_pin')
         ? invokeIpc<{ candidates: ExternalWindowInfo[]; pinned: PinnedWindowEntry[] }>('winpin_list_candidates')
         : Promise.resolve({ candidates: [], pinned: [] }),
+      moduleEnabled('screen_ink')
+        ? invokeIpc<{ is_active: boolean; is_passthrough: boolean }>('ink_get_status')
+        : Promise.resolve(null),
     ]);
     clipItems.value = c;
     notes.value = n;
     externalWindows.value = w.candidates || [];
     pinnedWindows.value = w.pinned || [];
+    inkSessionStatus.value = i;
   } catch (err) {
     console.error('刷新主控台数据失败:', err);
   }
@@ -580,6 +691,43 @@ async function deleteClip(id: number) {
 async function clearUnpinnedClip() {
   await invokeIpc('clipboard_clear_unpinned');
   await refreshDashboard();
+}
+
+/** 切换屏幕注释会话开启/退出 */
+async function toggleInkSession() {
+  try {
+    if (inkSessionStatus.value?.is_active) {
+      await invokeIpc('ink_exit_session');
+    } else {
+      await invokeIpc('ink_start_session');
+    }
+    await refreshDashboard();
+  } catch (err: any) {
+    console.error('操作屏幕注释失败:', err);
+  }
+}
+
+/** 切换画布鼠标穿透模式 */
+async function toggleInkPassthrough() {
+  try {
+    const current = inkSessionStatus.value?.is_passthrough ?? false;
+    await invokeIpc('ink_set_passthrough', { passthrough: !current });
+    await refreshDashboard();
+  } catch (err: any) {
+    console.error('切换桌面穿透失败:', err);
+  }
+}
+
+/** 清空屏幕墨迹 */
+async function clearInkCanvas() {
+  try {
+    await invokeIpc('ink_clear_canvas');
+    const bc = new BroadcastChannel('screen-ink-channel');
+    bc.postMessage({ type: 'clear' });
+    bc.close();
+  } catch (err: any) {
+    console.error('清空墨迹失败:', err);
+  }
 }
 
 /** 新建便笺 */

@@ -328,3 +328,78 @@ fn script_settings_validate_and_persist_across_restarts() {
     assert_eq!(config["keep_run_logs"], 25);
     host.kernel().shutdown().unwrap();
 }
+
+#[test]
+fn screen_ink_disable_blocks_ipc_and_cleans_windows() {
+    let dir = tempfile::tempdir().unwrap();
+    let host = DesktopHost::bootstrap(dir.path(), true).unwrap();
+
+    // 1. 获取初始状态
+    let status = call(&host, "ink_get_status", json!({}));
+    assert_eq!(status["is_active"], false);
+
+    // 2. 启动会话 -> 创建 canvas 和 toolbar 双窗口
+    let start_res = call(&host, "ink_start_session", json!({}));
+    assert_eq!(start_res["is_active"], true);
+    assert_eq!(host.kernel().context().window_pool.active_window_count(), 2);
+
+    // 3. 切换为穿透模式
+    let pass_res = call(&host, "ink_set_passthrough", json!({ "passthrough": true }));
+    assert_eq!(pass_res["is_passthrough"], true);
+    let canvas_win = host
+        .kernel()
+        .context()
+        .window_pool
+        .get_active_window("screen-ink-canvas")
+        .unwrap();
+    assert!(canvas_win.ignore_cursor_events);
+    let toolbar_win = host
+        .kernel()
+        .context()
+        .window_pool
+        .get_active_window("screen-ink-toolbar")
+        .unwrap();
+    assert!(!toolbar_win.ignore_cursor_events);
+
+    // 4. 保存快照合成（生成一个微型 2x2 绿色透明 PNG 并 base64 编码测试）
+    use image::{ImageBuffer, Rgba};
+    use std::io::Cursor;
+    let mut img = ImageBuffer::<Rgba<u8>, Vec<u8>>::new(2, 2);
+    img.put_pixel(0, 0, Rgba([0, 255, 0, 255]));
+    let mut png_buf = Vec::new();
+    img.write_to(&mut Cursor::new(&mut png_buf), image::ImageFormat::Png)
+        .unwrap();
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    let b64 = format!("data:image/png;base64,{}", STANDARD.encode(&png_buf));
+
+    let snap_res = call(
+        &host,
+        "ink_save_snapshot",
+        json!({
+            "ink_png_base64": b64,
+            "copy_to_clipboard": false,
+        }),
+    );
+    assert!(snap_res["width"].as_u64().unwrap() > 0);
+    assert!(snap_res["height"].as_u64().unwrap() > 0);
+
+    // 5. 禁用 screen_ink 模块 -> 双窗口被销毁，内存释放
+    toggle(&host, "screen_ink", false);
+    assert_eq!(host.kernel().context().window_pool.active_window_count(), 0);
+
+    // 6. 禁用状态下所有 ink_ IPC 命令必须被拒绝
+    assert!(!host.invoke_ipc("ink_get_status", json!({})).ok);
+    assert!(!host.invoke_ipc("ink_start_session", json!({})).ok);
+    assert!(
+        !host
+            .invoke_ipc("ink_set_passthrough", json!({ "passthrough": false }))
+            .ok
+    );
+
+    // 7. 重新启用
+    toggle(&host, "screen_ink", true);
+    let re_status = call(&host, "ink_get_status", json!({}));
+    assert_eq!(re_status["is_active"], false);
+
+    host.kernel().shutdown().unwrap();
+}

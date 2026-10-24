@@ -1,0 +1,31 @@
+//! 桌面屏幕注释（Screen Ink）模块配置结构体。
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ScreenInkConfig {
+    /// 默认初始绘图工具（pen, highlighter, laser, line, rect, arrow, eraser）
+    pub default_tool: String,
+    /// 默认墨迹颜色（十六进制颜色值，如 #ef4444）
+    pub default_color: String,
+    /// 默认线条宽度（像素）
+    pub default_width: f64,
+    /// 截图快照自定义保存目录（为 None 时保存至应用数据目录下的 snapshots 文件夹）
+    pub save_directory: Option<String>,
+    /// 快照保存时是否自动复制到系统剪贴板
+    pub copy_to_clipboard_on_save: bool,
+    /// 是否锁定为主屏幕全屏画布（支持 macOS HiDPI 缩放与多屏主显示器识别）
+    pub primary_monitor_only: bool,
+}
+
+impl Default for ScreenInkConfig {
+    fn default() -> Self {
+        Self {
+            default_tool: "pen".to_string(),
+            default_color: "#ef4444".to_string(),
+            default_width: 4.0,
+            save_directory: None,
+            copy_to_clipboard_on_save: true,
+            primary_monitor_only: true,
+        }
+    }
+}

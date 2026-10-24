@@ -2,6 +2,7 @@
 use super::*;
 mod clipboard;
 mod kernel;
+mod screen_ink;
 mod script;
 mod sticky_note;
 mod window_pin;
@@ -19,6 +20,8 @@ impl DesktopHost {
                 ("window_pin", Self::dispatch_window_pin)
             } else if cmd.starts_with("script_") {
                 ("script_runner", Self::dispatch_script)
+            } else if cmd.starts_with("ink_") {
+                ("screen_ink", Self::dispatch_screen_ink)
             } else {
                 return Err(CoreError::Config(format!("Unknown IPC command: {}", cmd)));
             };

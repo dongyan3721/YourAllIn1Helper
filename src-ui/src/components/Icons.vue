@@ -170,6 +170,83 @@
       <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
     </g>
 
+    <!-- 画笔图标 -->
+    <g v-else-if="name === 'brush' || name === 'pen'">
+      <path d="M12 19l7-7 3 3-7 7-3-3z" />
+      <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
+      <path d="M2 2l7.586 7.586" />
+      <circle cx="11" cy="11" r="2" />
+    </g>
+
+    <!-- 荧光笔图标 -->
+    <g v-else-if="name === 'highlighter'">
+      <path d="M14 2l4 4-8 8H6v-4l8-8z" />
+      <path d="M18 14l2 2-3 3-2-2" />
+      <line x1="2" y1="22" x2="22" y2="22" />
+    </g>
+
+    <!-- 激光笔图标 -->
+    <g v-else-if="name === 'laser'">
+      <circle cx="12" cy="12" r="3" />
+      <line x1="12" y1="2" x2="12" y2="6" />
+      <line x1="12" y1="18" x2="12" y2="22" />
+      <line x1="2" y1="12" x2="6" y2="12" />
+      <line x1="18" y1="12" x2="22" y2="12" />
+    </g>
+
+    <!-- 直线图标 -->
+    <g v-else-if="name === 'line'">
+      <line x1="4" y1="20" x2="20" y2="4" />
+      <circle cx="4" cy="20" r="1.5" />
+      <circle cx="20" cy="4" r="1.5" />
+    </g>
+
+    <!-- 矩形图标 -->
+    <g v-else-if="name === 'rect'">
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+    </g>
+
+    <!-- 箭头图标 -->
+    <g v-else-if="name === 'arrow'">
+      <line x1="5" y1="19" x2="19" y2="5" />
+      <polyline points="9 5 19 5 19 15" />
+    </g>
+
+    <!-- 橡皮擦图标 -->
+    <g v-else-if="name === 'eraser'">
+      <path d="M20 20H7L3 16C2 15 2 13 3 12L13 2C14 1 16 1 17 2L21 6C22 7 22 9 21 10L14 17" />
+      <line x1="6" y1="13" x2="10" y2="17" />
+    </g>
+
+    <!-- 撤销图标 -->
+    <g v-else-if="name === 'undo'">
+      <polyline points="1 4 1 10 7 10" />
+      <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+    </g>
+
+    <!-- 重做图标 -->
+    <g v-else-if="name === 'redo'">
+      <polyline points="23 4 23 10 17 10" />
+      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+    </g>
+
+    <!-- 鼠标/穿透操作图标 -->
+    <g v-else-if="name === 'cursor' || name === 'mouse-pointer'">
+      <path d="M3 3l7 18 3-7 7-3L3 3z" />
+    </g>
+
+    <!-- 相机/快照保存图标 -->
+    <g v-else-if="name === 'camera'">
+      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+      <circle cx="12" cy="13" r="4" />
+    </g>
+
+    <!-- 复制图标 -->
+    <g v-else-if="name === 'copy'">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </g>
+
     <!-- 默认点点点 -->
     <g v-else>
       <circle cx="12" cy="12" r="1" />

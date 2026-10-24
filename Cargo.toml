@@ -4,6 +4,7 @@ members = [
     "crates/app-core",
     "crates/os-hal",
     "crates/mod-clipboard",
+    "crates/mod-screen-ink",
     "crates/mod-sticky-note",
     "crates/mod-window-pin",
     "crates/mod-script-runner",
