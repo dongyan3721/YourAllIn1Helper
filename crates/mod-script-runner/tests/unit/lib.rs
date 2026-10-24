@@ -2,7 +2,8 @@
 use super::*;
 use crate::command::{build_command, inline_file_name};
 use crate::env::{ScriptEnvCapabilities, ScriptEnvironment};
-use crate::events::ScriptEventSink;
+use crate::events::{NoopScriptEventSink, ScriptEventSink};
+use crate::hotkey::ScriptHotkeySync;
 use crate::model::{
     LogEntry, LogStream, RunStatus, RunSummary, ScriptRunRecord, ScriptType, ScriptUpsert,
 };
@@ -10,7 +11,10 @@ use app_core::{AppKernel, AppKernelBuilder};
 use parking_lot::Mutex;
 use std::{
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::{Duration, Instant},
 };
 
@@ -39,6 +43,45 @@ impl ScriptEnvironment for TestEnvironment {
 
     fn selected_text(&self) -> Result<Option<String>, String> {
         Ok(self.selection.clone())
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct SyncCall {
+    action_id: String,
+    previous: Option<String>,
+    desired: Option<String>,
+}
+
+#[derive(Default)]
+struct RecordingHotkeySync {
+    fail: AtomicBool,
+    calls: Mutex<Vec<SyncCall>>,
+}
+
+impl RecordingHotkeySync {
+    fn set_failing(&self, failing: bool) {
+        self.fail.store(failing, Ordering::SeqCst);
+    }
+}
+
+impl ScriptHotkeySync for RecordingHotkeySync {
+    fn sync(
+        &self,
+        action_id: &str,
+        previous: Option<&app_core::RegisteredShortcut>,
+        desired: Option<&app_core::RegisteredShortcut>,
+    ) -> Result<(), String> {
+        self.calls.lock().push(SyncCall {
+            action_id: action_id.to_string(),
+            previous: previous.map(|value| value.physical_accelerator.clone()),
+            desired: desired.map(|value| value.physical_accelerator.clone()),
+        });
+        if self.fail.load(Ordering::SeqCst) {
+            Err("injected native registration failure".to_string())
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -711,4 +754,148 @@ fn invalid_inputs_and_output_modes_are_rejected() {
         config.normalized().max_log_bytes,
         crate::config::MIN_LOG_BYTES
     );
+}
+
+#[test]
+fn script_type_json_contract_matches_ui_and_reads_legacy_aliases() {
+    for script_type in ScriptType::ALL {
+        let json = serde_json::to_value(script_type).unwrap();
+        assert_eq!(json, serde_json::json!(script_type.as_str()));
+        let roundtrip: ScriptType = serde_json::from_value(json).unwrap();
+        assert_eq!(roundtrip, script_type);
+    }
+    assert_eq!(
+        serde_json::from_value::<ScriptType>(serde_json::json!("apple_script")).unwrap(),
+        ScriptType::AppleScript
+    );
+    assert_eq!(
+        serde_json::from_value::<ScriptType>(serde_json::json!("power_shell")).unwrap(),
+        ScriptType::PowerShell
+    );
+
+    let legacy: ScriptUpsert = serde_json::from_value(serde_json::json!({
+        "name": "legacy",
+        "script_type": "apple_script",
+        "is_inline": true,
+        "content_or_path": "return 1\n"
+    }))
+    .unwrap();
+    assert_eq!(legacy.script_type, ScriptType::AppleScript);
+    let serialized = serde_json::to_value(&legacy).unwrap();
+    assert_eq!(serialized["script_type"], "applescript");
+
+    let legacy: ScriptUpsert = serde_json::from_value(serde_json::json!({
+        "name": "legacy-ps",
+        "script_type": "power_shell",
+        "is_inline": true,
+        "content_or_path": "Write-Output 1\n"
+    }))
+    .unwrap();
+    assert_eq!(legacy.script_type, ScriptType::PowerShell);
+    assert_eq!(
+        serde_json::to_value(&legacy).unwrap()["script_type"],
+        "powershell"
+    );
+}
+
+#[test]
+fn failing_native_hotkey_sync_rolls_back_new_script_and_core_registration() {
+    let dir = tempfile::tempdir().unwrap();
+    let sync = Arc::new(RecordingHotkeySync::default());
+    sync.set_failing(true);
+    let module = Arc::new(ScriptRunnerModule::with_services(
+        Arc::new(TestEnvironment::default()),
+        Arc::new(NoopScriptEventSink),
+        sync.clone(),
+    ));
+    let kernel = kernel_with(dir.path(), Arc::clone(&module), true);
+    let ctx = kernel.context();
+
+    let mut input = upsert("sync-fail", ScriptType::Shell, "echo hi\n");
+    input.hotkey = Some("PrimaryMod+Alt+F8".to_string());
+    let error = module.save_script(ctx, input).unwrap_err().to_string();
+    assert!(error.contains("系统全局快捷键更新失败"), "{error}");
+    assert!(module.list_scripts(ctx).unwrap().is_empty());
+    assert!(ctx
+        .shortcut_registry
+        .get_by_action(&hotkey_action_id(1))
+        .is_none());
+    let calls = sync.calls.lock();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].action_id, hotkey_action_id(1));
+    assert_eq!(calls[0].previous, None);
+    assert!(calls[0]
+        .desired
+        .as_deref()
+        .is_some_and(|value| value.contains("F8")));
+}
+
+#[test]
+fn failing_native_hotkey_sync_restores_updated_script_and_previous_shortcut() {
+    let dir = tempfile::tempdir().unwrap();
+    let sync = Arc::new(RecordingHotkeySync::default());
+    let module = Arc::new(ScriptRunnerModule::with_services(
+        Arc::new(TestEnvironment::default()),
+        Arc::new(NoopScriptEventSink),
+        sync.clone(),
+    ));
+    let kernel = kernel_with(dir.path(), Arc::clone(&module), true);
+    let ctx = kernel.context();
+
+    let mut input = upsert("original", ScriptType::Shell, "echo old\n");
+    input.hotkey = Some("PrimaryMod+Alt+F7".to_string());
+    let saved = module.save_script(ctx, input).unwrap();
+    let old_shortcut = ctx
+        .shortcut_registry
+        .get_by_action(&hotkey_action_id(saved.id))
+        .unwrap();
+
+    sync.set_failing(true);
+    let mut update = upsert("renamed", ScriptType::Shell, "echo new\n");
+    update.id = Some(saved.id);
+    update.hotkey = Some("PrimaryMod+Alt+F6".to_string());
+    let error = module.save_script(ctx, update).unwrap_err().to_string();
+    assert!(error.contains("脚本已回滚"), "{error}");
+
+    let restored = module.get_script(ctx, saved.id).unwrap().unwrap();
+    assert_eq!(restored.name, "original");
+    assert_eq!(restored.content_or_path, "echo old\n");
+    assert_eq!(restored.hotkey.as_deref(), Some("PrimaryMod+Alt+F7"));
+    assert!(restored.hotkey_active);
+    let restored_shortcut = ctx
+        .shortcut_registry
+        .get_by_action(&hotkey_action_id(saved.id))
+        .unwrap();
+    assert_eq!(
+        restored_shortcut.physical_accelerator,
+        old_shortcut.physical_accelerator
+    );
+}
+
+#[test]
+fn failing_native_hotkey_sync_restores_deleted_script_and_shortcut() {
+    let dir = tempfile::tempdir().unwrap();
+    let sync = Arc::new(RecordingHotkeySync::default());
+    let module = Arc::new(ScriptRunnerModule::with_services(
+        Arc::new(TestEnvironment::default()),
+        Arc::new(NoopScriptEventSink),
+        sync.clone(),
+    ));
+    let kernel = kernel_with(dir.path(), Arc::clone(&module), true);
+    let ctx = kernel.context();
+
+    let mut input = upsert("keep-on-delete-failure", ScriptType::Shell, "echo keep\n");
+    input.hotkey = Some("PrimaryMod+Alt+F5".to_string());
+    let saved = module.save_script(ctx, input).unwrap();
+    sync.set_failing(true);
+    let error = module.delete_script(ctx, saved.id).unwrap_err().to_string();
+    assert!(error.contains("删除已回滚"), "{error}");
+
+    let restored = module.get_script(ctx, saved.id).unwrap().unwrap();
+    assert_eq!(restored.name, "keep-on-delete-failure");
+    assert!(restored.hotkey_active);
+    assert!(ctx
+        .shortcut_registry
+        .get_by_action(&hotkey_action_id(saved.id))
+        .is_some());
 }

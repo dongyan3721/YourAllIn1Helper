@@ -1,6 +1,12 @@
 //! 主程序功能积木集成测试，显式使用 Mock 系统能力。
 use all_in_one_host::DesktopHost;
+use app_core::{HeadlessWindowBackend, RegisteredShortcut};
+use mod_script_runner::events::NoopScriptEventSink;
+use mod_script_runner::hotkey::ScriptHotkeySync;
+use mod_script_runner::UnavailableScriptEnvironment;
+use os_hal::MockOsHal;
 use serde_json::{json, Value};
+use std::sync::Arc;
 
 fn call(host: &DesktopHost, cmd: &str, args: Value) -> Value {
     let response = host.invoke_ipc(cmd, args);
@@ -327,4 +333,105 @@ fn script_settings_validate_and_persist_across_restarts() {
     assert_eq!(config["default_timeout_secs"], 12);
     assert_eq!(config["keep_run_logs"], 25);
     host.kernel().shutdown().unwrap();
+}
+
+#[test]
+fn script_save_uses_applescript_and_powershell_json_contract_with_legacy_aliases() {
+    let dir = tempfile::tempdir().unwrap();
+    let host = DesktopHost::bootstrap(dir.path(), true).unwrap();
+    let apple = call(
+        &host,
+        "script_save",
+        json!({"script": {
+            "name": "apple",
+            "script_type": "apple_script",
+            "is_inline": true,
+            "content_or_path": "return 1\n",
+            "timeout_secs": 10
+        }}),
+    );
+    assert_eq!(apple["script_type"], "applescript");
+
+    let powershell = call(
+        &host,
+        "script_save",
+        json!({"script": {
+            "name": "powershell",
+            "script_type": "power_shell",
+            "is_inline": true,
+            "content_or_path": "Write-Output 1\n",
+            "timeout_secs": 10
+        }}),
+    );
+    assert_eq!(powershell["script_type"], "powershell");
+
+    let saved = call(
+        &host,
+        "script_save",
+        json!({"script": {
+            "name": "apple-new",
+            "script_type": "applescript",
+            "is_inline": true,
+            "content_or_path": "return 2\n",
+            "timeout_secs": 10
+        }}),
+    );
+    assert_eq!(saved["script_type"], "applescript");
+
+    let list = call(&host, "script_list", json!({}));
+    let values: Vec<&str> = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["script_type"].as_str().unwrap())
+        .collect();
+    assert!(values.contains(&"applescript"));
+    assert!(values.contains(&"powershell"));
+    assert!(!values.iter().any(|value| value.contains('_')));
+}
+
+struct FailingNativeHotkeys;
+
+impl ScriptHotkeySync for FailingNativeHotkeys {
+    fn sync(
+        &self,
+        _action_id: &str,
+        _previous: Option<&RegisteredShortcut>,
+        _desired: Option<&RegisteredShortcut>,
+    ) -> Result<(), String> {
+        Err("injected native hotkey registration failure".to_string())
+    }
+}
+
+#[test]
+fn host_script_save_reports_and_rolls_back_native_hotkey_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let host = DesktopHost::bootstrap_with_adapters_and_services(
+        dir.path(),
+        true,
+        Arc::new(HeadlessWindowBackend),
+        MockOsHal::new().into_bundle(),
+        Arc::new(UnavailableScriptEnvironment),
+        Arc::new(NoopScriptEventSink),
+        Arc::new(FailingNativeHotkeys),
+    )
+    .unwrap();
+
+    let response = host.invoke_ipc(
+        "script_save",
+        json!({"script": {
+            "name": "must roll back",
+            "script_type": "shell",
+            "is_inline": true,
+            "content_or_path": "echo hi
+        ",
+            "hotkey": "PrimaryMod+Alt+F4",
+            "timeout_secs": 10
+        }}),
+    );
+    assert!(!response.ok);
+    let error = response.error.unwrap();
+    assert!(error.contains("系统全局快捷键更新失败"), "{error}");
+    let scripts = call(&host, "script_list", json!({}));
+    assert!(scripts.as_array().unwrap().is_empty());
 }

@@ -168,6 +168,35 @@ pub fn update_script(
         .ok_or_else(|| CoreError::Internal(anyhow::anyhow!("script {id} disappeared")))
 }
 
+/// 回滚更新：按原记录（含原更新时间）覆盖数据库，不触发执行。
+pub fn restore_script(ctx: &ModuleContext, record: &ScriptRecord) -> CoreResult<()> {
+    let args_json = serde_json::to_string(&record.args)?;
+    ctx.db.with_conn(|conn| {
+        conn.execute(
+            "INSERT OR REPLACE INTO custom_scripts (
+                id, name, script_type, is_inline, content_or_path, args_json, working_dir,
+                hotkey, show_in_tray, timeout_secs, output_handling, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            params![
+                record.id,
+                record.name,
+                record.script_type.as_str(),
+                i64::from(record.is_inline),
+                record.content_or_path,
+                args_json,
+                record.working_dir,
+                record.hotkey,
+                i64::from(record.show_in_tray),
+                record.timeout_secs as i64,
+                record.output_handling,
+                record.created_at,
+                record.updated_at,
+            ],
+        )?;
+        Ok(())
+    })
+}
+
 pub fn delete_script(ctx: &ModuleContext, id: i64) -> CoreResult<bool> {
     ctx.db.with_conn(|conn| {
         let affected = conn.execute("DELETE FROM custom_scripts WHERE id = ?1", params![id])?;

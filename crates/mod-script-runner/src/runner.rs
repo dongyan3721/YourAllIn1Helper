@@ -601,6 +601,19 @@ fn terminate(child: &mut Child) {
             }
         }
     }
+    #[cfg(windows)]
+    {
+        // Windows 的 Child::kill 只终止解释器本身；taskkill /T 明确清理整棵进程树。
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let pid = child.id().to_string();
+        let _ = Command::new("taskkill")
+            .args(["/PID", pid.as_str(), "/T", "/F"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
     let _ = child.kill();
 }
 

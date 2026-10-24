@@ -16,6 +16,7 @@ use app_core::{
 use mod_clipboard::ClipboardModule;
 use mod_script_runner::env::ScriptEnvironment;
 use mod_script_runner::events::ScriptEventSink;
+use mod_script_runner::hotkey::ScriptHotkeySync;
 use mod_script_runner::ScriptRunnerModule;
 use mod_sticky_note::{StickyNoteModule, StickyNoteWindowStateUpdate};
 use mod_window_pin::WindowPinModule;
@@ -33,6 +34,7 @@ mod legacy_http;
 mod modules;
 mod script_env;
 mod script_events;
+mod script_hotkeys;
 mod tauri_app;
 pub use legacy_http::serve_desktop_ui;
 pub use tauri_app::run;
@@ -95,6 +97,7 @@ impl DesktopHost {
             Some(mock),
             Arc::new(mod_script_runner::UnavailableScriptEnvironment),
             Arc::new(mod_script_runner::events::NoopScriptEventSink),
+            Arc::new(mod_script_runner::hotkey::NoopScriptHotkeySync),
         )
     }
 
@@ -129,7 +132,7 @@ impl DesktopHost {
         )
     }
 
-    /// 生产桌面宿主：显式注入真实剪贴板/选区能力与 Tauri 事件桥。
+    /// 兼容入口：无系统快捷键同步器时仅维护核心注册表（自动化/无桌面测试）。
     pub fn bootstrap_with_adapters_and_scripting(
         app_data_dir: impl Into<PathBuf>,
         in_memory_db: bool,
@@ -137,6 +140,27 @@ impl DesktopHost {
         os_hal: OsHalBundle,
         script_environment: Arc<dyn ScriptEnvironment>,
         script_events: Arc<dyn ScriptEventSink>,
+    ) -> CoreResult<Self> {
+        Self::bootstrap_with_adapters_and_services(
+            app_data_dir,
+            in_memory_db,
+            window_backend,
+            os_hal,
+            script_environment,
+            script_events,
+            Arc::new(mod_script_runner::hotkey::NoopScriptHotkeySync),
+        )
+    }
+
+    /// 完整生产入口：显式注入事件桥与原生全局快捷键同步器。
+    pub fn bootstrap_with_adapters_and_services(
+        app_data_dir: impl Into<PathBuf>,
+        in_memory_db: bool,
+        window_backend: Arc<dyn WindowBackend>,
+        os_hal: OsHalBundle,
+        script_environment: Arc<dyn ScriptEnvironment>,
+        script_events: Arc<dyn ScriptEventSink>,
+        script_hotkeys: Arc<dyn ScriptHotkeySync>,
     ) -> CoreResult<Self> {
         Self::assemble(
             app_data_dir,
@@ -146,6 +170,7 @@ impl DesktopHost {
             None,
             script_environment,
             script_events,
+            script_hotkeys,
         )
     }
 
@@ -176,13 +201,19 @@ impl DesktopHost {
         mock_hal: Option<MockOsHal>,
         script_environment: Arc<dyn ScriptEnvironment>,
         script_events: Arc<dyn ScriptEventSink>,
+        script_hotkeys: Arc<dyn ScriptHotkeySync>,
     ) -> CoreResult<Self> {
         let builder = AppKernelBuilder::new(app_data_dir)
             .with_in_memory_db(in_memory_db)
             .with_target_os(TargetOs::current())
             .with_window_backend(window_backend);
-        let (builder, clipboard, sticky_note, window_pin, script_runner) =
-            modules::mount(builder, &os_hal, script_environment, script_events)?;
+        let (builder, clipboard, sticky_note, window_pin, script_runner) = modules::mount(
+            builder,
+            &os_hal,
+            script_environment,
+            script_events,
+            script_hotkeys,
+        )?;
         Ok(Self {
             kernel: builder.bootstrap()?,
             clipboard,

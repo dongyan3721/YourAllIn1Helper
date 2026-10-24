@@ -12,6 +12,7 @@ pub mod command;
 pub mod config;
 pub mod env;
 pub mod events;
+pub mod hotkey;
 pub mod model;
 pub mod runner;
 pub mod store;
@@ -23,6 +24,7 @@ use app_core::{
 use config::{ScriptRunnerConfig, MAX_TIMEOUT_SECS, MODULE_ID};
 use env::{ScriptEnvCapabilities, ScriptEnvironment};
 use events::{NoopScriptEventSink, ScriptEventSink};
+use hotkey::{NoopScriptHotkeySync, ScriptHotkeySync};
 use model::{InterpreterStatus, LogEntry, ScriptRecord, ScriptRunRecord, ScriptType, ScriptUpsert};
 use runner::Engine;
 use std::sync::Arc;
@@ -34,21 +36,32 @@ const MAX_SCRIPT_CONTENT_BYTES: usize = 2 * 1024 * 1024;
 #[derive(Clone)]
 pub struct ScriptRunnerModule {
     engine: Arc<Engine>,
+    hotkey_sync: Arc<dyn ScriptHotkeySync>,
 }
 
 impl ScriptRunnerModule {
-    /// 无事件推送的模块实例；适合单元测试或非桌面宿主。
+    /// 无事件推送、无系统快捷键同步的模块实例；适合单元测试或非桌面宿主。
     pub fn new(environment: Arc<dyn ScriptEnvironment>) -> Self {
         Self::with_event_sink(environment, Arc::new(NoopScriptEventSink))
     }
 
-    /// 显式注入桌面事件推送（Tauri `script://log-stream` 等）。
+    /// 显式注入桌面事件推送（Tauri `script://log-stream` 等），快捷键仅进入核心注册表。
     pub fn with_event_sink(
         environment: Arc<dyn ScriptEnvironment>,
         events: Arc<dyn ScriptEventSink>,
     ) -> Self {
+        Self::with_services(environment, events, Arc::new(NoopScriptHotkeySync))
+    }
+
+    /// 生产宿主入口：显式注入事件推送与操作系统快捷键同步器。
+    pub fn with_services(
+        environment: Arc<dyn ScriptEnvironment>,
+        events: Arc<dyn ScriptEventSink>,
+        hotkey_sync: Arc<dyn ScriptHotkeySync>,
+    ) -> Self {
         Self {
             engine: Arc::new(Engine::new(environment, events)),
+            hotkey_sync,
         }
     }
 
@@ -137,6 +150,8 @@ impl ScriptRunnerModule {
             let previous = self
                 .get_script(ctx, id)?
                 .ok_or_else(|| CoreError::Config(format!("script {id} not found")))?;
+            let action = hotkey_action_id(id);
+            let previous_shortcut = ctx.shortcut_registry.get_by_action(&action);
             apply_hotkey_change(
                 ctx,
                 id,
@@ -146,12 +161,29 @@ impl ScriptRunnerModule {
             )?;
             match store::update_script(ctx, id, &input, timeout_secs) {
                 Ok(record) => {
+                    let desired = ctx.shortcut_registry.get_by_action(&action);
+                    if let Err(error) = self.sync_hotkey_transition(
+                        id,
+                        previous_shortcut.as_ref(),
+                        desired.as_ref(),
+                    ) {
+                        let mut message = format!("系统全局快捷键更新失败，脚本已回滚：{error}");
+                        if let Err(restore_error) = store::restore_script(ctx, &previous) {
+                            message.push_str(&format!("；数据库回滚失败：{restore_error}"));
+                        }
+                        if let Err(restore_error) = apply_hotkey_change(
+                            ctx,
+                            id,
+                            &previous.name,
+                            input.hotkey.as_deref(),
+                            previous.hotkey.as_deref(),
+                        ) {
+                            message.push_str(&format!("；快捷键回滚失败：{restore_error}"));
+                        }
+                        return Err(CoreError::Config(message));
+                    }
                     let mut record = record;
-                    record.hotkey_active = record.hotkey.is_some()
-                        && ctx
-                            .shortcut_registry
-                            .get_by_action(&hotkey_action_id(id))
-                            .is_some();
+                    record.hotkey_active = record.hotkey.is_some() && desired.is_some();
                     Ok(record)
                 }
                 Err(err) => {
@@ -167,11 +199,20 @@ impl ScriptRunnerModule {
             }
         } else {
             let record = store::insert_script(ctx, &input, timeout_secs)?;
+            let action = hotkey_action_id(record.id);
             if let Some(hotkey) = input.hotkey.as_deref() {
                 if let Err(err) = register_hotkey(ctx, record.id, &record.name, hotkey) {
                     let _ = store::delete_script(ctx, record.id);
                     return Err(err);
                 }
+            }
+            let desired = ctx.shortcut_registry.get_by_action(&action);
+            if let Err(error) = self.sync_hotkey_transition(record.id, None, desired.as_ref()) {
+                let _ = store::delete_script(ctx, record.id);
+                ctx.shortcut_registry.unregister(&action);
+                return Err(CoreError::Config(format!(
+                    "系统全局快捷键更新失败，新建脚本已回滚：{error}"
+                )));
             }
             self.get_script(ctx, record.id)?
                 .ok_or_else(|| CoreError::Config("script disappeared after save".to_string()))
@@ -179,12 +220,48 @@ impl ScriptRunnerModule {
     }
 
     pub fn delete_script(&self, ctx: &ModuleContext, id: i64) -> CoreResult<bool> {
+        let action = hotkey_action_id(id);
         let previous = self.get_script(ctx, id)?;
-        if previous.is_some() {
-            ctx.shortcut_registry.unregister(&hotkey_action_id(id));
+        let previous_shortcut = ctx.shortcut_registry.get_by_action(&action);
+        if previous.is_none() {
+            return Ok(false);
+        }
+        if previous_shortcut.is_some() {
+            ctx.shortcut_registry.unregister(&action);
         }
         match store::delete_script(ctx, id) {
-            Ok(deleted) => Ok(deleted),
+            Ok(false) => {
+                if let Some(shortcut) = previous_shortcut.as_ref() {
+                    let _ = register_hotkey(
+                        ctx,
+                        id,
+                        &previous.as_ref().expect("checked above").name,
+                        &shortcut.active_logical_hotkey,
+                    );
+                }
+                Ok(false)
+            }
+            Ok(true) => {
+                let desired = ctx.shortcut_registry.get_by_action(&action);
+                if let Err(error) =
+                    self.sync_hotkey_transition(id, previous_shortcut.as_ref(), desired.as_ref())
+                {
+                    let record = previous.as_ref().expect("checked above");
+                    let mut message = format!("系统全局快捷键更新失败，删除已回滚：{error}");
+                    if let Err(restore_error) = store::restore_script(ctx, record) {
+                        message.push_str(&format!("；数据库回滚失败：{restore_error}"));
+                    }
+                    if let Some(hotkey) = record.hotkey.as_deref() {
+                        if let Err(restore_error) =
+                            register_hotkey(ctx, record.id, &record.name, hotkey)
+                        {
+                            message.push_str(&format!("；快捷键回滚失败：{restore_error}"));
+                        }
+                    }
+                    return Err(CoreError::Config(message));
+                }
+                Ok(true)
+            }
             Err(err) => {
                 if let Some(record) = previous {
                     if let Some(hotkey) = record.hotkey.as_deref() {
@@ -194,6 +271,27 @@ impl ScriptRunnerModule {
                 Err(err)
             }
         }
+    }
+
+    fn sync_hotkey_transition(
+        &self,
+        id: i64,
+        previous: Option<&app_core::RegisteredShortcut>,
+        desired: Option<&app_core::RegisteredShortcut>,
+    ) -> CoreResult<()> {
+        let changed = match (previous, desired) {
+            (None, None) => false,
+            (Some(previous), Some(desired)) => {
+                previous.physical_accelerator != desired.physical_accelerator
+            }
+            _ => true,
+        };
+        if !changed {
+            return Ok(());
+        }
+        self.hotkey_sync
+            .sync(&hotkey_action_id(id), previous, desired)
+            .map_err(CoreError::Config)
     }
 
     /// 仅在明确调用（IPC 点击、快捷键）时启动脚本。
