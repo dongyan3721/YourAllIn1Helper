@@ -11,7 +11,7 @@
       </div>
 
       <!-- 分段选择器 (Segmented Control) 切换标签 -->
-      <nav class="macos-segmented">
+      <nav class="macos-segmented feature-tabs">
         <button
           v-for="tab in visibleTabs"
           :key="tab.id"
@@ -571,9 +571,9 @@ const tabs = [
   { id: 'overview', labelKey: 'tabs.overview', icon: 'dashboard' },
   { id: 'clipboard', module: 'clipboard', labelKey: 'tabs.clipboard', icon: 'clipboard' },
   { id: 'screen_ink', module: 'screen_ink', labelKey: 'tabs.screen_ink', icon: 'brush' },
-  { id: 'media', module: 'media_proc', labelKey: 'tabs.media', icon: 'photo' },
   { id: 'sticky', module: 'sticky_note', labelKey: 'tabs.sticky', icon: 'sticky' },
   { id: 'scripts', module: 'script_runner', labelKey: 'tabs.scripts', icon: 'terminal' },
+  { id: 'media', module: 'media_proc', labelKey: 'tabs.media', icon: 'photo' },
   { id: 'winpin', module: 'window_pin', labelKey: 'tabs.winpin', icon: 'pin' },
 ];
 
@@ -861,12 +861,42 @@ onUnmounted(() => {
 
 .brand-title-text {
   font-weight: 600;
+  white-space: nowrap;
+}
+
+/* 功能积木增多后使用独立导航行，避免标签和主题控件挤成逐字换行。 */
+.macos-titlebar {
+  height: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 8px 14px;
+}
+
+.macos-title {
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.feature-tabs {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.feature-tabs .macos-segment-item {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .title-right {
+  grid-column: 2;
+  grid-row: 1;
   display: flex;
   align-items: center;
   gap: 8px;
+  white-space: nowrap;
 }
 
 .locale-segmented .locale-btn {
