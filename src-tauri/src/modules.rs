@@ -15,13 +15,15 @@ pub(super) fn mount(
     hal: &OsHalBundle,
     script_environment: Arc<dyn ScriptEnvironment>,
     script_events: Arc<dyn ScriptEventSink>,
+    script_hotkeys: Arc<dyn mod_script_runner::hotkey::ScriptHotkeySync>,
 ) -> CoreResult<Mounted> {
     let clipboard = Arc::new(ClipboardModule::new(hal.input_simulator.clone()));
     let sticky_note = Arc::new(StickyNoteModule::new());
     let window_pin = Arc::new(WindowPinModule::new(hal.window_controller.clone()));
-    let script_runner = Arc::new(ScriptRunnerModule::with_event_sink(
+    let script_runner = Arc::new(ScriptRunnerModule::with_services(
         script_environment,
         script_events,
+        script_hotkeys,
     ));
     let screen_ink = Arc::new(ScreenInkModule::new(hal.screen_capturer.clone()));
     let media_proc = Arc::new(MediaProcModule::new());

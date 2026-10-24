@@ -9,7 +9,9 @@ pub enum ScriptType {
     Python,
     Node,
     Shell,
+    #[serde(rename = "applescript", alias = "apple_script")]
     AppleScript,
+    #[serde(rename = "powershell", alias = "power_shell")]
     PowerShell,
     Batch,
     Vbscript,

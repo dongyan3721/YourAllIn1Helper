@@ -17,6 +17,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 use crate::script_env::AioScriptEnvironment;
 use crate::script_events::TauriScriptEventSink;
+use crate::script_hotkeys::TauriScriptHotkeySync;
 use crate::{DesktopHost, IpcRequest, IpcResponse};
 
 const ACTION_CLIPBOARD: &str = "clipboard:toggle_popup";
@@ -193,8 +194,8 @@ fn ipc(app: AppHandle, host: State<'_, Arc<DesktopHost>>, request: IpcRequest) -
         let _ = update_tray_menu(&app);
         emit_update(&app);
     } else if response.ok && (request.cmd == "script_save" || request.cmd == "script_delete") {
-        // 脚本 CRUD 可能改变单脚本快捷键与托盘快捷脚本，必须复用现有生命周期同步。
-        let _ = register_global_shortcuts(&app);
+        // 单脚本系统快捷键已由模块内的 Tauri 同步器完成并可回滚；
+        // 这里只同步托盘快捷脚本与界面状态，避免再次全量注册覆盖已有快捷键。
         let _ = update_tray_menu(&app);
         emit_update(&app);
     }
@@ -608,13 +609,15 @@ pub fn run() {
                 native_hal.selection_extractor.clone(),
             ));
             let script_events = Arc::new(TauriScriptEventSink::new(app.handle().clone()));
-            let host = Arc::new(DesktopHost::bootstrap_with_adapters_and_scripting(
+            let script_hotkeys = Arc::new(TauriScriptHotkeySync::new(app.handle().clone()));
+            let host = Arc::new(DesktopHost::bootstrap_with_adapters_and_services(
                 app_data_dir,
                 false,
                 backend,
                 native_hal,
                 script_environment,
                 script_events,
+                script_hotkeys,
             )?);
             let event_app = app.handle().clone();
             host.media_proc.set_event_sink(Some(Arc::new(move |job| {
