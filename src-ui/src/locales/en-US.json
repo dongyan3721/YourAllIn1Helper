@@ -10,6 +10,7 @@
   "tabs": {
     "overview": "Overview",
     "clipboard": "02. Clipboard",
+    "media": "08. Media",
     "sticky": "04. Sticky Notes",
     "winpin": "09. Window Pin"
   },
@@ -86,6 +87,128 @@
       "media_proc": "Media Processor",
       "window_pin": "External Window Pin",
       "password_vault": "Biometric Password Vault"
+    }
+  },
+  "media": {
+    "title": "Media Processor",
+    "subtitle": "Real Rust image codecs and a local FFmpeg queue; existing files are never overwritten",
+    "actions": {
+      "refresh": "Refresh",
+      "dismiss": "Dismiss notification",
+      "save": "Save settings",
+      "saving": "Saving…",
+      "chooseDirectory": "Choose folder",
+      "addFiles": "Add files",
+      "clear": "Clear",
+      "remove": "Remove",
+      "inspect": "Inspect",
+      "inspecting": "Submitting…",
+      "submitBatch": "Submit {count} jobs",
+      "submitting": "Submitting…",
+      "cancel": "Cancel",
+      "cancelling": "Cancelling…"
+    },
+    "environment": {
+      "title": "Runtime environment",
+      "description": "Only installed FFmpeg / FFprobe binaries are detected; nothing is installed or bundled",
+      "ready": "Audio/video ready",
+      "unavailable": "Images only",
+      "detected": "Detected",
+      "missing": "Not detected",
+      "installHint": "Install the runtime or configure an executable path in Settings",
+      "avDisabled": "Audio/video jobs require FFmpeg and FFprobe. Image conversion remains available."
+    },
+    "output": {
+      "title": "Output & queue",
+      "description": "Leave empty to use each source folder; numeric suffixes prevent name collisions",
+      "directory": "Output directory",
+      "defaultDirectory": "Same as source file",
+      "maxConcurrent": "Maximum concurrency (1–4)",
+      "saved": "Media settings saved"
+    },
+    "files": {
+      "title": "Files to process",
+      "selected": "{count} files selected",
+      "emptyTitle": "Choose or drop local media files",
+      "dropHint": "Batch images, audio and video; inspect each file before processing"
+    },
+    "options": {
+      "title": "Processing options",
+      "description": "The same operation and parameters apply to the whole batch",
+      "mode": "Processing mode",
+      "imageMode": "Image conversion",
+      "avMode": "Audio/video",
+      "auto": "Auto"
+    },
+    "image": {
+      "format": "Output format",
+      "quality": "JPEG quality: {value}",
+      "losslessNote": "WebP uses the real lossless encoder; no synthetic quality parameter.",
+      "width": "Target width",
+      "height": "Target height",
+      "preserveAspect": "Preserve aspect ratio (both dimensions required when off)"
+    },
+    "av": {
+      "operation": "Operation",
+      "outputFormat": "Output format",
+      "startSeconds": "Start time (seconds)",
+      "endSeconds": "End time (seconds)",
+      "endPlaceholder": "Must be after start time",
+      "volume": "Volume multiplier (0–4)",
+      "precise": "Precise trim (re-encode; off uses fast stream copy)"
+    },
+    "operations": {
+      "convert": "Convert format",
+      "trim": "Trim timeline",
+      "extractAudio": "Extract audio",
+      "adjustVolume": "Adjust volume",
+      "imageConvert": "Image conversion",
+      "inspect": "Media inspection",
+      "generic": "Media job"
+    },
+    "jobs": {
+      "title": "Job queue",
+      "description": "Progress comes from FFmpeg progress pipe; cancellation and shutdown kill child processes",
+      "count": "{count} jobs",
+      "empty": "No jobs yet",
+      "submitted": "Submitted {succeeded} jobs; {failed} failed",
+      "progress": "Job progress",
+      "error": "Failure reason: {message}",
+      "output": "Output:",
+      "updated": "Updated {time}"
+    },
+    "status": {
+      "queued": "Queued",
+      "running": "Running",
+      "completed": "Completed",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "inspect": {
+      "started": "Media inspection submitted",
+      "showJson": "Show full JSON",
+      "format": "Format: {value}",
+      "duration": "Duration: {seconds} seconds",
+      "size": "Size: {value} MiB",
+      "video": "Video: {codec} · {width}×{height}",
+      "audio": "Audio: {codec} · {channels} channels"
+    },
+    "errors": {
+      "pickFiles": "Could not choose files: {message}",
+      "pickDirectory": "Could not choose a directory: {message}",
+      "environment": "Environment probe failed: {message}",
+      "loadConfig": "Could not load media settings: {message}",
+      "saveConfig": "Could not save media settings: {message}",
+      "loadJobs": "Could not load the job queue: {message}",
+      "submit": "Could not submit jobs: {message}",
+      "inspect": "Media inspection failed: {message}",
+      "cancel": "Could not cancel the job: {message}",
+      "unknown": "Unknown error",
+      "invalidConcurrency": "Concurrency must be an integer from 1 to 4",
+      "invalidDimensions": "Dimensions must be positive integers; both are required when aspect ratio is not preserved",
+      "invalidQuality": "JPEG quality must be between 1 and 100",
+      "invalidTrimRange": "Enter a valid start and end time; the end must be later",
+      "invalidVolume": "Volume multiplier must be between 0 and 4"
     }
   },
   "clipboard": {

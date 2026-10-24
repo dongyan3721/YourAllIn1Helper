@@ -10,6 +10,7 @@
   "tabs": {
     "overview": "概要",
     "clipboard": "02. クリップボード",
+    "media": "08. メディア処理",
     "sticky": "04. 付箋ノート",
     "winpin": "09. 最前面固定"
   },
@@ -86,6 +87,128 @@
       "media_proc": "メディア変換・編集",
       "window_pin": "ウィンドウ最前面固定",
       "password_vault": "生体認証パスワード保管庫"
+    }
+  },
+  "media": {
+    "title": "メディア変換・編集",
+    "subtitle": "Rust 純正画像コーデックとローカル FFmpeg キュー。既存ファイルを上書きしません",
+    "actions": {
+      "refresh": "更新",
+      "dismiss": "通知を閉じる",
+      "save": "設定を保存",
+      "saving": "保存中…",
+      "chooseDirectory": "フォルダーを選択",
+      "addFiles": "ファイルを追加",
+      "clear": "クリア",
+      "remove": "削除",
+      "inspect": "情報を表示",
+      "inspecting": "送信中…",
+      "submitBatch": "{count} 件のジョブを実行",
+      "submitting": "送信中…",
+      "cancel": "キャンセル",
+      "cancelling": "キャンセル中…"
+    },
+    "environment": {
+      "title": "実行環境",
+      "description": "インストール済みの FFmpeg / FFprobe のみ検出し、自動インストールや同梱は行いません",
+      "ready": "音声・動画利用可能",
+      "unavailable": "画像のみ利用可能",
+      "detected": "検出済み",
+      "missing": "未検出",
+      "installHint": "ランタイムをインストールするか、設定で実行ファイルのパスを指定してください",
+      "avDisabled": "音声・動画には FFmpeg と FFprobe が必要です。画像変換は利用できます。"
+    },
+    "output": {
+      "title": "出力とキュー",
+      "description": "未指定時はソースと同じフォルダー。同名ファイルには連番を付けます",
+      "directory": "出力ディレクトリ",
+      "defaultDirectory": "ソースファイルと同じ",
+      "maxConcurrent": "最大同時実行数（1–4）",
+      "saved": "メディア設定を保存しました"
+    },
+    "files": {
+      "title": "処理するファイル",
+      "selected": "{count} 件選択中",
+      "emptyTitle": "ローカルメディアを選択またはドロップ",
+      "dropHint": "画像・音声・動画を一括追加し、個別に情報を確認できます"
+    },
+    "options": {
+      "title": "処理オプション",
+      "description": "同じ操作とパラメーターをバッチ内の全ファイルに適用します",
+      "mode": "処理モード",
+      "imageMode": "画像変換",
+      "avMode": "音声・動画",
+      "auto": "自動"
+    },
+    "image": {
+      "format": "出力形式",
+      "quality": "JPEG 品質：{value}",
+      "losslessNote": "WebP は実際の可逆エンコーダーを使用し、品質パラメーターを偽装しません。",
+      "width": "出力幅",
+      "height": "出力高さ",
+      "preserveAspect": "縦横比を保持（OFF 時は幅と高さが必須）"
+    },
+    "av": {
+      "operation": "操作",
+      "outputFormat": "出力形式",
+      "startSeconds": "開始時間（秒）",
+      "endSeconds": "終了時間（秒）",
+      "endPlaceholder": "開始時間より後を指定",
+      "volume": "音量倍率（0–4）",
+      "precise": "精密カット（再エンコード。OFF は高速ストリームコピー）"
+    },
+    "operations": {
+      "convert": "形式変換",
+      "trim": "時間範囲カット",
+      "extractAudio": "音声を抽出",
+      "adjustVolume": "音量調整",
+      "imageConvert": "画像変換",
+      "inspect": "メディア情報",
+      "generic": "メディアジョブ"
+    },
+    "jobs": {
+      "title": "ジョブキュー",
+      "description": "FFmpeg progress pipe から進捗を取得。キャンセル・停止時は子プロセスを終了します",
+      "count": "{count} 件",
+      "empty": "ジョブはありません",
+      "submitted": "{succeeded} 件を送信、{failed} 件が失敗",
+      "progress": "ジョブの進捗",
+      "error": "失敗理由：{message}",
+      "output": "出力：",
+      "updated": "更新：{time}"
+    },
+    "status": {
+      "queued": "待機中",
+      "running": "処理中",
+      "completed": "完了",
+      "failed": "失敗",
+      "cancelled": "キャンセル済み"
+    },
+    "inspect": {
+      "started": "メディア情報の取得を開始しました",
+      "showJson": "完全な JSON を表示",
+      "format": "形式：{value}",
+      "duration": "長さ：{seconds} 秒",
+      "size": "サイズ：{value} MiB",
+      "video": "映像：{codec} · {width}×{height}",
+      "audio": "音声：{codec} · {channels} ch"
+    },
+    "errors": {
+      "pickFiles": "ファイルを選択できません：{message}",
+      "pickDirectory": "フォルダーを選択できません：{message}",
+      "environment": "環境検出に失敗：{message}",
+      "loadConfig": "設定の読み込みに失敗：{message}",
+      "saveConfig": "設定の保存に失敗：{message}",
+      "loadJobs": "キューの読み込みに失敗：{message}",
+      "submit": "ジョブの送信に失敗：{message}",
+      "inspect": "メディア情報の取得に失敗：{message}",
+      "cancel": "キャンセルに失敗：{message}",
+      "unknown": "不明なエラー",
+      "invalidConcurrency": "同時実行数は 1–4 の整数で指定してください",
+      "invalidDimensions": "幅と高さは正の整数で指定し、縦横比を保持しない場合は両方入力してください",
+      "invalidQuality": "JPEG 品質は 1–100 で指定してください",
+      "invalidTrimRange": "有効な開始・終了時間を入力し、終了は開始より後にしてください",
+      "invalidVolume": "音量倍率は 0–4 で指定してください"
     }
   },
   "clipboard": {

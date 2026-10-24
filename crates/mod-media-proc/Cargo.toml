@@ -1,0 +1,20 @@
+[package]
+name = "mod-media-proc"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+app-core = { path = "../app-core" }
+anyhow.workspace = true
+chrono.workspace = true
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "webp", "bmp", "ico"] }
+parking_lot.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile = "3.27"

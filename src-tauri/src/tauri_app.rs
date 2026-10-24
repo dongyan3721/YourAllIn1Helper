@@ -52,6 +52,11 @@ impl TauriWindowBackend {
 impl WindowBackend for TauriWindowBackend {
     fn create_or_focus_window(&self, spec: &WindowSpec) -> CoreResult<()> {
         if let Some(window) = self.app.get_webview_window(&spec.label) {
+            if spec.label == "dashboard" {
+                self.app
+                    .emit("dashboard://navigate", spec.route.clone())
+                    .map_err(to_core_error)?;
+            }
             window.show().map_err(to_core_error)?;
             window.set_focus().map_err(to_core_error)?;
             return Ok(());
@@ -530,6 +535,19 @@ pub fn run() {
                 false,
                 backend,
             )?);
+            let event_app = app.handle().clone();
+            host.media_proc.set_event_sink(Some(Arc::new(move |job| {
+                let _ = event_app.emit(
+                    "media://job-progress",
+                    serde_json::json!({
+                        "job_id": job.id,
+                        "progress": job.progress,
+                        "speed": job.speed,
+                        "status": job.status,
+                        "job": job,
+                    }),
+                );
+            })));
             app.manage(host);
 
             register_global_shortcuts(app.handle())?;

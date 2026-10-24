@@ -1,6 +1,6 @@
 //! `all-in-one-host` (`src-tauri`) — Microkernel Desktop Host & IPC Bridge.
 //!
-//! Assembles the `AppKernel` daemon and mounts the 3 Phase-1 feature modules:
+//! Assembles the `AppKernel` daemon and mounts the feature modules, including Module 08 media processing:
 //! 1. **Module 02 (`mod-clipboard`)**: Ditto-style SHA-256 deduplicated LRU-100 clipboard manager.
 //! 2. **Module 04 (`mod-sticky-note`)**: Pinned desktop Markdown + LaTeX rich-text sticky notes.
 //! 3. **Module 09 (`mod-window-pin`)**: DeskPins-style external window topmost controller.
@@ -13,6 +13,7 @@ use app_core::{
     TargetOs, WindowBackend, WindowSpec,
 };
 use mod_clipboard::ClipboardModule;
+use mod_media_proc::MediaProcModule;
 use mod_sticky_note::{StickyNoteModule, StickyNoteWindowStateUpdate};
 use mod_window_pin::WindowPinModule;
 use os_hal::{ExternalWindowInfo, MockOsHal, NativeOsHal, OsHalBundle};
@@ -69,6 +70,7 @@ impl IpcResponse {
 pub struct DesktopHost {
     kernel: AppKernel,
     clipboard: Arc<ClipboardModule>,
+    media_proc: Arc<MediaProcModule>,
     sticky_note: Arc<StickyNoteModule>,
     window_pin: Arc<WindowPinModule>,
     os_hal: OsHalBundle,
@@ -124,10 +126,12 @@ impl DesktopHost {
             .with_in_memory_db(in_memory_db)
             .with_target_os(TargetOs::current())
             .with_window_backend(window_backend);
-        let (builder, clipboard, sticky_note, window_pin) = modules::mount(builder, &os_hal)?;
+        let (builder, clipboard, media_proc, sticky_note, window_pin) =
+            modules::mount(builder, &os_hal)?;
         Ok(Self {
             kernel: builder.bootstrap()?,
             clipboard,
+            media_proc,
             sticky_note,
             window_pin,
             os_hal,

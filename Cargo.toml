@@ -4,6 +4,7 @@ members = [
     "crates/app-core",
     "crates/os-hal",
     "crates/mod-clipboard",
+    "crates/mod-media-proc",
     "crates/mod-sticky-note",
     "crates/mod-window-pin",
     "src-tauri",

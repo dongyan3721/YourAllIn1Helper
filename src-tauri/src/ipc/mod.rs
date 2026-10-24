@@ -2,6 +2,7 @@
 use super::*;
 mod clipboard;
 mod kernel;
+mod media;
 mod sticky_note;
 mod window_pin;
 impl DesktopHost {
@@ -12,6 +13,8 @@ impl DesktopHost {
         let (module_id, handler): (&str, fn(&Self, &str, Value) -> CoreResult<Value>) =
             if cmd.starts_with("clipboard_") {
                 ("clipboard", Self::dispatch_clipboard)
+            } else if cmd.starts_with("media_") {
+                ("media_proc", Self::dispatch_media)
             } else if cmd.starts_with("sticky_") {
                 ("sticky_note", Self::dispatch_sticky_note)
             } else if cmd.starts_with("winpin_") {

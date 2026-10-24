@@ -19,7 +19,13 @@
       "window_pin": true,
       "password_vault": true
     },
-    "settings": {}
+    "settings": {
+      "media_proc": {
+        "output_dir": null,
+        "max_concurrent_jobs": 2,
+        "history_limit": 200
+      }
+    }
   },
   "clipboard": {
     "enabled": true,

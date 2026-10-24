@@ -40,6 +40,52 @@ export interface StickyNoteRecord {
   updated_at: number;
 }
 
+export type MediaJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+export interface MediaJob {
+  id: string;
+  operation: string;
+  input_path: string;
+  output_path: string | null;
+  status: MediaJobStatus;
+  progress: number;
+  speed: string | null;
+  error: string | null;
+  metadata: unknown;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface MediaToolProbe {
+  tool: string;
+  available: boolean;
+  resolved_path: string | null;
+  version_summary: string | null;
+  from_custom_path: boolean;
+  install_hint: string;
+}
+
+export interface MediaEnvironment {
+  ffmpeg: MediaToolProbe;
+  ffprobe: MediaToolProbe;
+  image_formats: Array<'png' | 'jpeg' | 'webp' | 'bmp' | 'ico'>;
+  av_operations: string[];
+}
+
+export interface MediaProcConfig {
+  output_dir: string | null;
+  max_concurrent_jobs: number;
+  history_limit: number;
+}
+
+export interface MediaJobProgress {
+  job_id: string;
+  progress: number;
+  speed: string | null;
+  status: MediaJobStatus;
+  job: MediaJob;
+}
+
 /** 外部窗口静态快照信息 */
 export interface ExternalWindowInfo {
   handle: number;

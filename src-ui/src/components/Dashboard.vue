@@ -415,6 +415,11 @@
           </div>
         </div>
       </section>
+
+      <!-- Tab 5: 基础多媒体处理 (08 mod-media-proc) -->
+      <section v-else-if="currentTab === 'media'" class="tab-pane">
+        <MediaPanel />
+      </section>
     </main>
   </div>
 </template>
@@ -432,6 +437,7 @@ import {
 import Icons from './Icons.vue';
 import ProductLogo from './ProductLogo.vue';
 import ModuleManager from './ModuleManager.vue';
+import MediaPanel from './MediaPanel.vue';
 import {
   currentThemeMode,
   currentAccent,
@@ -453,6 +459,7 @@ import {
 const tabs = [
   { id: 'overview', labelKey: 'tabs.overview', icon: 'dashboard' },
   { id: 'clipboard', module: 'clipboard', labelKey: 'tabs.clipboard', icon: 'clipboard' },
+  { id: 'media', module: 'media_proc', labelKey: 'tabs.media', icon: 'photo' },
   { id: 'sticky', module: 'sticky_note', labelKey: 'tabs.sticky', icon: 'sticky' },
   { id: 'winpin', module: 'window_pin', labelKey: 'tabs.winpin', icon: 'pin' },
 ];
@@ -663,13 +670,29 @@ function formatDateTime(ts: number) {
   return `${m}-${day} ${h}:${min}`;
 }
 
+function applyDashboardRoute(route: string | null) {
+  const normalized = route?.replace(/^dashboard\//, '/').replace(/^\/?/, '/');
+  const requested = normalized === '/media' ? 'media' : normalized === '/overview' ? 'overview' : null;
+  if (requested && visibleTabs.value.some((tab) => tab.id === requested)) currentTab.value = requested;
+}
+
 let refreshTimer: ReturnType<typeof setInterval> | undefined;
+let unlistenNavigate: (() => void) | undefined;
 onMounted(async () => {
+  const initialRoute = new URLSearchParams(window.location.search).get('route');
   await refreshDashboard();
+  applyDashboardRoute(initialRoute);
+  const eventApi = (window as any).__TAURI__?.event;
+  if (typeof eventApi?.listen === 'function') {
+    unlistenNavigate = await eventApi.listen('dashboard://navigate', (event: { payload: string }) => {
+      applyDashboardRoute(event.payload);
+    });
+  }
   refreshTimer = setInterval(refreshDashboard, 1000);
 });
 onUnmounted(() => {
   if (refreshTimer) clearInterval(refreshTimer);
+  unlistenNavigate?.();
 });
 </script>
 

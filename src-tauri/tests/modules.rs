@@ -22,7 +22,7 @@ fn catalog_has_ten_slots_and_unimplemented_blocks_cannot_be_enabled() {
     let modules = call(&host, "kernel_list_modules", json!({}));
     let modules = modules.as_array().unwrap();
     assert_eq!(modules.len(), 10);
-    assert_eq!(modules.iter().filter(|m| m["available"] == true).count(), 3);
+    assert_eq!(modules.iter().filter(|m| m["available"] == true).count(), 4);
     assert!(
         !host
             .invoke_ipc(
@@ -158,6 +158,83 @@ fn v2_config_migration_preserves_existing_settings_and_unknown_fields() {
     assert_eq!(cfg.clipboard.max_history_items, 37);
     assert!(!cfg.clipboard.enabled);
     assert_eq!(cfg.unknown_fields["custom_future_setting"]["keep"], true);
+}
+
+#[test]
+fn media_ipc_runs_real_image_jobs_persists_settings_and_honors_disable() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join(".runtime_data")
+        .join("host-media-tests");
+    std::fs::create_dir_all(&root).unwrap();
+    let dir = tempfile::Builder::new()
+        .prefix("ipc-")
+        .tempdir_in(root)
+        .unwrap();
+    let input = dir.path().join("IPC 图片.png");
+    image::RgbImage::new(10, 6).save(&input).unwrap();
+    let host = DesktopHost::bootstrap(dir.path(), false).unwrap();
+    let environment = call(&host, "media_check_ffmpeg_env", json!({}));
+    assert_eq!(environment["image_formats"].as_array().unwrap().len(), 5);
+    let output_dir = dir.path().join("输出 目录");
+    call(
+        &host,
+        "media_update_config",
+        json!({"output_dir": output_dir, "max_concurrent_jobs": 1}),
+    );
+    let jobs = call(
+        &host,
+        "media_convert_images",
+        json!({
+            "input_paths": [input],
+            "output_dir": null,
+            "options": {
+                "output_format": "jpeg", "quality": 83, "width": 5,
+                "height": null, "preserve_aspect": true
+            }
+        }),
+    );
+    let job_id = jobs[0]["id"].as_str().unwrap().to_string();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let records = call(&host, "media_list_jobs", json!({}));
+        let job = records
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|job| job["id"] == job_id)
+            .unwrap();
+        if job["status"] == "completed" {
+            assert_eq!(job["progress"], 100.0);
+            assert!(job["output_path"].as_str().unwrap().contains("输出 目录"));
+            break;
+        }
+        assert_ne!(job["status"], "failed", "{job}");
+        assert!(std::time::Instant::now() < deadline, "media job timed out");
+        std::thread::sleep(std::time::Duration::from_millis(30));
+    }
+    toggle(&host, "media_proc", false);
+    assert!(!host.invoke_ipc("media_list_jobs", json!({})).ok);
+    assert!(
+        !host
+            .invoke_ipc("media_inspect_file", json!({"input_path": "x"}))
+            .ok
+    );
+    host.kernel().shutdown().unwrap();
+    drop(host);
+
+    let host = DesktopHost::bootstrap(dir.path(), false).unwrap();
+    assert!(!host.kernel().registry().is_enabled("media_proc"));
+    let config: mod_media_proc::MediaProcConfig = host
+        .kernel()
+        .context()
+        .module_settings("media_proc")
+        .unwrap();
+    assert_eq!(config.max_concurrent_jobs, 1);
+    assert_eq!(config.output_dir.as_deref(), Some(output_dir.as_path()));
+    toggle(&host, "media_proc", true);
+    let records = call(&host, "media_list_jobs", json!({}));
+    assert_eq!(records.as_array().unwrap().len(), 1);
 }
 
 #[test]
