@@ -2944,6 +2944,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "mod-screenshot"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "app-core",
+ "chrono",
+ "image",
+ "os-hal",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "mod-script-runner"
 version = "0.1.0"
 dependencies = [

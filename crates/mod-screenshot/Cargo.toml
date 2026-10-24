@@ -1,0 +1,22 @@
+[package]
+name = "mod-screenshot"
+description = "Module 01 M1: frozen-frame screenshot, manual/window smart selection, annotation export, save/copy and pinned images."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+app-core = { path = "../app-core" }
+os-hal = { path = "../os-hal" }
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+parking_lot.workspace = true
+tracing.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[dev-dependencies]
+tempfile = "3.10"
