@@ -6,7 +6,7 @@
 
 | 功能 | 拟负责人 | 分支 | 本轮状态 |
 | --- | --- | --- | --- |
-| 01 增强截图与贴图 | Cursor / Claude Opus 5.5 | `codex/feature-screenshot` | 优先派发 M1，确认实际开始后再标记开发中 |
+| 01 增强截图与贴图 | Cursor / Claude Opus 5.5 | `codex/feature-screenshot` | M1 首个可用闭环已提交，待 Codex 集成与人工 GUI 验收；M2/M3 未开始（见 `docs/handoffs/screenshot-m1.md`） |
 | 05 应用使用时长 | OpenCode / DeepSeek V4.1 Flash 1017 | `codex/feature-app-usage` | 任务已规划，待派发 |
 | 07 全局划词翻译 | Antigravity / Gemini 3.8 Flash | `codex/feature-translator` | 任务已规划，先完成选区读取与服务端契约 |
 | 10 生物识别密码本 | WorkBuddy / Kimi K3.1 Pro | `codex/feature-password-vault` | 任务已规划，先提交密钥设计，再实现 |
