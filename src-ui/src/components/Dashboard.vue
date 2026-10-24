@@ -530,6 +530,11 @@
       <section v-else-if="currentTab === 'media'" class="tab-pane">
         <MediaPanel />
       </section>
+
+      <!-- Tab 6: 全局划词翻译 (07 mod-translator) -->
+      <section v-else-if="currentTab === 'translator'" class="tab-pane">
+        <TranslatorPanel />
+      </section>
     </main>
   </div>
 </template>
@@ -549,6 +554,7 @@ import ProductLogo from './ProductLogo.vue';
 import ModuleManager from './ModuleManager.vue';
 import ScriptRunnerPanel from './ScriptRunnerPanel.vue';
 import MediaPanel from './MediaPanel.vue';
+import TranslatorPanel from './TranslatorPanel.vue';
 import {
   currentThemeMode,
   currentAccent,
@@ -573,6 +579,7 @@ const tabs = [
   { id: 'screen_ink', module: 'screen_ink', labelKey: 'tabs.screen_ink', icon: 'brush' },
   { id: 'sticky', module: 'sticky_note', labelKey: 'tabs.sticky', icon: 'sticky' },
   { id: 'scripts', module: 'script_runner', labelKey: 'tabs.scripts', icon: 'terminal' },
+  { id: 'translator', module: 'translator', labelKey: 'tabs.translator', icon: 'translate' },
   { id: 'media', module: 'media_proc', labelKey: 'tabs.media', icon: 'photo' },
   { id: 'winpin', module: 'window_pin', labelKey: 'tabs.winpin', icon: 'pin' },
 ];

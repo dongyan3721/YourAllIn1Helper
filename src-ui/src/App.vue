@@ -21,6 +21,9 @@
     <!-- 桌面屏幕注释独立工具栏视图 -->
     <ScreenInkToolbar v-else-if="nativeWindowType === 'screen-ink-toolbar'" />
 
+    <!-- 全局划词翻译浮动气泡独立窗口视图 -->
+    <TranslatePopover v-else-if="nativeWindowType === 'translate-popover'" />
+
     <!-- 默认主控台视图 -->
     <Dashboard v-else />
   </div>
@@ -36,6 +39,7 @@ import PinMirror from './components/PinMirror.vue';
 import PinBadge from './components/PinBadge.vue';
 import ScreenInkCanvas from './components/ScreenInkCanvas.vue';
 import ScreenInkToolbar from './components/ScreenInkToolbar.vue';
+import TranslatePopover from './components/TranslatePopover.vue';
 import { initTheme } from './utils/theme';
 import { initI18n } from './utils/i18n';
 

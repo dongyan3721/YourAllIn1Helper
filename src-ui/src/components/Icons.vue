@@ -247,6 +247,16 @@
       <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
     </g>
 
+    <!-- 翻译图标 -->
+    <g v-else-if="name === 'translate'">
+      <path d="m5 8 6 6" />
+      <path d="m4 14 6-6 2-3" />
+      <path d="M2 5h12" />
+      <path d="M7 2h1" />
+      <path d="m22 22-5-10-5 10" />
+      <path d="M14 18h6" />
+    </g>
+
     <!-- 默认点点点 -->
     <g v-else>
       <circle cx="12" cy="12" r="1" />
