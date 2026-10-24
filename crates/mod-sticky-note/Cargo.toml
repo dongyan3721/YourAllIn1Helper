@@ -1,0 +1,21 @@
+[package]
+name = "mod-sticky-note"
+description = "Module 04: Desktop Pinned Rich-Text Sticky Notes (Markdown + LaTeX) with SQLite persistence and on-demand resident window restoration."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+app-core = { path = "../app-core" }
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rusqlite.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile = "3.10"

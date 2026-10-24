@@ -1,0 +1,21 @@
+[package]
+name = "mod-window-pin"
+description = "Module 09: DeskPins-style External Window Topmost Manager with automatic unpin restoration on daemon shutdown."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+app-core = { path = "../app-core" }
+os-hal = { path = "../os-hal" }
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+parking_lot.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile = "3.10"

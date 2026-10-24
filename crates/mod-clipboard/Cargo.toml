@@ -1,0 +1,23 @@
+[package]
+name = "mod-clipboard"
+description = "Module 02: Ditto-style Clipboard Manager with LRU-100 SQLite storage, SHA-256 deduplication, pin protection, and quick paste."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+app-core = { path = "../app-core" }
+os-hal = { path = "../os-hal" }
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rusqlite.workspace = true
+chrono.workspace = true
+sha2.workspace = true
+parking_lot.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile = "3.10"
