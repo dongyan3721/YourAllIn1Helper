@@ -8,7 +8,7 @@
     "build": "vue-tsc --noEmit && vite build",
     "build:fast": "vite build",
     "preview": "vite preview",
-    "test": "node --test tests/unit/i18n.test.mjs tests/unit/ink.test.mjs"
+    "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test tests/unit/i18n.test.mjs tests/unit/ink.test.mjs tests/unit/screenshot.test.mjs"
   },
   "dependencies": {
     "katex": "^0.16.11",
