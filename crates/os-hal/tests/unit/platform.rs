@@ -15,6 +15,34 @@ fn test_mock_os_hal_window_topmost_and_paste() {
 }
 
 #[test]
+fn test_selection_extractor_contracts() {
+    use crate::SelectionExtractor;
+
+    // 1. MockOsHal 测试取词能力
+    let mock = MockOsHal::new();
+    assert!(mock.is_available());
+    let res = mock.extract_selected_text().unwrap();
+    assert!(res.is_some());
+    let selection = res.unwrap();
+    assert_eq!(selection.text, "Hello All-in-One");
+    assert_eq!(selection.source, crate::SelectionSource::AccessibilityApi);
+
+    // 2. NativeOsHal 适配器可用性与接口行为
+    let native = NativeOsHal::new();
+    #[cfg(target_os = "macos")]
+    assert!(native.is_available());
+
+    // 3. 原生选区提取：无桌面权限或无焦点时不 panic，准确返回 PermissionDenied/Unsupported/Ok(None)
+    let native_res = native.extract_selected_text();
+    assert!(matches!(
+        native_res,
+        Err(crate::HalError::PermissionDenied { .. })
+            | Err(crate::HalError::Unsupported(_))
+            | Ok(None)
+    ));
+}
+
+#[test]
 #[ignore = "requires a logged-in desktop session"]
 fn test_native_windows_list() {
     let hal = NativeOsHal::new();

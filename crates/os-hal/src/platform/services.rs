@@ -2,8 +2,7 @@
 use super::NativeOsHal;
 use crate::{
     ActiveAppSnapshot, ActiveAppWatcher, BiometricAuthenticator, BiometricResult, CapturedFrame,
-    HalError, HalResult, OcrProvider, OcrRecognitionResult, SelectionExtractor,
-    SelectionTextResult, WindowController,
+    HalError, HalResult, OcrProvider, OcrRecognitionResult, WindowController,
 };
 
 impl OcrProvider for NativeOsHal {
@@ -16,15 +15,7 @@ impl OcrProvider for NativeOsHal {
     }
 }
 
-impl SelectionExtractor for NativeOsHal {
-    fn is_available(&self) -> bool {
-        false
-    }
 
-    fn extract_selected_text(&self) -> HalResult<Option<SelectionTextResult>> {
-        Err(HalError::Unsupported("native_selection_extraction"))
-    }
-}
 
 impl BiometricAuthenticator for NativeOsHal {
     fn is_biometric_available(&self) -> bool {
