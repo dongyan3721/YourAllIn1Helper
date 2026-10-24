@@ -2977,6 +2977,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "mod-translator"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "app-core",
+ "chrono",
+ "os-hal",
+ "parking_lot",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "mod-window-pin"
 version = "0.1.0"
 dependencies = [

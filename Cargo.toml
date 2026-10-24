@@ -9,6 +9,7 @@ members = [
     "crates/mod-sticky-note",
     "crates/mod-window-pin",
     "crates/mod-script-runner",
+    "crates/mod-translator",
     "src-tauri",
 ]
 
