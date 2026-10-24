@@ -31,7 +31,7 @@
 
 - Host 注册同一个 `MediaProcModule` Arc，路由全部经过 `with_enabled("media_proc")`，禁用后拒绝媒体 IPC。
 - IPC：`media_check_ffmpeg_env`、`media_inspect_file`、`media_convert_images`、`media_submit_av_job`、`media_cancel_job`，以及 `media_list_jobs`、`media_get_config`、`media_update_config`、`media_pick_files`、`media_pick_directory`。
-- macOS 使用系统 osascript 文件/目录对话框，Windows 使用 PowerShell WinForms；不引入大型依赖。
+- 原生文件/目录选择位于宿主 `native_dialog.rs`：macOS 使用 AppKit `NSOpenPanel`，以 sheet 绑定 Dashboard 的真实 `NSWindow`，completion handler + oneshot 异步返回；不再调用 osascript，也不使用 `runModal`。Windows WinForms 绑定 Dashboard `HWND`，PowerShell 等待移入 `spawn_blocking`；不引入 Swift 或大型依赖。
 - 主控台新增媒体页：选择/拖拽、批量待处理列表、输出设置、图片与音视频参数、环境提示、队列进度/状态/失败原因、取消、媒体信息 JSON。
 - 支持 `/media` 首次路由及已打开 Dashboard 的 `dashboard://navigate` 切换。
 - 简体中文、English、日本語字典及共享 IPC 类型已接入。
@@ -41,9 +41,10 @@
 最终验收在当前分支源码上执行；安装 Homebrew FFmpeg 后补充了真实运行时集成测试：
 
 1. `CARGO_TARGET_DIR=/Users/santa_antilles/Desktop/your_all_in_one/target cargo test --workspace --offline --all-targets`
-   - **通过**：34 passed，0 failed，1 ignored。
+   - **通过**：38 passed，0 failed，1 ignored。
    - ignored 为既有 `test_native_windows_list`，要求登录桌面会话，不属于媒体测试。
-   - 覆盖真实五种图片编码/解码与缩放、参数验证、输出冲突、SQLite 重启持久化、禁用拒绝 IPC、并发限制、失败原因、取消和停用清理。
+   - 覆盖真实五种图片编码/解码与缩放、参数验证、输出冲突、SQLite 重启持久化、禁用拒绝 IPC、并发限制、失败原因、取消和停用清理，以及原生选择器取消/路径/禁用/异步路由契约。
+   - `cargo check --workspace --all-targets --offline` 同轮通过。
    - 进程控制测试使用测试目录内明确标注的测试专用可执行替身，仅验证生产进程管理逻辑，不冒充真实 FFmpeg 处理能力。
 2. `cargo fmt --all -- --check`
    - **通过**。
@@ -58,6 +59,15 @@
    - **通过**：1 passed，0 failed；使用 FFmpeg 临时合成 2 秒无版权音视频样本，通过模块完成 FFprobe 探测、MKV 转换、快速/精准 MP4 裁剪、MP3 音频提取、M4A 音量调整。
    - 所有最终输出均再次由真实 FFprobe 解码并校验流类型；精准裁剪时长为 1 秒（容差 0.25 秒），音量输出仅含音频流；事件包含 0–100 进度和速度，且没有遗留 `.partial` 文件。
    - 首次实测发现音量调整保留视频流的问题，已在生产命令中补 `-vn` 并回归通过。测试源码为 `crates/mod-media-proc/tests/real_ffmpeg.rs`，在未安装运行时的机器会明确打印未执行并返回，不伪造运行结果。
+
+## 原生对话框阻塞修复（后续 fix）
+
+- 根因：旧 `ipc` 为同步 Tauri command，`dispatch_media -> native_pick -> Command::output` 在主事件线程等待外部 osascript；对话框也不归属 App 窗口。
+- `ipc` 已改为 async command，并仅将 `media_pick_files` / `media_pick_directory` 分流到宿主异步原生适配器；业务 `mod-media-proc` 不依赖 AppKit、Tauri 或 PowerShell。
+- macOS 仅在 `run_on_main_thread` 内访问 AppKit，通过 Dashboard `ns_window()` 展示 `NSOpenPanel` sheet；completion block 通过 Tokio oneshot 异步完成 IPC，主线程不等待。取消返回 `[]` / `null`，文件支持多选和 Unicode/空格路径。
+- Windows 从 Dashboard 获取 `HWND` 并传给 WinForms `ShowDialog(owner)`，进程等待位于 `spawn_blocking`，不会卡住 Tauri 主事件线程。
+- 模块在显示前和选择完成后都检查启用状态；禁用期间不会返回选择结果。旧同步/HTTP 入口明确拒绝文件选择，防止回退到阻塞实现。
+- 新增测试覆盖取消与目录空值契约、多选 Unicode/空格路径、NSURL 路径往返、模块禁用、同步入口拒绝；真实 GUI 对话框未在本 worktree 执行，需集成版复测。
 
 ## GUI 状态与缺口
 
@@ -78,7 +88,7 @@
 - `src-ui/src/api/ipc.ts`、`src-ui/src/components/Dashboard.vue`
 - `src-ui/src/locales/zh-CN.json`、`en-US.json`、`ja-JP.json`
 
-功能独立新增：`crates/mod-media-proc/**`、`src-tauri/src/ipc/media.rs`、`src-ui/src/components/MediaPanel.vue`、`docs/testing/MEDIA_GUI_TEST_PLAN.md`。
+功能独立新增：`crates/mod-media-proc/**`、`src-tauri/src/ipc/media.rs`、`src-tauri/src/native_dialog.rs`、`src-ui/src/components/MediaPanel.vue`、`docs/testing/MEDIA_GUI_TEST_PLAN.md`。
 
 ## 集成注意事项
 

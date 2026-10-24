@@ -4,6 +4,7 @@
 - 分支：`codex/feature-media-proc`
 - 数据隔离：仅使用 `ALL_IN_ONE_GUI_TEST_DATA_DIR` 指向 worktree `.runtime_data` 下的临时目录；输入样本也必须位于该目录。
 - 本次执行状态：**GUI 未执行**。本次没有进行真实桌面点击、拖拽、原生文件对话框或窗口重启操作。Rust/IPC 测试与前端构建不是 GUI 通过证据。
+- 原生对话框阻塞修复后，MEDIA-GUI-02/04 必须重点复测：文件与目录面板应作为 Dashboard 的 AppKit sheet 出现，主窗口和事件循环保持响应；取消返回空，多选及 Unicode/空格路径正确。Windows 需验证 WinForms owner 与主线程响应。上述项目在本 worktree 均未执行。
 
 ## 用例与结果
 

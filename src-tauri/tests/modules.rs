@@ -1,6 +1,12 @@
 //! 主程序功能积木集成测试，显式使用 Mock 系统能力。
 use all_in_one_host::DesktopHost;
+use app_core::{HeadlessWindowBackend, RegisteredShortcut};
+use mod_script_runner::events::NoopScriptEventSink;
+use mod_script_runner::hotkey::ScriptHotkeySync;
+use mod_script_runner::UnavailableScriptEnvironment;
+use os_hal::MockOsHal;
 use serde_json::{json, Value};
+use std::sync::Arc;
 
 fn call(host: &DesktopHost, cmd: &str, args: Value) -> Value {
     let response = host.invoke_ipc(cmd, args);
@@ -235,6 +241,36 @@ fn media_ipc_runs_real_image_jobs_persists_settings_and_honors_disable() {
     toggle(&host, "media_proc", true);
     let records = call(&host, "media_list_jobs", json!({}));
     assert_eq!(records.as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn media_native_pickers_require_async_desktop_adapter_and_enabled_module() {
+    let dir = tempfile::tempdir().unwrap();
+    let host = DesktopHost::bootstrap(dir.path(), true).unwrap();
+    host.kernel()
+        .set_module_enabled("media_proc", false)
+        .unwrap();
+    for command in ["media_pick_files", "media_pick_directory"] {
+        let disabled = host.invoke_ipc(command, serde_json::json!({}));
+        assert!(!disabled.ok, "disabled picker unexpectedly succeeded");
+        assert!(disabled.error.unwrap().contains("disabled"));
+
+        host.kernel()
+            .set_module_enabled("media_proc", true)
+            .unwrap();
+        let sync = host.invoke_ipc(command, serde_json::json!({}));
+        assert!(
+            !sync.ok,
+            "synchronous picker entry must not launch a process"
+        );
+        assert!(sync
+            .error
+            .unwrap()
+            .contains("asynchronous desktop IPC adapter"));
+        host.kernel()
+            .set_module_enabled("media_proc", false)
+            .unwrap();
+    }
 }
 
 #[test]

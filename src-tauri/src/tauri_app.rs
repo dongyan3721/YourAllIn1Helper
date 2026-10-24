@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    AppHandle, Emitter, Manager, RunEvent, State, WebviewUrl, WebviewWindowBuilder, WindowEvent,
+    AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent,
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
@@ -161,7 +161,19 @@ impl WindowBackend for TauriWindowBackend {
 
 /// Single typed IPC entry point used by every WebView.
 #[tauri::command]
-fn ipc(app: AppHandle, host: State<'_, Arc<DesktopHost>>, request: IpcRequest) -> IpcResponse {
+async fn ipc(app: AppHandle, request: IpcRequest) -> IpcResponse {
+    let host = app.state::<Arc<DesktopHost>>().inner().clone();
+    if matches!(
+        request.cmd.as_str(),
+        "media_pick_files" | "media_pick_directory"
+    ) {
+        return crate::native_dialog::pick_media(
+            &app,
+            &host,
+            request.cmd == "media_pick_directory",
+        )
+        .await;
+    }
     let module_id = request
         .args
         .get("module_id")

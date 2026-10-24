@@ -34,6 +34,7 @@ mod demo;
 mod ipc;
 mod legacy_http;
 mod modules;
+mod native_dialog;
 mod script_env;
 mod script_events;
 mod script_hotkeys;
