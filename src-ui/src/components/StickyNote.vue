@@ -329,8 +329,8 @@ onMounted(async () => {
 <style scoped>
 .sticky-header {
   height: 36px;
-  background: rgba(0, 0, 0, 0.22);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(128, 128, 128, 0.08);
+  border-bottom: 1px solid var(--macos-border-separator);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -353,7 +353,7 @@ onMounted(async () => {
   width: 100%;
   background: transparent;
   border: none;
-  color: var(--macos-text-primary);
+  color: inherit;
   font-size: 13px;
   font-weight: 600;
   outline: none;
@@ -384,13 +384,13 @@ onMounted(async () => {
 }
 
 .tool-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(128, 128, 128, 0.15);
   color: var(--macos-text-primary);
 }
 
 .tool-btn.active {
-  background: rgba(10, 132, 255, 0.25);
-  color: #38bdf8;
+  background: var(--macos-accent-subtle);
+  color: var(--macos-accent);
 }
 
 .close-btn:hover {
@@ -406,14 +406,16 @@ onMounted(async () => {
   position: absolute;
   top: 26px;
   right: 0;
-  background: #1c1c1e;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: var(--macos-bg-card);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--macos-border-subtle);
   border-radius: 8px;
   padding: 6px;
   display: flex;
   gap: 6px;
   z-index: 100;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--macos-shadow-popup);
 }
 
 .palette-dot {

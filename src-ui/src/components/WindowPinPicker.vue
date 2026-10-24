@@ -1,12 +1,12 @@
 <template>
   <div class="pin-picker-overlay" @contextmenu.prevent="cancelPicker" @keydown.esc="cancelPicker" tabindex="0">
-    <!-- 顶部极简胶囊提示 -->
+    <!-- 顶部超轻量无干扰提示胶囊 -->
     <div class="picker-hud-pill">
-      <Icons name="crosshair" size="14" />
-      <span>点击任意真实应用窗口将其置顶最前 · 按 ESC 或右键取消</span>
+      <Icons name="crosshair" size="13" />
+      <span>准星拾取：十字准星移至目标窗口并点击即可置顶 · 按 ESC 或右键取消</span>
     </div>
 
-    <!-- 真实外部窗口感应矩形层 -->
+    <!-- 真实外部窗口感应热区层（默认完全透明无全屏蒙层，悬浮时高亮当前候选窗口） -->
     <div
       v-for="win in candidates"
       :key="win.handle"
@@ -84,55 +84,62 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* 准星拾取全屏层：完全透明，不添加任何半透明蒙层或高斯模糊，纯靠 cursor: crosshair 十字准星 */
 .pin-picker-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(2, 6, 23, 0.4);
-  backdrop-filter: blur(4px);
+  background: transparent;
   cursor: crosshair;
   user-select: none;
   outline: none;
 }
 
+/* 顶部极简毛玻璃辅助提示条 */
 .picker-hud-pill {
   position: absolute;
-  top: 24px;
+  top: 18px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(24, 24, 27, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: var(--macos-bg-card, rgba(28, 28, 30, 0.85));
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--macos-border-subtle, rgba(255, 255, 255, 0.15));
   border-radius: 999px;
-  padding: 8px 18px;
-  color: #f5f5f7;
-  font-size: 13px;
+  padding: 6px 16px;
+  color: var(--macos-text-primary, #f5f5f7);
+  font-size: 12px;
   font-weight: 500;
   display: flex;
   align-items: center;
   gap: 8px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--macos-shadow-popup, 0 8px 24px rgba(0, 0, 0, 0.2));
   z-index: 1000;
   pointer-events: none;
 }
 
+/* 候选窗口热区：平时完全透明，只有准星悬浮时显示微弱边框 */
 .candidate-box {
   position: absolute;
-  border: 2px solid rgba(225, 29, 72, 0.65);
-  background: rgba(225, 29, 72, 0.08);
+  border: 1.5px dashed transparent;
+  background: transparent;
   border-radius: 6px;
   cursor: crosshair;
-  transition: all 0.12s ease;
+  transition: border-color 0.12s ease, background 0.12s ease;
   overflow: hidden;
   box-sizing: border-box;
 }
 
 .candidate-box:hover {
-  border-color: #ff453a;
-  background: rgba(255, 69, 58, 0.18);
+  border-color: var(--macos-accent, #007aff);
+  border-style: solid;
+  background: var(--macos-accent-subtle, rgba(0, 122, 255, 0.08));
   z-index: 100;
 }
 
+/* 准星悬浮时左上角浮现的极简窗口标识 */
 .candidate-tag {
-  background: rgba(225, 29, 72, 0.9);
+  opacity: 0;
+  background: var(--macos-accent, #007aff);
   color: #ffffff;
   padding: 3px 8px;
   font-size: 11px;
@@ -141,6 +148,11 @@ onMounted(async () => {
   align-items: center;
   gap: 5px;
   border-bottom-right-radius: 4px;
+  transition: opacity 0.12s ease;
+}
+
+.candidate-box:hover .candidate-tag {
+  opacity: 1;
 }
 
 .app-name {
@@ -148,8 +160,8 @@ onMounted(async () => {
 }
 
 .win-title {
-  opacity: 0.85;
-  max-width: 200px;
+  opacity: 0.9;
+  max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

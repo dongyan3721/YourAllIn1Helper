@@ -95,39 +95,183 @@ impl NativeOsHal {
     }
 
     fn native_windows(&self) -> HalResult<Vec<ExternalWindowInfo>> {
-        let own_pid = std::process::id();
-        let windows = Window::all().map_err(native_error)?;
-        let mut result = Vec::new();
-        for window in windows {
-            let pid = window.pid().unwrap_or(0);
-            if pid == own_pid || window.is_minimized().unwrap_or(false) {
-                continue;
-            }
-            let width = window.width().unwrap_or(0);
-            let height = window.height().unwrap_or(0);
-            if width < 24 || height < 24 {
-                continue;
-            }
-            let process_name = window
-                .app_name()
-                .unwrap_or_else(|_| "Unknown App".to_string());
-            let title = window.title().unwrap_or_default();
-            result.push(ExternalWindowInfo {
-                handle: window.id().unwrap_or(0) as u64,
-                title: if title.is_empty() {
-                    process_name.clone()
-                } else {
-                    title
-                },
-                process_name,
-                process_id: pid,
-                x: window.x().unwrap_or(0),
-                y: window.y().unwrap_or(0),
-                width,
-                height,
-                is_topmost: false,
-            });
+        #[cfg(target_os = "macos")]
+        {
+            return self.native_windows_macos();
         }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let own_pid = std::process::id();
+            let windows = Window::all().map_err(native_error)?;
+            let mut result = Vec::new();
+            for window in windows {
+                let pid = window.pid().unwrap_or(0);
+                if pid == own_pid || window.is_minimized().unwrap_or(false) {
+                    continue;
+                }
+                let width = window.width().unwrap_or(0);
+                let height = window.height().unwrap_or(0);
+                if width < 24 || height < 24 {
+                    continue;
+                }
+                let process_name = window
+                    .app_name()
+                    .unwrap_or_else(|_| "Unknown App".to_string());
+                let title = window.title().unwrap_or_default();
+                result.push(ExternalWindowInfo {
+                    handle: window.id().unwrap_or(0) as u64,
+                    title: if title.is_empty() {
+                        process_name.clone()
+                    } else {
+                        title
+                    },
+                    process_name,
+                    process_id: pid,
+                    x: window.x().unwrap_or(0),
+                    y: window.y().unwrap_or(0),
+                    width,
+                    height,
+                    is_topmost: false,
+                });
+            }
+            Ok(result)
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    /// macOS 原生高精度窗口枚举实现：
+    /// 解决旧版 xcap 因未授权屏幕录制权限导致丢弃无标题窗口、仅残留 Window Server 全局对象的严重缺陷。
+    /// 1. 严格过滤 kCGWindowLayer == 0（仅保留常规应用主窗口，剔除 Layer 24 的 WindowServer/菜单栏与 Layer 20 的 Dock 等系统幽灵层）；
+    /// 2. 结合 NSRunningApplication 获取本地化应用程序名称；
+    /// 3. 当窗口标题被系统保护时，自动回退至应用程序名称，不丢弃窗口。
+    fn native_windows_macos(&self) -> HalResult<Vec<ExternalWindowInfo>> {
+        use objc2_app_kit::NSRunningApplication;
+        use objc2_core_foundation::{CFDictionary, CFNumber, CFNumberType, CFString, CGRect};
+        use objc2_core_graphics::{
+            CGRectMakeWithDictionaryRepresentation, CGWindowListCopyWindowInfo, CGWindowListOption,
+        };
+        use std::ffi::c_void;
+
+        let own_pid = std::process::id();
+        let mut result = Vec::new();
+
+        unsafe {
+            // 获取所有屏幕上显示的窗口列表（排除桌面元素）
+            let cf_array = match CGWindowListCopyWindowInfo(
+                CGWindowListOption::OptionOnScreenOnly | CGWindowListOption::ExcludeDesktopElements,
+                0,
+            ) {
+                Some(arr) => arr,
+                None => return Ok(result),
+            };
+
+            let count = cf_array.count();
+            for i in 0..count {
+                let dict_ref = cf_array.value_at_index(i) as *const CFDictionary;
+                if dict_ref.is_null() {
+                    continue;
+                }
+                let dict = &*dict_ref;
+
+                let get_num = |key: &str| -> Option<i32> {
+                    let cf_key = CFString::from_str(key);
+                    let val = dict.value(cf_key.as_ref() as *const CFString as *const c_void);
+                    if val.is_null() {
+                        return None;
+                    }
+                    let mut n: i32 = 0;
+                    if (*(val as *const CFNumber)).value(CFNumberType::IntType, &mut n as *mut _ as *mut c_void) {
+                        Some(n)
+                    } else {
+                        None
+                    }
+                };
+
+                let get_str = |key: &str| -> Option<String> {
+                    let cf_key = CFString::from_str(key);
+                    let val = dict.value(cf_key.as_ref() as *const CFString as *const c_void);
+                    if val.is_null() {
+                        return None;
+                    }
+                    Some((*(val as *const CFString)).to_string())
+                };
+
+                // 提取窗口 handle (kCGWindowNumber)
+                let handle = match get_num("kCGWindowNumber") {
+                    Some(id) if id > 0 => id as u64,
+                    _ => continue,
+                };
+
+                // 提取进程 PID
+                let pid = get_num("kCGWindowOwnerPID").unwrap_or(0) as u32;
+                if pid == 0 || pid == own_pid {
+                    continue;
+                }
+
+                // 核心过滤：macOS 标准用户级应用窗口层级为 0
+                // 剔除 WindowServer (Layer 24/25), Dock (Layer 20), 通知中心 (负数 Layer)
+                let layer = get_num("kCGWindowLayer").unwrap_or(0);
+                if layer != 0 {
+                    continue;
+                }
+
+                // 过滤系统全局组件所有者
+                let owner_name = get_str("kCGWindowOwnerName").unwrap_or_default();
+                if owner_name == "Window Server"
+                    || owner_name == "Dock"
+                    || owner_name == "ControlCenter"
+                    || owner_name == "NotificationCenter"
+                    || owner_name == "loginwindow"
+                    || owner_name == "Spotlight"
+                {
+                    continue;
+                }
+
+                // 解析窗口真实矩形尺寸
+                let mut rect = CGRect::ZERO;
+                let bounds_key = CFString::from_str("kCGWindowBounds");
+                let bounds_val = dict.value(bounds_key.as_ref() as *const CFString as *const c_void);
+                if !bounds_val.is_null() {
+                    CGRectMakeWithDictionaryRepresentation(
+                        Some(&*(bounds_val as *const CFDictionary)),
+                        &mut rect,
+                    );
+                }
+                let width = rect.size.width as u32;
+                let height = rect.size.height as u32;
+                if width < 32 || height < 32 {
+                    continue;
+                }
+
+                // 通过 NSRunningApplication 获取系统准确本地化应用名称
+                let running_app = NSRunningApplication::runningApplicationWithProcessIdentifier(pid as i32);
+                let app_name = running_app
+                    .as_ref()
+                    .and_then(|a| a.localizedName())
+                    .map(|s| s.to_string())
+                    .unwrap_or(owner_name);
+
+                let raw_title = get_str("kCGWindowName").unwrap_or_default();
+                let title = if !raw_title.trim().is_empty() {
+                    raw_title
+                } else {
+                    format!("{} 窗口", app_name)
+                };
+
+                result.push(ExternalWindowInfo {
+                    handle,
+                    title,
+                    process_name: app_name,
+                    process_id: pid,
+                    x: rect.origin.x as i32,
+                    y: rect.origin.y as i32,
+                    width,
+                    height,
+                    is_topmost: false,
+                });
+            }
+        }
+
         Ok(result)
     }
 
@@ -142,14 +286,21 @@ impl NativeOsHal {
         let info = self.find_native_window(handle)?;
         #[cfg(target_os = "macos")]
         {
-            // LaunchServices activation does not require Apple Events / Automation permission.
+            use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication};
+            // 优先直接调用 NSRunningApplication 激活该应用至最前台
+            if let Some(app) = NSRunningApplication::runningApplicationWithProcessIdentifier(info.process_id as i32) {
+                #[allow(deprecated)]
+                let _ = app.activateWithOptions(NSApplicationActivationOptions::ActivateIgnoringOtherApps);
+                return Ok(());
+            }
+            // 回退到 LaunchServices open 命令
             let status = Command::new("/usr/bin/open")
                 .args(["-a", &info.process_name])
                 .status()
                 .map_err(native_error)?;
             if !status.success() {
                 return Err(HalError::NativeCallFailed(format!(
-                    "Unable to activate application '{}'",
+                    "无法激活外部应用程序 '{}'",
                     info.process_name
                 )));
             }
@@ -168,7 +319,7 @@ impl NativeOsHal {
         Err(HalError::Unsupported("external_window_activation"))
     }
 
-    /// Activates a real external window (used by the Tauri pinned-mirror view).
+    /// 激活目标真实外部窗口（用于 Tauri 置顶镜像点击交互）
     pub fn activate_external_window(&self, handle: WindowHandleId) -> HalResult<()> {
         if !self.native_enabled {
             return self.fallback.set_external_window_topmost(handle, true);
@@ -176,33 +327,98 @@ impl NativeOsHal {
         self.activate_native_window(handle)
     }
 
-    /// Captures and JPEG-encodes a real external window for the Tauri pinned-mirror view.
+    /// 捕获目标外部窗口的真实画面并编码为 JPEG base64 DataURL
     pub fn capture_window_data_url(&self, handle: WindowHandleId) -> HalResult<String> {
         use base64::{engine::general_purpose::STANDARD, Engine as _};
 
         if !self.native_enabled {
             return Err(HalError::Unsupported("mock_window_capture"));
         }
-        let windows = Window::all().map_err(native_error)?;
-        let window = windows
-            .into_iter()
-            .find(|window| window.id().map(|id| id as u64 == handle).unwrap_or(false))
-            .ok_or_else(|| HalError::NotFound(format!("External window {}", handle)))?;
-        let image = window.capture_image().map_err(native_error)?;
-        let dynamic = image::DynamicImage::ImageRgba8(image);
-        let resized = if dynamic.width() > 960 {
-            dynamic.resize(960, u32::MAX, image::imageops::FilterType::Triangle)
-        } else {
-            dynamic
-        };
-        let mut encoded = Vec::new();
-        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut encoded, 72)
-            .encode_image(&resized)
-            .map_err(native_error)?;
-        Ok(format!(
-            "data:image/jpeg;base64,{}",
-            STANDARD.encode(encoded)
-        ))
+
+        #[cfg(target_os = "macos")]
+        {
+            use objc2_core_foundation::CGRect;
+            #[allow(deprecated)]
+            use objc2_core_graphics::{
+                CGDataProvider, CGImage, CGWindowImageOption, CGWindowListCreateImage,
+                CGWindowListOption,
+            };
+
+            #[allow(deprecated)]
+            let cg_image = CGWindowListCreateImage(
+                CGRect::ZERO,
+                CGWindowListOption::OptionIncludingWindow,
+                handle as u32,
+                CGWindowImageOption::Default,
+            )
+            .ok_or_else(|| HalError::NotFound(format!("外部窗口 {} 截屏失败", handle)))?;
+
+                let width = CGImage::width(Some(&*cg_image));
+                let height = CGImage::height(Some(&*cg_image));
+                if width == 0 || height == 0 {
+                    return Err(HalError::NativeCallFailed("截取到的窗口尺寸为 0".to_string()));
+                }
+
+                let data_provider = CGImage::data_provider(Some(&*cg_image))
+                    .ok_or_else(|| HalError::NativeCallFailed("获取 CGDataProvider 失败".to_string()))?;
+                let data = CGDataProvider::data(Some(&*data_provider))
+                    .ok_or_else(|| HalError::NativeCallFailed("复制图像像素数据失败".to_string()))?
+                    .to_vec();
+
+                let bytes_per_row = CGImage::bytes_per_row(Some(&*cg_image));
+                let mut buffer = Vec::with_capacity(width * height * 4);
+                for row in data.chunks_exact(bytes_per_row) {
+                    if row.len() >= width * 4 {
+                        buffer.extend_from_slice(&row[..width * 4]);
+                    }
+                }
+
+                for bgra in buffer.chunks_exact_mut(4) {
+                    bgra.swap(0, 2);
+                }
+
+                let dynamic = image::DynamicImage::ImageRgba8(
+                    image::RgbaImage::from_raw(width as u32, height as u32, buffer)
+                        .ok_or_else(|| HalError::NativeCallFailed("构建 RGBA 图像失败".to_string()))?,
+                );
+                let resized = if dynamic.width() > 960 {
+                    dynamic.resize(960, u32::MAX, image::imageops::FilterType::Triangle)
+                } else {
+                    dynamic
+                };
+                let mut encoded = Vec::new();
+                image::codecs::jpeg::JpegEncoder::new_with_quality(&mut encoded, 72)
+                    .encode_image(&resized)
+                    .map_err(native_error)?;
+                return Ok(format!(
+                    "data:image/jpeg;base64,{}",
+                    STANDARD.encode(encoded)
+                ));
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let windows = Window::all().map_err(native_error)?;
+            let window = windows
+                .into_iter()
+                .find(|window| window.id().map(|id| id as u64 == handle).unwrap_or(false))
+                .ok_or_else(|| HalError::NotFound(format!("External window {}", handle)))?;
+            let image = window.capture_image().map_err(native_error)?;
+            let dynamic = image::DynamicImage::ImageRgba8(image);
+            let resized = if dynamic.width() > 960 {
+                dynamic.resize(960, u32::MAX, image::imageops::FilterType::Triangle)
+            } else {
+                dynamic
+            };
+            let mut encoded = Vec::new();
+            image::codecs::jpeg::JpegEncoder::new_with_quality(&mut encoded, 72)
+                .encode_image(&resized)
+                .map_err(native_error)?;
+            Ok(format!(
+                "data:image/jpeg;base64,{}",
+                STANDARD.encode(encoded)
+            ))
+        }
     }
 
     fn send_modified_key(&self, key_char: char) -> HalResult<()> {
@@ -361,6 +577,21 @@ impl WindowController for NativeOsHal {
     fn get_foreground_window(&self) -> HalResult<ExternalWindowInfo> {
         if !self.native_enabled {
             return self.fallback.get_foreground_window();
+        }
+        #[cfg(target_os = "macos")]
+        {
+            use objc2_app_kit::NSWorkspace;
+            let own_pid = std::process::id();
+            let workspace = NSWorkspace::sharedWorkspace();
+            if let Some(front_app) = workspace.frontmostApplication() {
+                let front_pid = front_app.processIdentifier() as u32;
+                if front_pid != own_pid && front_pid > 0 {
+                    let candidates = self.native_windows()?;
+                    if let Some(win) = candidates.into_iter().find(|w| w.process_id == front_pid) {
+                        return Ok(win);
+                    }
+                }
+            }
         }
         let windows = Window::all().map_err(native_error)?;
         let own_pid = std::process::id();
@@ -533,5 +764,19 @@ mod tests {
 
         hal.send_paste_shortcut().unwrap();
         assert_eq!(hal.paste_trigger_count(), 1);
+    }
+
+    #[test]
+    fn test_native_windows_list() {
+        let hal = NativeOsHal::new();
+        let windows = hal.list_external_windows().unwrap();
+        // 校验：必须绝不包含 Window Server、Dock 等系统合成服务
+        for win in &windows {
+            assert_ne!(win.process_name, "Window Server", "严禁将 Window Server 列入普通应用候选窗口");
+            assert_ne!(win.process_name, "Dock", "严禁将 Dock 列入普通应用候选窗口");
+            assert!(win.width >= 32, "窗口宽度必须合规");
+            assert!(win.height >= 32, "窗口高度必须合规");
+            assert!(win.handle > 0, "窗口句柄必须合法有效");
+        }
     }
 }

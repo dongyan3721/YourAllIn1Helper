@@ -239,7 +239,7 @@ onMounted(async () => {
 }
 
 .icon-button:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--macos-bg-card-hover);
   color: var(--macos-text-primary);
 }
 
@@ -267,7 +267,7 @@ onMounted(async () => {
 }
 
 .clip-card {
-  background: rgba(40, 40, 44, 0.6);
+  background: var(--macos-bg-card);
   border: 1px solid var(--macos-border-subtle);
   border-radius: 6px;
   padding: 8px 10px;
@@ -280,13 +280,13 @@ onMounted(async () => {
 }
 
 .clip-card:hover {
-  background: rgba(50, 50, 54, 0.8);
-  border-color: rgba(255, 255, 255, 0.14);
+  background: var(--macos-bg-card-hover);
+  border-color: var(--macos-border-subtle);
 }
 
 .clip-card.is-active {
   border-color: var(--macos-accent);
-  background: rgba(10, 132, 255, 0.12);
+  background: var(--macos-accent-subtle);
 }
 
 .clip-card.is-pinned {
@@ -319,8 +319,8 @@ onMounted(async () => {
   max-height: 48px;
   object-fit: cover;
   border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: #111;
+  border: 1px solid var(--macos-border-subtle);
+  background: rgba(128, 128, 128, 0.1);
 }
 
 .image-label {
@@ -338,7 +338,7 @@ onMounted(async () => {
 }
 
 .app-tag {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(128, 128, 128, 0.1);
   padding: 1px 5px;
   border-radius: 3px;
 }
@@ -356,8 +356,8 @@ onMounted(async () => {
 }
 
 .action-btn {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid transparent;
+  background: var(--macos-bg-card);
+  border: 1px solid var(--macos-border-subtle);
   color: var(--macos-text-secondary);
   border-radius: 4px;
   padding: 4px 6px;
@@ -368,7 +368,7 @@ onMounted(async () => {
 }
 
 .action-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--macos-bg-card-hover);
   color: var(--macos-text-primary);
 }
 

@@ -18,12 +18,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import Dashboard from './components/Dashboard.vue';
 import ClipboardPopup from './components/ClipboardPopup.vue';
 import StickyNote from './components/StickyNote.vue';
 import WindowPinPicker from './components/WindowPinPicker.vue';
 import PinMirror from './components/PinMirror.vue';
+import { initTheme } from './utils/theme';
+
+// 全局初始化 macOS 主题（白蓝色调、主题色与明暗跟随）
+initTheme();
+onMounted(() => {
+  initTheme();
+});
 
 // 解析原生 Tauri 多窗口参数
 const urlParams = new URLSearchParams(window.location.search);

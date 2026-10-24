@@ -25,6 +25,47 @@
       </nav>
 
       <div class="title-right">
+        <!-- 强调色选择色环组 -->
+        <div class="theme-accent-group" title="选择 macOS 系统强调色">
+          <button
+            v-for="color in ACCENT_PALETTE"
+            :key="color.id"
+            class="accent-color-dot"
+            :class="{ active: currentAccent === color.id }"
+            :style="{ backgroundColor: isDarkActive ? color.darkHex : color.lightHex }"
+            @click="setAccentColor(color.id)"
+            :title="`强调色：${color.name}`"
+          />
+        </div>
+
+        <!-- 明暗模式分段器 (浅色白蓝 / 深色冷灰 / 跟随系统) -->
+        <nav class="macos-segmented theme-mode-segmented">
+          <button
+            class="macos-segment-item icon-only"
+            :class="{ active: currentThemeMode === 'light' }"
+            @click="setThemeMode('light')"
+            title="浅色白蓝色调 (默认)"
+          >
+            <Icons name="sun" size="12" />
+          </button>
+          <button
+            class="macos-segment-item icon-only"
+            :class="{ active: currentThemeMode === 'dark' }"
+            @click="setThemeMode('dark')"
+            title="深色背景模式"
+          >
+            <Icons name="moon" size="12" />
+          </button>
+          <button
+            class="macos-segment-item icon-only"
+            :class="{ active: currentThemeMode === 'system' }"
+            @click="setThemeMode('system')"
+            title="跟随系统自动开关灯"
+          >
+            <Icons name="desktop" size="12" />
+          </button>
+        </nav>
+
         <button class="macos-button danger" @click="shutdownDaemon" title="退出并清理所有置顶窗口">
           <Icons name="power" size="12" />
           <span>退出</span>
@@ -282,6 +323,10 @@
           </div>
 
           <div class="toolbar-actions">
+            <button class="macos-button" @click="refreshDashboard" title="重新扫描系统真实窗口">
+              <Icons name="refresh" size="12" />
+              <span>刷新窗口</span>
+            </button>
             <button class="macos-button" @click="restoreAllPins">
               <Icons name="power" size="12" />
               <span>一键还原全部置顶</span>
@@ -361,6 +406,14 @@ import {
   type PinnedWindowEntry,
 } from '../api/ipc';
 import Icons from './Icons.vue';
+import {
+  currentThemeMode,
+  currentAccent,
+  isDarkActive,
+  ACCENT_PALETTE,
+  setThemeMode,
+  setAccentColor,
+} from '../utils/theme';
 
 /** 选项卡配置列表 */
 const tabs = [
@@ -573,7 +626,40 @@ onMounted(async () => {
 .title-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+}
+
+.theme-accent-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 6px;
+  background: var(--macos-bg-card);
+  border: 1px solid var(--macos-border-subtle);
+  border-radius: 999px;
+}
+
+.accent-color-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.accent-color-dot:hover {
+  transform: scale(1.2);
+}
+
+.accent-color-dot.active {
+  box-shadow: 0 0 0 2px var(--macos-bg-window), 0 0 0 3.5px var(--macos-accent);
+  transform: scale(1.1);
+}
+
+.theme-mode-segmented .macos-segment-item.icon-only {
+  padding: 4px 7px;
 }
 
 .dashboard-content {
