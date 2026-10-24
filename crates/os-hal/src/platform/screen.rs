@@ -67,6 +67,20 @@ impl ScreenCapturer for NativeOsHal {
             rgba_bytes: image.into_raw(),
         })
     }
+
+    #[cfg(target_os = "macos")]
+    fn check_capture_permission(&self) -> HalResult<()> {
+        use objc2_core_graphics::CGPreflightScreenCaptureAccess;
+        // 仅预检，不调用 CGRequestScreenCaptureAccess，避免未经用户操作弹出系统授权。
+        if CGPreflightScreenCaptureAccess() {
+            Ok(())
+        } else {
+            Err(HalError::PermissionDenied {
+                capability: "screen_recording",
+                guidance: "请在「系统设置 → 隐私与安全性 → 屏幕与系统录音」中允许本应用，然后完全退出并重新打开应用".to_string(),
+            })
+        }
+    }
 }
 
 impl NativeOsHal {

@@ -24,6 +24,24 @@ fn unimplemented_native_capabilities_do_not_return_mock_results() {
 }
 #[cfg(target_os = "macos")]
 #[test]
+fn macos_capture_permission_preflight_only_reports_granted_or_denied() {
+    use os_hal::ScreenCapturer;
+    // 预检不会弹窗；未授权时必须是带指引的 PermissionDenied，而不是假装成功或其他错误。
+    match NativeOsHal::new().check_capture_permission() {
+        Ok(()) => {}
+        Err(HalError::PermissionDenied {
+            capability,
+            guidance,
+        }) => {
+            assert_eq!(capability, "screen_recording");
+            assert!(!guidance.is_empty());
+        }
+        Err(other) => panic!("unexpected preflight error: {other}"),
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[test]
 fn macos_external_topmost_reports_unsupported_without_touching_windows() {
     use os_hal::WindowController;
     let native = NativeOsHal::new();
