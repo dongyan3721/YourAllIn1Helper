@@ -13,6 +13,7 @@ use app_core::{
     AppKernel, AppKernelBuilder, CoreError, CoreResult, ExternalToolKind, HeadlessWindowBackend,
     TargetOs, WindowBackend, WindowSpec,
 };
+use mod_app_usage::AppUsageModule;
 use mod_clipboard::ClipboardModule;
 use mod_media_proc::MediaProcModule;
 use mod_screen_ink::ScreenInkModule;
@@ -86,6 +87,7 @@ pub struct DesktopHost {
     script_runner: Arc<ScriptRunnerModule>,
     screen_ink: Arc<ScreenInkModule>,
     media_proc: Arc<MediaProcModule>,
+    app_usage: Arc<AppUsageModule>,
     os_hal: OsHalBundle,
     mock_hal: Option<MockOsHal>,
 }
@@ -221,6 +223,7 @@ impl DesktopHost {
             script_runner,
             screen_ink,
             media_proc,
+            app_usage,
         } = modules::mount(
             builder,
             &os_hal,
@@ -236,6 +239,7 @@ impl DesktopHost {
             script_runner,
             screen_ink,
             media_proc,
+            app_usage,
             os_hal,
             mock_hal,
         })

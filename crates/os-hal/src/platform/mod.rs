@@ -3,6 +3,7 @@ mod input;
 mod regions;
 mod screen;
 mod services;
+mod usage;
 mod windows;
 
 use crate::{HalError, OsHalBundle};
