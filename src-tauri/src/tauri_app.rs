@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use app_core::{CoreError, CoreResult, WindowBackend, WindowSpec};
 use os_hal::ExternalWindowInfo;
-use serde_json::Value;
+use serde_json::{json, Value};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
@@ -138,6 +138,17 @@ impl WindowBackend for TauriWindowBackend {
             .set_always_on_top(always_on_top)
             .map_err(to_core_error)
     }
+
+    fn set_window_visible(&self, label: &str, visible: bool) -> CoreResult<()> {
+        if let Some(window) = self.app.get_webview_window(label) {
+            if visible {
+                window.show().map_err(to_core_error)?;
+            } else {
+                window.hide().map_err(to_core_error)?;
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Single typed IPC entry point used by every WebView.
@@ -185,6 +196,20 @@ fn ipc(app: AppHandle, host: State<'_, Arc<DesktopHost>>, request: IpcRequest) -
         // 当用户切换多语言时，同步刷新系统托盘菜单多语言文案并通知各窗口
         let _ = update_tray_menu(&app);
         emit_update(&app);
+    } else if response.ok
+        && (request.cmd == "ink_set_passthrough"
+            || request.cmd == "ink_start_session"
+            || request.cmd == "ink_exit_session")
+    {
+        let snap = host.screen_ink.get_status();
+        let _ = app.emit(
+            "screen-ink://mode-changed",
+            serde_json::to_value(&snap).unwrap_or_default(),
+        );
+        emit_update(&app);
+    } else if response.ok && request.cmd == "ink_clear_canvas" {
+        let _ = app.emit("screen-ink://clear-canvas", json!({}));
+        emit_update(&app);
     }
     response
 }
@@ -197,6 +222,13 @@ fn trigger_action(app: &AppHandle, action_id: &str) {
     if let Some(host) = app.try_state::<Arc<DesktopHost>>() {
         if let Err(error) = host.kernel().trigger_action(action_id) {
             tracing::error!(action_id, %error, "Global shortcut action failed");
+        }
+        if action_id.starts_with("screen_ink:") {
+            let snap = host.screen_ink.get_status();
+            let _ = app.emit(
+                "screen-ink://mode-changed",
+                serde_json::to_value(&snap).unwrap_or_default(),
+            );
         }
         emit_update(app);
     }

@@ -145,14 +145,16 @@ impl WindowSpec {
             },
         };
 
+        let toolbar_w = 580.0;
+        let toolbar_h = 130.0;
         let toolbar = Self {
             label: "screen-ink-toolbar".to_string(),
             title: "Screen Ink Toolbar".to_string(),
             route: "/screen-ink/toolbar".to_string(),
-            x: Some((screen_w - 420.0) / 2.0),
-            y: Some(24.0),
-            width: 420.0,
-            height: 56.0,
+            x: Some((screen_w - toolbar_w) / 2.0),
+            y: Some(20.0),
+            width: toolbar_w,
+            height: toolbar_h,
             min_width: None,
             min_height: None,
             resizable: false,
@@ -285,6 +287,10 @@ pub trait WindowBackend: Send + Sync + 'static {
     fn set_ignore_cursor_events(&self, label: &str, ignore: bool) -> CoreResult<()>;
     /// Updates the always-on-top state of an existing window.
     fn set_always_on_top(&self, label: &str, always_on_top: bool) -> CoreResult<()>;
+    /// Shows or hides an existing window without destroying its WebView process.
+    fn set_window_visible(&self, _label: &str, _visible: bool) -> CoreResult<()> {
+        Ok(())
+    }
 }
 
 /// Default headless backend used during unit tests or CLI inspection before Tauri attaches.
@@ -413,6 +419,11 @@ impl WindowPoolManager {
         self.backend.set_always_on_top(label, always_on_top)?;
         entry.always_on_top = always_on_top;
         Ok(())
+    }
+
+    /// Toggles visibility of an active window without destroying its process (used to hide UI during screenshot capture).
+    pub fn set_window_visible(&self, label: &str, visible: bool) -> CoreResult<()> {
+        self.backend.set_window_visible(label, visible)
     }
 
     /// Destroys all currently open WebView windows during daemon shutdown.

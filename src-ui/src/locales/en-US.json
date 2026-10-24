@@ -213,6 +213,7 @@
     "exitTooltip": "Exit Screen Annotation (⇧⌘D)",
     "toastSaveSuccess": "Snapshot successfully composited and copied to clipboard",
     "toastSaveFailed": "Failed to composite snapshot",
+    "toastSaveFileOnly": "Snapshot saved to file, but copying to clipboard failed",
     "toastPassthroughOn": "Desktop mode enabled: mouse events pass through to underlying apps",
     "toastPassthroughOff": "Drawing mode resumed",
     "toastSaving": "Capturing screen frame and compositing ink...",

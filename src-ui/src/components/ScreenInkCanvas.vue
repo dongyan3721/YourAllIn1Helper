@@ -42,8 +42,10 @@ let animFrameId: number | null = null;
 
 // 与独立工具栏双向通信的跨窗口广播通道
 let broadcastChannel: BroadcastChannel | null = null;
+let unlistenClear: (() => void) | null = null;
+let unlistenMode: (() => void) | null = null;
 
-onMounted(() => {
+onMounted(async () => {
   initCanvas();
   window.addEventListener('resize', onResize);
 
@@ -55,6 +57,22 @@ onMounted(() => {
 
   // 通知工具栏画布已就绪
   notifyToolbar();
+
+  // 监听原生 Tauri 事件总线（支持快捷键或主控台直接触发清屏/穿透）
+  const tauriListen = (window as any).__TAURI__?.event?.listen;
+  if (typeof tauriListen === 'function') {
+    try {
+      unlistenClear = await tauriListen('screen-ink://clear-canvas', () => {
+        historyManager.clear();
+        laserManager.clear();
+        redrawAll();
+        notifyToolbar();
+      });
+      unlistenMode = await tauriListen('screen-ink://mode-changed', () => {
+        notifyToolbar();
+      });
+    } catch (_) {}
+  }
 });
 
 onUnmounted(() => {
@@ -64,6 +82,14 @@ onUnmounted(() => {
   }
   if (broadcastChannel) {
     broadcastChannel.close();
+  }
+  if (unlistenClear) {
+    unlistenClear();
+    unlistenClear = null;
+  }
+  if (unlistenMode) {
+    unlistenMode();
+    unlistenMode = null;
   }
 });
 
@@ -119,6 +145,9 @@ async function handleToolbarMessage(data: any) {
       historyManager.clear();
       laserManager.clear();
       redrawAll();
+      notifyToolbar();
+      break;
+    case 'request_state_sync':
       notifyToolbar();
       break;
     case 'request_snapshot':
@@ -293,7 +322,11 @@ async function handleExportSnapshot(copyToClipboard: boolean = true) {
   const inkPngDataUrl = offscreen.toDataURL('image/png');
 
   try {
-    const res = await invokeIpc('ink_save_snapshot', {
+    const res = await invokeIpc<{
+      saved_path?: string;
+      copied_to_clipboard: boolean;
+      clipboard_error?: string;
+    }>('ink_save_snapshot', {
       ink_png_base64: inkPngDataUrl,
       copy_to_clipboard: copyToClipboard,
     });
@@ -304,6 +337,7 @@ async function handleExportSnapshot(copyToClipboard: boolean = true) {
         success: true,
         savedPath: res.saved_path,
         copiedToClipboard: res.copied_to_clipboard,
+        clipboardError: res.clipboard_error,
       });
     }
   } catch (err: any) {

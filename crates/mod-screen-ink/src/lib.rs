@@ -9,23 +9,34 @@
 //!      保留所有透明墨迹的同时允许直接操作底层桌面与应用；工具栏不受穿透影响，可随时切回绘制。
 //! 3. **底图捕获与墨迹合成**：
 //!    - 通过注入的 `Arc<dyn ScreenCapturer>` 仅在保存时按需捕获单帧屏幕底图，
-//!      与透明墨迹 PNG 进行 Alpha 像素级叠加，支持保存为 PNG 文件与直接复制到系统剪贴板。
-//! 4. **零后台常驻内存与整洁生命周期**：
-//!    - 未启动时不创建任何 WebView；退出或模块停用时立即销毁全部窗口并释放资源。
+//!      截屏期间临时隐藏自身窗口避免双重叠墨或截入工具栏；独占创建文件避免覆盖；
+//!      与透明墨迹 PNG 进行 Alpha 像素级叠加，写入系统剪贴板并如实反馈结果。
+//! 4. **零后台常驻内存与可靠生命周期**：
+//!    - 未启动时不创建任何 WebView；退出或模块停用时立即销毁全部窗口并释放资源；
+//!      窗口创建失败具备原子回滚能力，销毁失败向调用方正确返回错误。
 
 pub mod composite;
 pub mod config;
 
 use anyhow::{anyhow, Context};
 use app_core::{
-    AppModule, CoreError, CoreResult, ModuleContext, ShortcutSpec, SystemEvent, WindowSpec,
+    AppModule, CoreError, CoreResult, ModuleContext, ShortcutSpec, SystemEvent, WindowPoolManager,
+    WindowSpec,
 };
 use config::ScreenInkConfig;
-use os_hal::{CapturedFrame, HalError, ScreenCapturer};
+use os_hal::{HalError, ScreenCapturer};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::{borrow::Cow, fs, path::PathBuf, sync::Arc};
+use std::{
+    borrow::Cow,
+    fs::{self, OpenOptions},
+    io::Write,
+    path::PathBuf,
+    sync::Arc,
+    thread,
+    time::Duration,
+};
 use tracing::{info, warn};
 
 /// 屏幕注释当前运行态会话快照
@@ -43,8 +54,35 @@ pub struct ScreenInkSessionSnapshot {
 pub struct SaveSnapshotResult {
     pub saved_path: Option<String>,
     pub copied_to_clipboard: bool,
+    pub clipboard_error: Option<String>,
     pub width: u32,
     pub height: u32,
+}
+
+/// RAII 守护：在截屏时临时隐藏画布与工具栏，确保异常或提前返回时 100% 恢复窗口可见性
+struct CleanCaptureVisibilityGuard<'a> {
+    window_pool: &'a WindowPoolManager,
+    labels: &'static [&'static str],
+}
+
+impl<'a> CleanCaptureVisibilityGuard<'a> {
+    fn new(window_pool: &'a WindowPoolManager, labels: &'static [&'static str]) -> Self {
+        for label in labels {
+            let _ = window_pool.set_window_visible(label, false);
+        }
+        Self {
+            window_pool,
+            labels,
+        }
+    }
+}
+
+impl<'a> Drop for CleanCaptureVisibilityGuard<'a> {
+    fn drop(&mut self) {
+        for label in self.labels {
+            let _ = self.window_pool.set_window_visible(label, true);
+        }
+    }
 }
 
 /// 屏幕注释领域模型与生命周期控制器
@@ -72,17 +110,34 @@ impl ScreenInkModule {
         self.state.read().clone()
     }
 
+    /// 应用或更新配置（并自动清洗非法字段）
+    pub fn apply_config(&self, mut cfg: ScreenInkConfig) {
+        cfg.sanitize();
+        let mut guard = self.state.write();
+        guard.active_tool = cfg.default_tool;
+        guard.color = cfg.default_color;
+        guard.stroke_width = cfg.default_width;
+    }
+
     /// 启动屏幕注释会话：创建全屏透明画布与独立置顶胶囊工具栏
+    /// 若第二窗口创建失败，必须原子回滚销毁第一窗口，保持状态与实际资源一致
     pub fn start_session(&self, ctx: &ModuleContext) -> CoreResult<ScreenInkSessionSnapshot> {
         let (screen_w, screen_h) = self.resolve_primary_screen_size()?;
-
-        // 生成规范预设的双窗口
         let (canvas_spec, toolbar_spec) = WindowSpec::screen_ink_pair(screen_w, screen_h);
 
-        // 打开全屏透明画布
+        // 1. 打开全屏透明画布
         ctx.window_pool.open_window(canvas_spec)?;
-        // 打开独立置顶工具栏
-        ctx.window_pool.open_window(toolbar_spec)?;
+
+        // 2. 打开独立置顶工具栏（失败时立即回滚销毁全屏画布）
+        if let Err(err) = ctx.window_pool.open_window(toolbar_spec) {
+            let _ = ctx.window_pool.destroy_window("screen-ink-canvas");
+            return Err(err);
+        }
+
+        // 3. 关键：若此前曾处于穿透模式，重复/重新启动必须重置原生画布为可接收交互，确保原生与状态一致
+        let _ = ctx
+            .window_pool
+            .set_mouse_passthrough("screen-ink-canvas", false);
 
         {
             let mut guard = self.state.write();
@@ -100,15 +155,35 @@ impl ScreenInkModule {
         Ok(snapshot)
     }
 
-    /// 退出屏幕注释会话：彻底销毁画布与工具栏窗口，重置状态
+    /// 退出屏幕注释会话：彻底销毁画布与工具栏窗口，错误不被吞没并保持状态真实
     pub fn exit_session(&self, ctx: &ModuleContext) -> CoreResult<()> {
-        let _ = ctx.window_pool.destroy_window("screen-ink-canvas");
-        let _ = ctx.window_pool.destroy_window("screen-ink-toolbar");
+        let mut first_err: Option<CoreError> = None;
+
+        if let Err(e) = ctx.window_pool.destroy_window("screen-ink-canvas") {
+            first_err = Some(e);
+        }
+        if let Err(e) = ctx.window_pool.destroy_window("screen-ink-toolbar") {
+            if first_err.is_none() {
+                first_err = Some(e);
+            }
+        }
+
+        let canvas_still_open = ctx
+            .window_pool
+            .get_active_window("screen-ink-canvas")
+            .is_some();
+        let toolbar_still_open = ctx
+            .window_pool
+            .get_active_window("screen-ink-toolbar")
+            .is_some();
+        let any_open = canvas_still_open || toolbar_still_open;
 
         {
             let mut guard = self.state.write();
-            guard.is_active = false;
-            guard.is_passthrough = false;
+            guard.is_active = any_open;
+            if !any_open {
+                guard.is_passthrough = false;
+            }
         }
 
         let snapshot = self.get_status();
@@ -117,6 +192,11 @@ impl ScreenInkModule {
             topic: "screen-ink://mode-changed".to_string(),
             payload_json: json!(snapshot).to_string(),
         });
+
+        if let Some(err) = first_err {
+            return Err(err);
+        }
+
         info!("Exited screen ink session and destroyed both windows");
         Ok(())
     }
@@ -166,20 +246,30 @@ impl ScreenInkModule {
         Ok(())
     }
 
-    /// 捕获屏幕底图并与墨迹 PNG 合成，按需保存至文件及复制到系统剪贴板
+    /// 捕获屏幕真实单帧底图并与墨迹 PNG 合成
+    /// 1. 临时隐藏自身窗口（避免双重叠墨与将工具栏截入）
+    /// 2. 仅通过注入的 ScreenCapturer 抓取单帧，生产环境严禁假冒伪成功
+    /// 3. 保存文件采用独占创建（create_new）防止覆盖已有文件
+    /// 4. 剪贴板复制失败准确记录并反馈
     pub fn composite_and_save(
         &self,
         ctx: &ModuleContext,
         ink_png_bytes: &[u8],
         copy_to_clipboard: bool,
         target_file_path: Option<String>,
-        mock_bg_frame: Option<CapturedFrame>,
     ) -> CoreResult<SaveSnapshotResult> {
-        // 1. 获取屏幕真实单帧底图（禁止循环录屏）
-        let bg_frame = match mock_bg_frame {
-            Some(frame) => frame,
-            None => self
-                .capturer
+        // 1. 干净底图捕获：在抓屏期间临时隐藏自身窗口，避免双重叠墨以及工具栏截入快照中
+        let bg_frame = {
+            // RAII 守护确保无论成功还是失败，画布和工具栏都会恢复显示
+            let _guard = CleanCaptureVisibilityGuard::new(
+                &ctx.window_pool,
+                &["screen-ink-canvas", "screen-ink-toolbar"],
+            );
+
+            // 让系统显示合成器有短暂时间（40ms）完成帧刷新
+            thread::sleep(Duration::from_millis(40));
+
+            self.capturer
                 .capture_monitor(None)
                 .map_err(|err| match err {
                     HalError::PermissionDenied {
@@ -199,7 +289,7 @@ impl ScreenInkModule {
                     HalError::NativeCallFailed(msg) => {
                         CoreError::Internal(anyhow!("调用系统屏幕捕获 API 失败: {}", msg))
                     }
-                })?,
+                })?
         };
 
         // 2. 执行底图与透明墨迹像素 Alpha 叠加混合
@@ -210,32 +300,14 @@ impl ScreenInkModule {
             ink_png_bytes,
         )?;
 
-        // 3. 落盘保存文件
-        let saved_path_string = {
-            let path_to_write = if let Some(p) = target_file_path {
-                PathBuf::from(p)
-            } else {
-                let snapshots_dir = ctx.app_data_dir.join("snapshots");
-                fs::create_dir_all(&snapshots_dir)
-                    .context("Failed to create snapshots directory")
-                    .map_err(|e| CoreError::Internal(e))?;
-                let now_str = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
-                snapshots_dir.join(format!("screen_ink_{}.png", now_str))
-            };
-
-            if let Some(parent) = path_to_write.parent() {
-                let _ = fs::create_dir_all(parent);
-            }
-
-            fs::write(&path_to_write, &composited_png)
-                .context(format!("Failed to write snapshot to {:?}", path_to_write))
-                .map_err(|e| CoreError::Internal(e))?;
-
-            Some(path_to_write.to_string_lossy().to_string())
-        };
+        // 3. 落盘保存文件：独占创建（create_new），不覆盖已有文件
+        let cfg: ScreenInkConfig = ctx.module_settings(self.id()).unwrap_or_default();
+        let saved_path_string =
+            self.save_png_exclusive(ctx, &cfg, &composited_png, target_file_path)?;
 
         // 4. 复制到系统剪贴板（使用真实 arboard 原生系统剪贴板）
         let mut copied = false;
+        let mut clip_err = None;
         if copy_to_clipboard {
             match self.copy_png_to_clipboard(&composited_png, width, height) {
                 Ok(()) => {
@@ -243,16 +315,95 @@ impl ScreenInkModule {
                 }
                 Err(e) => {
                     warn!(error = %e, "Failed to copy composited snapshot to system clipboard");
+                    clip_err = Some(e.to_string());
                 }
             }
         }
 
         Ok(SaveSnapshotResult {
-            saved_path: saved_path_string,
+            saved_path: Some(saved_path_string),
             copied_to_clipboard: copied,
+            clipboard_error: clip_err,
             width,
             height,
         })
+    }
+
+    /// 独占创建文件保存 PNG，避免同秒或同名覆盖
+    fn save_png_exclusive(
+        &self,
+        ctx: &ModuleContext,
+        cfg: &ScreenInkConfig,
+        png_bytes: &[u8],
+        target_file_path: Option<String>,
+    ) -> CoreResult<String> {
+        let base_path = if let Some(p) = target_file_path {
+            PathBuf::from(p)
+        } else {
+            let base_dir = if let Some(ref custom_dir) = cfg.save_directory {
+                PathBuf::from(custom_dir)
+            } else {
+                ctx.app_data_dir.join("snapshots")
+            };
+            let now_str = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
+            base_dir.join(format!("screen_ink_{}.png", now_str))
+        };
+
+        if let Some(parent) = base_path.parent() {
+            fs::create_dir_all(parent)
+                .context("Failed to create snapshot parent directory")
+                .map_err(CoreError::from)?;
+        }
+
+        // 尝试以独占方式创建文件；若已存在则追加序号重试
+        let mut attempt_path = base_path.clone();
+        let mut counter = 1;
+        let file = loop {
+            match OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&attempt_path)
+            {
+                Ok(f) => break f,
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    let file_stem = base_path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("screen_ink");
+                    let ext = base_path
+                        .extension()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("png");
+                    if let Some(parent) = base_path.parent() {
+                        attempt_path = parent.join(format!("{}_{}.{}", file_stem, counter, ext));
+                    } else {
+                        attempt_path = PathBuf::from(format!("{}_{}.{}", file_stem, counter, ext));
+                    }
+                    counter += 1;
+                    if counter > 100 {
+                        return Err(CoreError::Internal(anyhow!(
+                            "Failed to allocate a unique snapshot file name after 100 attempts"
+                        )));
+                    }
+                }
+                Err(e) => {
+                    return Err(CoreError::Internal(anyhow!(
+                        "Failed to create snapshot file at {:?}: {}",
+                        attempt_path,
+                        e
+                    )));
+                }
+            }
+        };
+
+        let mut writer = std::io::BufWriter::new(file);
+        writer
+            .write_all(png_bytes)
+            .context("Failed to write snapshot image data")
+            .map_err(CoreError::from)?;
+        writer.flush().map_err(CoreError::from)?;
+
+        Ok(attempt_path.to_string_lossy().to_string())
     }
 
     /// 将合并后的 PNG 图像解析为 RGBA 格式并写入系统剪贴板
@@ -322,9 +473,10 @@ impl AppModule for ScreenInkModule {
     }
 
     fn on_init(&self, ctx: &ModuleContext) -> CoreResult<()> {
-        // 读取模块配置，确认配置结构有效性
-        let _: ScreenInkConfig = ctx.module_settings(self.id())?;
-        // 初始状态下不创建任何常驻窗口，遵循 <25MB 内存规范
+        // 读取并校验模块配置，应用至初始工具/颜色/线宽
+        let cfg: ScreenInkConfig = ctx.module_settings(self.id()).unwrap_or_default();
+        self.apply_config(cfg);
+
         let mut guard = self.state.write();
         guard.is_active = false;
         guard.is_passthrough = false;
@@ -356,9 +508,8 @@ impl AppModule for ScreenInkModule {
     }
 
     fn on_shutdown(&self, ctx: &ModuleContext) -> CoreResult<()> {
-        // 关闭或程序退出时，安全销毁可能残留的画布与工具栏窗口
-        let _ = self.exit_session(ctx);
-        Ok(())
+        // 关闭或程序退出时，安全销毁可能残留的画布与工具栏窗口，并向调用者正确报告错误
+        self.exit_session(ctx)
     }
 }
 

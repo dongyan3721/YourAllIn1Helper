@@ -7,7 +7,7 @@
         <span class="grip-line"></span>
       </div>
 
-      <!-- 工具选择组 -->
+      <!-- 工具选择组 (7种工具) -->
       <div class="tool-group">
         <button
           v-for="tool in TOOLS"
@@ -17,7 +17,7 @@
           :title="t(tool.tooltipKey)"
           @click="selectTool(tool.id)"
         >
-          <Icons :name="tool.icon" size="14" />
+          <Icons :name="tool.icon" size="13" />
         </button>
       </div>
 
@@ -31,6 +31,7 @@
           :title="t('screen_ink.colorTooltip')"
           @click="showColorMenu = !showColorMenu"
         ></button>
+        <!-- 弹层展示在 130px 高度窗口内，不超出不裁切 -->
         <div v-if="showColorMenu" class="color-popover">
           <button
             v-for="c in COLOR_PALETTE"
@@ -53,7 +54,10 @@
           :title="t(w.labelKey)"
           @click="selectWidth(w.val)"
         >
-          <span class="dot-preview" :style="{ width: `${w.val * 1.5}px`, height: `${w.val * 1.5}px`, backgroundColor: currentColor }"></span>
+          <span
+            class="dot-preview"
+            :style="{ width: `${w.val * 1.4}px`, height: `${w.val * 1.4}px`, backgroundColor: currentColor }"
+          ></span>
         </button>
       </div>
 
@@ -67,7 +71,7 @@
           :title="t('screen_ink.undo')"
           @click="triggerUndo"
         >
-          <Icons name="undo" size="14" />
+          <Icons name="undo" size="13" />
         </button>
         <button
           class="tb-btn"
@@ -75,7 +79,7 @@
           :title="t('screen_ink.redo')"
           @click="triggerRedo"
         >
-          <Icons name="redo" size="14" />
+          <Icons name="redo" size="13" />
         </button>
         <button
           class="tb-btn danger"
@@ -83,7 +87,7 @@
           :title="t('screen_ink.clear')"
           @click="triggerClear"
         >
-          <Icons name="trash" size="14" />
+          <Icons name="trash" size="13" />
         </button>
       </div>
 
@@ -96,7 +100,7 @@
         :title="isPassthrough ? t('screen_ink.passthroughActiveTooltip') : t('screen_ink.passthroughInactiveTooltip')"
         @click="togglePassthrough"
       >
-        <Icons name="mouse-pointer" size="14" />
+        <Icons name="mouse-pointer" size="13" />
         <span v-if="isPassthrough" class="status-indicator"></span>
       </button>
 
@@ -107,7 +111,7 @@
         :disabled="isSaving"
         @click="triggerSave"
       >
-        <Icons name="camera" size="14" />
+        <Icons name="camera" size="13" />
       </button>
 
       <!-- 退出全屏注释 -->
@@ -116,11 +120,11 @@
         :title="t('screen_ink.exitTooltip')"
         @click="exitSession"
       >
-        <Icons name="close" size="14" />
+        <Icons name="close" size="13" />
       </button>
     </div>
 
-    <!-- 保存成功轻提示 Toast -->
+    <!-- 保存轻提示 Toast (位于 130px 窗口内部，保证完全不被边缘裁剪) -->
     <transition name="toast-fade">
       <div v-if="toastMessage" class="toast-pill">
         <span>{{ toastMessage }}</span>
@@ -182,22 +186,53 @@ const toastMessage = ref<string | null>(null);
 
 let broadcastChannel: BroadcastChannel | null = null;
 let toastTimeout: number | null = null;
+let unlistenTauriMode: (() => void) | null = null;
 
 onMounted(async () => {
+  // 1. 初始化同源广播信道
   broadcastChannel = new BroadcastChannel('screen-ink-channel');
   broadcastChannel.onmessage = (event) => {
     handleCanvasMessage(event.data);
   };
 
+  // 2. 关键：启动时主动请求画布状态（解决工具栏先于画布或后于画布加载的竞态时序问题）
+  broadcastChannel.postMessage({ type: 'request_state_sync' });
+
+  // 3. 从后端查询权威运行态状态（包含当前穿透模式与配置）
   try {
-    const status = await invokeIpc<{ is_passthrough: boolean }>('ink_get_status');
+    const status = await invokeIpc<{
+      is_passthrough: boolean;
+      active_tool?: string;
+      color?: string;
+      stroke_width?: number;
+    }>('ink_get_status');
     isPassthrough.value = status.is_passthrough;
+    if (status.active_tool) currentTool.value = status.active_tool as InkTool;
+    if (status.color) currentColor.value = status.color;
+    if (status.stroke_width) currentWidth.value = status.stroke_width;
   } catch (_) {}
+
+  // 4. 监听原生 Tauri 事件桥（快捷键/主控台切换穿透时立即同步更新工具栏）
+  const tauriListen = (window as any).__TAURI__?.event?.listen;
+  if (typeof tauriListen === 'function') {
+    try {
+      unlistenTauriMode = await tauriListen('screen-ink://mode-changed', (event: any) => {
+        const payload = event.payload;
+        if (payload && typeof payload.is_passthrough === 'boolean') {
+          isPassthrough.value = payload.is_passthrough;
+        }
+      });
+    } catch (_) {}
+  }
 });
 
 onUnmounted(() => {
   if (broadcastChannel) {
     broadcastChannel.close();
+  }
+  if (unlistenTauriMode) {
+    unlistenTauriMode();
+    unlistenTauriMode = null;
   }
   if (toastTimeout) {
     clearTimeout(toastTimeout);
@@ -208,15 +243,21 @@ function handleCanvasMessage(data: any) {
   if (!data || !data.type) return;
 
   if (data.type === 'state_sync') {
-    canUndo.value = data.canUndo;
-    canRedo.value = data.canRedo;
+    if (typeof data.canUndo === 'boolean') canUndo.value = data.canUndo;
+    if (typeof data.canRedo === 'boolean') canRedo.value = data.canRedo;
     if (data.tool) currentTool.value = data.tool;
     if (data.color) currentColor.value = data.color;
     if (data.width) currentWidth.value = data.width;
   } else if (data.type === 'snapshot_result') {
     isSaving.value = false;
     if (data.success) {
-      showToast(t('screen_ink.toastSaveSuccess'));
+      if (data.copiedToClipboard) {
+        showToast(t('screen_ink.toastSaveSuccess'));
+      } else if (data.clipboardError) {
+        showToast(`${t('screen_ink.toastSaveFileOnly')} (${data.clipboardError})`);
+      } else {
+        showToast(t('screen_ink.toastSaveSuccess'));
+      }
     } else {
       showToast(data.error || t('screen_ink.toastSaveFailed'));
     }
@@ -285,7 +326,7 @@ function showToast(msg: string) {
   }
   toastTimeout = window.setTimeout(() => {
     toastMessage.value = null;
-  }, 2400);
+  }, 2600);
 }
 </script>
 
@@ -297,36 +338,39 @@ function showToast(msg: string) {
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  padding-top: 6px;
+  padding-top: 4px;
   background: transparent !important;
   user-select: none;
   pointer-events: auto;
+  overflow: visible;
+  position: relative;
 }
 
 .capsule-toolbar {
   display: flex;
   align-items: center;
-  gap: 4px;
-  height: 44px;
-  padding: 0 12px;
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.85);
+  gap: 3px;
+  height: 42px;
+  padding: 0 10px;
+  border-radius: 21px;
+  background: rgba(255, 255, 255, 0.88);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   border: 1px solid rgba(0, 0, 0, 0.12);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.08);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
 }
 
 :global(.dark) .capsule-toolbar {
-  background: rgba(36, 40, 48, 0.88);
+  background: rgba(36, 40, 48, 0.90);
   border: 1px solid rgba(255, 255, 255, 0.14);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
 }
 
 .capsule-toolbar.passthrough-active {
   border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3), 0 8px 24px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35), 0 8px 24px rgba(0, 0, 0, 0.2);
 }
 
 .drag-grip {
@@ -334,12 +378,12 @@ function showToast(msg: string) {
   flex-direction: column;
   gap: 3px;
   cursor: grab;
-  padding: 6px 4px;
+  padding: 6px 3px;
 }
 
 .grip-line {
   display: block;
-  width: 14px;
+  width: 12px;
   height: 2px;
   border-radius: 1px;
   background: rgba(0, 0, 0, 0.25);
@@ -353,15 +397,15 @@ function showToast(msg: string) {
 .action-group {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
 }
 
 .tb-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 27px;
+  height: 27px;
   border-radius: 6px;
   border: none;
   background: transparent;
@@ -369,6 +413,7 @@ function showToast(msg: string) {
   cursor: pointer;
   transition: all 0.15s ease;
   position: relative;
+  flex-shrink: 0;
 }
 
 :global(.dark) .tb-btn {
@@ -376,11 +421,11 @@ function showToast(msg: string) {
 }
 
 .tb-btn:hover:not(:disabled) {
-  background: rgba(0, 0, 0, 0.06);
+  background: rgba(0, 0, 0, 0.07);
 }
 
 :global(.dark) .tb-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .tb-btn.active {
@@ -409,8 +454,8 @@ function showToast(msg: string) {
 
 .status-indicator {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: 3px;
+  right: 3px;
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -420,9 +465,10 @@ function showToast(msg: string) {
 
 .divider {
   width: 1px;
-  height: 20px;
+  height: 18px;
   background: rgba(0, 0, 0, 0.1);
-  margin: 0 3px;
+  margin: 0 2px;
+  flex-shrink: 0;
 }
 
 :global(.dark) .divider {
@@ -437,13 +483,14 @@ function showToast(msg: string) {
 }
 
 .color-trigger-btn {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   border: 2px solid #ffffff;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2);
   cursor: pointer;
   transition: transform 0.15s ease;
+  flex-shrink: 0;
 }
 
 .color-trigger-btn:hover {
@@ -452,28 +499,29 @@ function showToast(msg: string) {
 
 .color-popover {
   position: absolute;
-  top: 36px;
-  left: -20px;
+  top: 34px;
+  left: 50%;
+  transform: translateX(-50%);
   display: grid;
-  grid-template-columns: repeat(4, 20px);
-  gap: 6px;
-  padding: 8px;
-  border-radius: 10px;
+  grid-template-columns: repeat(4, 18px);
+  gap: 5px;
+  padding: 6px;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(16px);
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-  z-index: 100;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+  z-index: 1000;
 }
 
 :global(.dark) .color-popover {
-  background: rgba(30, 32, 38, 0.95);
-  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(30, 32, 38, 0.96);
+  border-color: rgba(255, 255, 255, 0.18);
 }
 
 .color-swatch {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   border: 2px solid transparent;
   cursor: pointer;
@@ -489,19 +537,20 @@ function showToast(msg: string) {
 .width-picker-wrapper {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
 }
 
 .width-dot-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border-radius: 4px;
   border: none;
   background: transparent;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 .width-dot-btn.active {
@@ -519,15 +568,16 @@ function showToast(msg: string) {
 
 /* 提示 Toast */
 .toast-pill {
-  margin-top: 8px;
-  padding: 4px 12px;
+  margin-top: 6px;
+  padding: 4px 14px;
   border-radius: 12px;
-  background: rgba(0, 0, 0, 0.75);
+  background: rgba(0, 0, 0, 0.82);
   color: #ffffff;
   font-size: 11px;
   backdrop-filter: blur(8px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
   pointer-events: none;
+  z-index: 999;
 }
 
 .toast-fade-enter-active,
