@@ -247,6 +247,14 @@
       <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
     </g>
 
+    <!-- 使用时长/统计图表图标 -->
+    <g v-else-if="name === 'chart'">
+      <line x1="3" y1="21" x2="21" y2="21" />
+      <rect x="5" y="11" width="4" height="7" rx="1" />
+      <rect x="11" y="7" width="4" height="11" rx="1" />
+      <rect x="17" y="3" width="4" height="15" rx="1" />
+    </g>
+
     <!-- 默认点点点 -->
     <g v-else>
       <circle cx="12" cy="12" r="1" />
