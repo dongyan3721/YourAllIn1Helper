@@ -316,6 +316,7 @@
     "exitTooltip": "退出屏幕注释 (⇧⌘D)",
     "toastSaveSuccess": "快照已成功合成并保存，已复制到剪贴板",
     "toastSaveFailed": "快照合成失败",
+    "toastSaveFileOnly": "快照已保存到文件，但写入剪贴板失败",
     "toastPassthroughOn": "已进入操作桌面模式：鼠标可直接操作底层应用",
     "toastPassthroughOff": "已切回屏幕绘图模式",
     "toastSaving": "正在捕获单帧屏幕并合成墨迹...",

@@ -139,7 +139,7 @@ fn test_screen_ink_dual_window_session_and_passthrough_lifecycle() {
 }
 
 #[test]
-fn test_screen_ink_composite_and_save_snapshot() {
+fn test_screen_ink_repeated_start_resets_passthrough() {
     let temp_dir = tempfile::tempdir().unwrap();
     let mock = Arc::new(MockOsHal::new());
     let ink_module = Arc::new(ScreenInkModule::new(mock.clone()));
@@ -153,14 +153,45 @@ fn test_screen_ink_composite_and_save_snapshot() {
 
     let ctx = kernel.context();
 
-    let bg_frame = CapturedFrame {
-        width: 120,
-        height: 80,
-        scale_factor_milli: 1000,
-        rgba_bytes: vec![200u8; 120 * 80 * 4],
-    };
+    // 首次启动并置为穿透
+    ink_module.start_session(ctx).unwrap();
+    ink_module.set_passthrough(ctx, true).unwrap();
+    assert!(
+        ctx.window_pool
+            .get_active_window("screen-ink-canvas")
+            .unwrap()
+            .ignore_cursor_events
+    );
 
-    let ink_png = generate_test_ink_png(120, 80, Rgba([0, 255, 0, 255]));
+    // 重复启动：状态被重置为非穿透，原生画布也必须立即重置为非穿透（不忽略鼠标）
+    let snap = ink_module.start_session(ctx).unwrap();
+    assert!(!snap.is_passthrough);
+    assert!(
+        !ctx.window_pool
+            .get_active_window("screen-ink-canvas")
+            .unwrap()
+            .ignore_cursor_events
+    );
+
+    ink_module.exit_session(ctx).unwrap();
+    kernel.shutdown().unwrap();
+}
+
+#[test]
+fn test_screen_ink_composite_and_save_snapshot() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let mock = Arc::new(MockOsHal::new());
+    let ink_module = Arc::new(ScreenInkModule::new(mock.clone()));
+
+    let kernel = AppKernelBuilder::new(temp_dir.path())
+        .with_target_os(TargetOs::MacOs)
+        .register_module_arc(ink_module.clone())
+        .unwrap()
+        .bootstrap()
+        .unwrap();
+
+    let ctx = kernel.context();
+    let ink_png = generate_test_ink_png(64, 64, Rgba([0, 255, 0, 255]));
 
     let target_file = temp_dir.path().join("snapshots").join("custom_snap.png");
     let result = ink_module
@@ -169,14 +200,124 @@ fn test_screen_ink_composite_and_save_snapshot() {
             &ink_png,
             false, // 单元测试环境禁用复制到物理剪贴板以免受环境约束
             Some(target_file.to_string_lossy().to_string()),
-            Some(bg_frame),
         )
         .unwrap();
 
-    assert_eq!(result.width, 120);
-    assert_eq!(result.height, 80);
+    // MockOsHal 提供 64x64 单帧底图
+    assert_eq!(result.width, 64);
+    assert_eq!(result.height, 64);
     assert!(target_file.exists());
     assert!(std::fs::metadata(&target_file).unwrap().len() > 0);
+
+    kernel.shutdown().unwrap();
+}
+
+#[test]
+fn test_screen_ink_save_snapshot_exclusive_naming_no_overwrite() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let mock = Arc::new(MockOsHal::new());
+    let ink_module = Arc::new(ScreenInkModule::new(mock.clone()));
+
+    let kernel = AppKernelBuilder::new(temp_dir.path())
+        .with_target_os(TargetOs::MacOs)
+        .register_module_arc(ink_module.clone())
+        .unwrap()
+        .bootstrap()
+        .unwrap();
+
+    let ctx = kernel.context();
+    let ink_png = generate_test_ink_png(64, 64, Rgba([0, 255, 0, 255]));
+
+    // 配置保存目录到 temp_dir
+    let save_dir = temp_dir.path().join("auto_snapshots");
+    let mut cfg = ScreenInkConfig::default();
+    cfg.save_directory = Some(save_dir.to_string_lossy().to_string());
+    ink_module.apply_config(cfg);
+
+    // 连续保存两次（同秒场景）
+    let res1 = ink_module
+        .composite_and_save(ctx, &ink_png, false, None)
+        .unwrap();
+    let res2 = ink_module
+        .composite_and_save(ctx, &ink_png, false, None)
+        .unwrap();
+
+    let path1 = res1.saved_path.unwrap();
+    let path2 = res2.saved_path.unwrap();
+
+    // 验证两次保存生成了互不相同的独立文件，无覆盖
+    assert_ne!(path1, path2);
+    assert!(std::path::Path::new(&path1).exists());
+    assert!(std::path::Path::new(&path2).exists());
+
+    kernel.shutdown().unwrap();
+}
+
+#[test]
+fn test_screen_ink_config_serde_defaults_and_sanitization() {
+    // 1. 空 JSON 得到合法的默认值
+    let empty_json = "{}";
+    let cfg: ScreenInkConfig = serde_json::from_str(empty_json).unwrap();
+    assert_eq!(cfg.default_tool, "pen");
+    assert_eq!(cfg.default_color, "#ef4444");
+    assert_eq!(cfg.default_width, 4.0);
+    assert_eq!(cfg.save_directory, None);
+
+    // 2. 局部 JSON 覆盖与缺省补齐
+    let partial_json = r##"{"default_color": "#00FF00"}"##;
+    let cfg2: ScreenInkConfig = serde_json::from_str(partial_json).unwrap();
+    assert_eq!(cfg2.default_tool, "pen");
+    assert_eq!(cfg2.default_color, "#00FF00");
+    assert_eq!(cfg2.default_width, 4.0);
+
+    // 3. 校验机制清洗非法值
+    let invalid_json = r##"{
+        "default_tool": "illegal_tool_name",
+        "default_color": "not_a_hex_color",
+        "default_width": 999.0,
+        "save_directory": "   "
+    }"##;
+    let mut cfg3: ScreenInkConfig = serde_json::from_str(invalid_json).unwrap();
+    cfg3.sanitize();
+    assert_eq!(cfg3.default_tool, "pen");
+    assert_eq!(cfg3.default_color, "#ef4444");
+    assert_eq!(cfg3.default_width, 4.0); // 极端值重置为 4.0
+    assert_eq!(cfg3.save_directory, None); // 空白字符串重置为 None
+}
+
+#[test]
+fn test_screen_ink_config_applied_on_init() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let mock = Arc::new(MockOsHal::new());
+    let ink_module = Arc::new(ScreenInkModule::new(mock.clone()));
+
+    let kernel = AppKernelBuilder::new(temp_dir.path())
+        .with_target_os(TargetOs::MacOs)
+        .register_module_arc(ink_module.clone())
+        .unwrap()
+        .bootstrap()
+        .unwrap();
+
+    let ctx = kernel.context();
+
+    // 注入自定义配置并调用 on_init
+    let custom_cfg = serde_json::json!({
+        "default_tool": "rect",
+        "default_color": "#34C759",
+        "default_width": 7.5
+    });
+    ctx.config
+        .write()
+        .modules
+        .settings
+        .insert("screen_ink".to_string(), custom_cfg);
+
+    ink_module.on_init(ctx).unwrap();
+
+    let status = ink_module.get_status();
+    assert_eq!(status.active_tool, "rect");
+    assert_eq!(status.color, "#34C759");
+    assert_eq!(status.stroke_width, 7.5);
 
     kernel.shutdown().unwrap();
 }

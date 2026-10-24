@@ -316,6 +316,7 @@
     "exitTooltip": "画面注釈を終了 (⇧⌘D)",
     "toastSaveSuccess": "スナップショットを合成保存しクリップボードにコピーしました",
     "toastSaveFailed": "スナップショットの合成に失敗しました",
+    "toastSaveFileOnly": "ファイル保存に成功しましたが、クリップボードへの書き込みに失敗しました",
     "toastPassthroughOn": "デスクトップ操作モード：マウス操作が下のアプリに透過します",
     "toastPassthroughOff": "描画モードに戻りました",
     "toastSaving": "画面キャプチャと合成処理を実行中...",

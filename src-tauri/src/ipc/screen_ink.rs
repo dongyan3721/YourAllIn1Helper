@@ -61,33 +61,38 @@ impl DesktopHost {
                     .and_then(Value::as_str)
                     .map(String::from);
 
-                // 在纯测试环境（MockOsHal）下使用 mock 提供的单帧
-                let mock_bg_frame = if self.mock_hal.is_some() {
-                    Some(self.os_hal.screen_capturer.capture_monitor(None).unwrap_or(
-                        os_hal::CapturedFrame {
-                            width: 100,
-                            height: 100,
-                            scale_factor_milli: 1000,
-                            rgba_bytes: vec![255u8; 100 * 100 * 4],
-                        },
-                    ))
-                } else {
-                    None
-                };
-
+                // 仅通过注入的 ScreenCapturer 抓取真实底图，绝不在生产环境冒充伪成功
                 let result = self.screen_ink.composite_and_save(
                     ctx,
                     &ink_png_bytes,
                     copy_to_clipboard,
                     file_path,
-                    mock_bg_frame,
                 )?;
                 Ok(serde_json::to_value(result)?)
             }
 
             "ink_get_config" => {
-                let cfg: ScreenInkConfig = ctx.module_settings("screen_ink")?;
+                let mut cfg: ScreenInkConfig =
+                    ctx.module_settings("screen_ink").unwrap_or_default();
+                cfg.sanitize();
                 Ok(serde_json::to_value(cfg)?)
+            }
+
+            "ink_update_settings" => {
+                let mut cfg: ScreenInkConfig = serde_json::from_value(args).map_err(|e| {
+                    CoreError::Config(format!("Invalid screen ink settings: {}", e))
+                })?;
+                cfg.sanitize();
+
+                // 持久化至 AppConfig.modules.settings
+                self.kernel.update_config(|config| {
+                    config.modules.settings.insert(
+                        "screen_ink".to_string(),
+                        serde_json::to_value(&cfg).unwrap_or_default(),
+                    );
+                })?;
+
+                Ok(serde_json::to_value(&cfg)?)
             }
 
             _ => Err(CoreError::Config(format!(
