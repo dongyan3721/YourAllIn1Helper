@@ -833,21 +833,32 @@ function applyDashboardRoute(route: string | null) {
 
 let refreshTimer: ReturnType<typeof setInterval> | undefined;
 let unlistenNavigate: (() => void) | undefined;
+let unlistenKernel: (() => void) | undefined;
 onMounted(async () => {
   const initialRoute = new URLSearchParams(window.location.search).get('route');
   await refreshDashboard();
   applyDashboardRoute(initialRoute);
+  // 即便事件订阅不可用也继续轮询，不让订阅异常中断整个主面板刷新。
+  refreshTimer = setInterval(refreshDashboard, 1000);
   const eventApi = (window as any).__TAURI__?.event;
   if (typeof eventApi?.listen === 'function') {
-    unlistenNavigate = await eventApi.listen('dashboard://navigate', (event: { payload: string }) => {
-      applyDashboardRoute(event.payload);
-    });
+    try {
+      unlistenNavigate = await eventApi.listen('dashboard://navigate', (event: { payload: string }) => {
+        applyDashboardRoute(event.payload);
+      });
+      // 从工具栏退出后立即刷新会话与窗口数，不依赖被遮挡页面的计时器。
+      unlistenKernel = await eventApi.listen('kernel://updated', () => {
+        void refreshDashboard();
+      });
+    } catch (error) {
+      console.warn('主面板原生事件订阅失败，将继续轮询:', error);
+    }
   }
-  refreshTimer = setInterval(refreshDashboard, 1000);
 });
 onUnmounted(() => {
   if (refreshTimer) clearInterval(refreshTimer);
   unlistenNavigate?.();
+  unlistenKernel?.();
 });
 </script>
 

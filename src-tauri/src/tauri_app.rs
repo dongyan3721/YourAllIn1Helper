@@ -63,6 +63,9 @@ impl WindowBackend for TauriWindowBackend {
             }
             window.show().map_err(to_core_error)?;
             window.set_focus().map_err(to_core_error)?;
+            if spec.label == "screen-ink-toolbar" {
+                crate::ink_window::elevate_toolbar(&self.app, &window)?;
+            }
             return Ok(());
         }
 
@@ -97,6 +100,17 @@ impl WindowBackend for TauriWindowBackend {
             }
         }
         if spec.label == "screen-ink-toolbar" {
+            // 仅对两个窗口都设置 always_on_top 不能维持相互顺序：点击画布时
+            // 它会盖住同层工具栏。建立原生从属关系，并由 ink_window 策略补充
+            // macOS 独立层级；保留独立 WebView 与鼠标交互。
+            let canvas = self
+                .app
+                .get_webview_window("screen-ink-canvas")
+                .ok_or_else(|| CoreError::WindowLifecycle {
+                    label: spec.label.clone(),
+                    reason: "Screen ink canvas must exist before toolbar".to_string(),
+                })?;
+            builder = builder.parent(&canvas).map_err(to_core_error)?;
             if let Ok(Some(monitor)) = self.app.primary_monitor() {
                 let size = monitor.size();
                 let position = monitor.position();
@@ -110,7 +124,13 @@ impl WindowBackend for TauriWindowBackend {
             }
         }
 
-        builder.build().map_err(to_core_error)?;
+        let window = builder.build().map_err(to_core_error)?;
+        if spec.label == "screen-ink-toolbar" {
+            if let Err(error) = crate::ink_window::elevate_toolbar(&self.app, &window) {
+                let _ = window.destroy();
+                return Err(error);
+            }
+        }
         Ok(())
     }
 
@@ -151,6 +171,9 @@ impl WindowBackend for TauriWindowBackend {
         if let Some(window) = self.app.get_webview_window(label) {
             if visible {
                 window.show().map_err(to_core_error)?;
+                if label == "screen-ink-toolbar" {
+                    crate::ink_window::elevate_toolbar(&self.app, &window)?;
+                }
             } else {
                 window.hide().map_err(to_core_error)?;
             }

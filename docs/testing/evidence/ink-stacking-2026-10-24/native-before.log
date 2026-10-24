@@ -1,0 +1,12 @@
+   Compiling app-core v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/app-core)
+   Compiling all-in-one-host v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/src-tauri)
+   Compiling os-hal v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/os-hal)
+   Compiling mod-script-runner v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/mod-script-runner)
+   Compiling mod-media-proc v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/mod-media-proc)
+   Compiling mod-sticky-note v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/mod-sticky-note)
+   Compiling mod-screen-ink v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/mod-screen-ink)
+   Compiling mod-window-pin v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/mod-window-pin)
+   Compiling mod-clipboard v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/mod-clipboard)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 8.72s
+     Running `target/debug/all-in-one-desktop --ui-smoke-test`
+UI_SMOKE_RESULT: FAIL: screen ink toolbar must be a native child of canvas

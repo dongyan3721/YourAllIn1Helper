@@ -162,7 +162,9 @@ impl WindowSpec {
             transparent: true,
             always_on_top: true,
             skip_taskbar: true,
-            focus: false,
+            // 启动时让工具栏获得焦点，用户可立即选择工具；后续画布获得焦点时，
+            // 宿主的原生父子关系和层级策略维持工具栏在上方，不反复抢焦点。
+            focus: true,
             ignore_cursor_events: false,
             policy: WindowLifecyclePolicy::Transient {
                 destroy_on_blur: false,

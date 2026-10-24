@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "screen-ink-events",
+  "description": "允许主面板与屏幕注释窗口订阅和清理原生状态事件，不授予文件或系统操作权限。",
+  "windows": ["dashboard", "screen-ink-canvas", "screen-ink-toolbar"],
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"]
+}

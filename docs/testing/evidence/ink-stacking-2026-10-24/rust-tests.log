@@ -1,0 +1,200 @@
+   Compiling app-core v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/app-core)
+   Compiling all-in-one-host v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/src-tauri)
+   Compiling os-hal v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/os-hal)
+   Compiling mod-media-proc v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/mod-media-proc)
+   Compiling mod-sticky-note v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/mod-sticky-note)
+   Compiling mod-script-runner v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/mod-script-runner)
+   Compiling mod-screen-ink v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/mod-screen-ink)
+   Compiling mod-window-pin v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/mod-window-pin)
+   Compiling mod-clipboard v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/mod-clipboard)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 11.93s
+     Running unittests src/lib.rs (target/debug/deps/all_in_one_host-ef8dbe80877dadc8)
+
+running 4 tests
+test native_dialog::tests::cancel_and_selection_payloads_match_the_media_ipc_contract ... ok
+test native_dialog::platform::tests::file_urls_preserve_unicode_spaces_and_multiple_selection_order ... ok
+test native_dialog::tests::module_disable_is_rejected_before_any_native_dialog_work ... ok
+test tests::test_desktop_host_ipc_full_workflow ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.37s
+
+     Running unittests src/main.rs (target/debug/deps/all_in_one_desktop-dd773addcfe64eda)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/feature_integration.rs (target/debug/deps/feature_integration-e2684508fa059ca5)
+
+running 1 test
+test upgrade_preserves_old_data_and_new_feature_switches_are_independent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.98s
+
+     Running tests/modules.rs (target/debug/deps/modules-376a025ff3677d50)
+
+running 13 tests
+test catalog_has_ten_slots_and_unimplemented_blocks_cannot_be_enabled ... ok
+test script_save_uses_applescript_and_powershell_json_contract_with_legacy_aliases ... ok
+test disabling_window_pin_restores_external_windows_and_closes_picker ... ok
+test screen_ink_disable_blocks_ipc_and_cleans_windows ... ok
+test media_native_pickers_require_async_desktop_adapter_and_enabled_module ... ok
+test clipboard_disable_blocks_ipc_and_shortcuts_without_losing_data ... ok
+test host_script_save_reports_and_rolls_back_native_hotkey_failure ... ok
+test script_ipc_crud_run_and_disable_cleanup ... ok
+test v2_config_migration_preserves_existing_settings_and_unknown_fields ... ok
+test media_ipc_runs_real_image_jobs_persists_settings_and_honors_disable ... ok
+test general_config_language_update_persists_across_restarts ... ok
+test script_settings_validate_and_persist_across_restarts ... ok
+test sticky_switch_is_durable_and_restores_windows_only_when_enabled ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.59s
+
+     Running unittests src/lib.rs (target/debug/deps/app_core-fe60f7a4abce1958)
+
+running 4 tests
+test tests::test_snipaste_smart_region_detection_and_wheel_hierarchy ... ok
+test tests::test_cross_platform_shortcut_normalization ... ok
+test tests::test_config_migration_v1_to_v2_preserves_unknown_fields ... ok
+test tests::test_kernel_bootstrap_zero_webview_and_shortcut_dispatch ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.02s
+
+     Running tests/module_lifecycle.rs (target/debug/deps/module_lifecycle-e8a999bfd19f6c3e)
+
+running 4 tests
+test shortcut_conflicts_prevent_enable_before_starting_the_block ... ok
+test failed_persistence_keeps_memory_and_module_state_unchanged ... ok
+test failed_enable_rolls_back_lifecycle_shortcuts_and_persisted_switch ... ok
+test disable_waits_for_inflight_work_then_rejects_new_work ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.64s
+
+     Running tests/window_cleanup.rs (target/debug/deps/window_cleanup-08d16c633d545751)
+
+running 1 test
+test failed_native_cleanup_keeps_window_tracked_until_retry_succeeds ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/mod_clipboard-4934249c96d36f66)
+
+running 2 tests
+test tests::test_clipboard_image_capture_and_blob_storage ... ok
+test tests::test_clipboard_deduplication_lru_eviction_and_suppression ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.47s
+
+     Running unittests src/lib.rs (target/debug/deps/mod_media_proc-6719298d11797f31)
+
+running 5 tests
+test tests::config_and_parameters_are_validated ... ok
+test tests::ffmpeg_progress_parser_accepts_real_pipe_keys ... ok
+test tests::trim_and_volume_validation_rejects_invalid_ranges ... ok
+test tests::output_names_handle_unicode_spaces_and_conflicts ... ok
+test tests::real_rust_codecs_convert_resize_and_never_overwrite ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/lifecycle.rs (target/debug/deps/lifecycle-8805d9808e3da421)
+
+running 1 test
+test image_jobs_survive_restart_and_module_can_restart_cleanly ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.73s
+
+     Running tests/process_control.rs (target/debug/deps/process_control-bb76fb5140d14675)
+
+running 3 tests
+test nonzero_ffmpeg_exit_preserves_actionable_failure_reason ... ok
+test cancellation_and_shutdown_kill_children_and_remove_partial_outputs ... ok
+test semaphore_enforces_configured_concurrency_for_queued_processes ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.84s
+
+     Running tests/real_ffmpeg.rs (target/debug/deps/real_ffmpeg-871d0efd459d21e2)
+
+running 1 test
+test installed_ffmpeg_executes_all_media_operations_and_produces_probeable_outputs ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.46s
+
+     Running unittests src/lib.rs (target/debug/deps/mod_screen_ink-c55436ac24b86528)
+
+running 9 tests
+test tests::test_screen_ink_config_serde_defaults_and_sanitization ... ok
+test tests::test_screen_ink_initial_state_and_shortcuts ... ok
+test tests::clean_capture_visibility_failure_restores_windows_and_can_retry ... ok
+test tests::test_composite_screen_with_ink_exact_and_resized ... ok
+test tests::test_screen_ink_repeated_start_resets_passthrough ... ok
+test tests::test_screen_ink_config_applied_on_init ... ok
+test tests::test_screen_ink_dual_window_session_and_passthrough_lifecycle ... ok
+test tests::test_screen_ink_composite_and_save_snapshot ... ok
+test tests::test_screen_ink_save_snapshot_exclusive_naming_no_overwrite ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.21s
+
+     Running tests/lifecycle.rs (target/debug/deps/lifecycle-69d08aa653f8a5ce)
+
+running 3 tests
+test test_screen_ink_start_session_rollback_on_failure ... ok
+test test_screen_ink_exit_session_error_handling_and_retry ... ok
+test test_screen_ink_module_registration_and_disable_lifecycle ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.90s
+
+     Running unittests src/lib.rs (target/debug/deps/mod_script_runner-2672f5cbf63ff53b)
+
+running 20 tests
+test tests::command_builder_uses_argument_arrays_for_every_supported_type ... ok
+test tests::failing_native_hotkey_sync_restores_updated_script_and_previous_shortcut ... ok
+test tests::inline_script_file_names_are_derived_from_the_type_only ... ok
+test tests::failing_native_hotkey_sync_rolls_back_new_script_and_core_registration ... ok
+test tests::failing_native_hotkey_sync_restores_deleted_script_and_shortcut ... ok
+test tests::delete_removes_script_and_releases_hotkey_but_keeps_run_history ... ok
+test tests::file_script_with_spaces_runs_from_its_directory_and_is_not_modified ... ok
+test tests::hotkeys_follow_module_lifecycle_and_conflicts_are_rejected ... ok
+test tests::script_type_json_contract_matches_ui_and_reads_legacy_aliases ... ok
+test tests::execution_streams_stdout_stderr_and_records_exit_code ... ok
+test tests::final_output_mode_suppresses_live_entries_but_keeps_final_tail ... ok
+test tests::incremental_logs_have_monotonic_sequence_numbers ... ok
+test tests::invalid_inputs_and_output_modes_are_rejected ... ok
+test tests::environment_values_are_injected_only_when_the_adapter_reports_them ... ok
+test tests::log_cache_is_bounded_even_when_script_writes_a_lot ... ok
+test tests::stored_and_runtime_arguments_preserve_spaces_and_quotes ... ok
+test tests::kill_cancels_running_script_and_shutdown_cleans_up ... ok
+test tests::python_node_and_applescript_run_when_interpreters_are_available ... ok
+test tests::script_crud_persists_across_restart_and_init_does_not_execute ... ok
+test tests::timeout_kills_sleeping_script_and_marks_timed_out ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.04s
+
+     Running unittests src/lib.rs (target/debug/deps/mod_sticky_note-499e6ddd7f094995)
+
+running 1 test
+test tests::test_sticky_note_lifecycle_and_zero_webview_when_closed ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.69s
+
+     Running unittests src/lib.rs (target/debug/deps/mod_window_pin-1c6dc8879fe8710a)
+
+running 1 test
+test tests::test_window_pin_toggle_and_auto_restore_on_shutdown ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.64s
+
+     Running unittests src/lib.rs (target/debug/deps/os_hal-820f02870a3296b3)
+
+running 2 tests
+test tests::test_native_windows_list ... ignored, requires a logged-in desktop session
+test tests::test_mock_os_hal_window_topmost_and_paste ... ok
+
+test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/capabilities.rs (target/debug/deps/capabilities-cc21a06a4290869c)
+
+running 2 tests
+test macos_external_topmost_reports_unsupported_without_touching_windows ... ok
+test unimplemented_native_capabilities_do_not_return_mock_results ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

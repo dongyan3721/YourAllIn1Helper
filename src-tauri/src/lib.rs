@@ -31,6 +31,7 @@ use std::{
 };
 
 mod demo;
+mod ink_window;
 mod ipc;
 mod legacy_http;
 mod modules;

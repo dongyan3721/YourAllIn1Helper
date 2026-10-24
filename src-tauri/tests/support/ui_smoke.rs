@@ -11,6 +11,46 @@ fn wait_until(mut condition: impl FnMut() -> bool) -> bool {
     }
     true
 }
+
+/// 读取真实 AppKit 关系和窗口顺序，防止“两个窗口都存在”掩盖工具栏被画布遮住。
+#[cfg(target_os = "macos")]
+fn check_ink_toolbar_stacking(app: &AppHandle) -> anyhow::Result<()> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let handle = app.clone();
+    app.run_on_main_thread(move || {
+        let result = (|| -> anyhow::Result<()> {
+            use objc2::MainThreadMarker;
+            use objc2_app_kit::{NSWindow, NSWindowNumberListOptions};
+
+            let mtm = MainThreadMarker::new().unwrap();
+            let canvas = handle.get_webview_window("screen-ink-canvas").unwrap();
+            let toolbar = handle.get_webview_window("screen-ink-toolbar").unwrap();
+            // SAFETY: Tauri 拥有两个存活窗口；仅在 AppKit 主线程借用原生指针。
+            let canvas: &NSWindow = unsafe { &*canvas.ns_window()?.cast::<NSWindow>() };
+            let toolbar: &NSWindow = unsafe { &*toolbar.ns_window()?.cast::<NSWindow>() };
+            anyhow::ensure!(
+                toolbar.parentWindow().is_some_and(|parent| std::ptr::eq(&*parent, canvas)),
+                "screen ink toolbar must be a native child of canvas"
+            );
+            anyhow::ensure!(toolbar.level() > canvas.level(), "toolbar window level");
+            let ordered = NSWindow::windowNumbersWithOptions(NSWindowNumberListOptions::empty(), mtm)
+                .ok_or_else(|| anyhow::anyhow!("native window ordering unavailable"))?;
+            let numbers: Vec<_> = ordered.iter().map(|number| number.integerValue()).collect();
+            let toolbar_index = numbers.iter().position(|number| *number == toolbar.windowNumber());
+            let canvas_index = numbers.iter().position(|number| *number == canvas.windowNumber());
+            anyhow::ensure!(
+                matches!((toolbar_index, canvas_index), (Some(toolbar), Some(canvas)) if toolbar < canvas),
+                "toolbar must remain above canvas in native z-order: toolbar={}, canvas={}, ordered={numbers:?}",
+                toolbar.windowNumber(), canvas.windowNumber()
+            );
+            Ok(())
+        })();
+        let _ = sender.send(result);
+    })?;
+    receiver.recv_timeout(std::time::Duration::from_secs(5))??;
+    Ok(())
+}
+
 pub(super) fn run_ui_smoke_checks(app: AppHandle, keep_open: bool) {
     std::thread::spawn(move || {
         let host = app.state::<Arc<DesktopHost>>().inner().clone();
@@ -83,6 +123,15 @@ pub(super) fn run_ui_smoke_checks(app: AppHandle, keep_open: bool) {
                     && app.get_webview_window("screen-ink-toolbar").is_some(),
                 "screen ink canvas and independent toolbar"
             );
+            #[cfg(target_os = "macos")]
+            {
+                // 模拟画布绘制抢回焦点，再检查工具栏仍在画布前方，而非仅检查启动顺序。
+                app.get_webview_window("screen-ink-canvas")
+                    .unwrap()
+                    .set_focus()?;
+                check_ink_toolbar_stacking(&app)
+                    .map_err(|error| anyhow::anyhow!("after canvas focus: {error}"))?;
+            }
             let passthrough = host.invoke_ipc(
                 "ink_set_passthrough",
                 serde_json::json!({"passthrough": true}),
@@ -92,6 +141,22 @@ pub(super) fn run_ui_smoke_checks(app: AppHandle, keep_open: bool) {
                 "screen ink passthrough: {:?}",
                 passthrough.error
             );
+            // 截图恢复会依次 show 两个窗口，恢复后也必须维持工具栏层级。
+            for label in ["screen-ink-canvas", "screen-ink-toolbar"] {
+                host.kernel()
+                    .context()
+                    .window_pool
+                    .set_window_visible(label, false)?;
+            }
+            for label in ["screen-ink-canvas", "screen-ink-toolbar"] {
+                host.kernel()
+                    .context()
+                    .window_pool
+                    .set_window_visible(label, true)?;
+            }
+            #[cfg(target_os = "macos")]
+            check_ink_toolbar_stacking(&app)
+                .map_err(|error| anyhow::anyhow!("after hide/show: {error}"))?;
             host.kernel().set_module_enabled("screen_ink", false)?;
             anyhow::ensure!(
                 wait_until(|| app.get_webview_window("screen-ink-canvas").is_none()

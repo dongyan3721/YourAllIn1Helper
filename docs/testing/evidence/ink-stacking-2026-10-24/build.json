@@ -1,0 +1,12 @@
+{
+  "app": "/Users/santa_antilles/Desktop/your_all_in_one/dist/All-in-One Toolbox.app",
+  "qa_app": "/Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/ink-stacking-qa/All-in-One Ink QA.app",
+  "qa_data_dir": "/Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/ink-stacking-qa-data",
+  "executable_sha256": "6a2967b043143db73d29a040abae0c9022b07bdcc1996ec0d1769f4340402d63",
+  "source_base": "c4bde3e",
+  "source_note": "Includes uncommitted screen ink stacking fix; exact production files are in this report commit.",
+  "first_build_sha256": "525ff64c7821a78f2fcb0aaa04f49822c4429ab4d2470fa93f4ee8ecfaa2ab33",
+  "stages": "01-04 screenshots: first build; 05 onward: final build with Dashboard event refresh.",
+  "delivered_executable_sha256": "965f755a2f77583808714053c9cfcb5fb5fabcad0f36354286e8bcfe94db68c5",
+  "final_build_note": "Final App also includes event-listen capabilities and polling fallback. No further GUI automation after the user confirmed functionality and requested commit."
+}

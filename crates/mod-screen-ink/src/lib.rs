@@ -185,10 +185,12 @@ impl ScreenInkModule {
     pub fn exit_session(&self, ctx: &ModuleContext) -> CoreResult<()> {
         let mut first_err: Option<CoreError> = None;
 
-        if let Err(e) = ctx.window_pool.destroy_window("screen-ink-canvas") {
+        // 工具栏现在是画布的原生子窗口，先释放子窗口，再释放画布，
+        // 避免 Windows 自动销毁 owned window 后留下过期的窗口池条目。
+        if let Err(e) = ctx.window_pool.destroy_window("screen-ink-toolbar") {
             first_err = Some(e);
         }
-        if let Err(e) = ctx.window_pool.destroy_window("screen-ink-toolbar") {
+        if let Err(e) = ctx.window_pool.destroy_window("screen-ink-canvas") {
             if first_err.is_none() {
                 first_err = Some(e);
             }

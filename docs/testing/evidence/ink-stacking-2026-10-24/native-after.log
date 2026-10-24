@@ -1,0 +1,4 @@
+   Compiling all-in-one-host v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/src-tauri)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.81s
+     Running `target/debug/all-in-one-desktop --ui-smoke-test`
+UI_SMOKE_RESULT: PASS (native windows, module switches, cleanup, restore, shortcuts)
