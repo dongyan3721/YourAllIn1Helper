@@ -6,6 +6,7 @@ members = [
     "crates/mod-clipboard",
     "crates/mod-sticky-note",
     "crates/mod-window-pin",
+    "crates/mod-script-runner",
     "src-tauri",
 ]
 

@@ -63,6 +63,11 @@ pub trait WindowController: Send + Sync + 'static {
 
 /// 5. Global selected text extractor (`mod-translator`).
 pub trait SelectionExtractor: Send + Sync + 'static {
+    /// Whether this adapter can actually read a text selection. Features must not
+    /// advertise `$AIO_SELECTION` when this returns `false`.
+    fn is_available(&self) -> bool {
+        false
+    }
     /// Extracts currently highlighted text using native Accessibility API first,
     /// falling back to simulated `Ctrl+C`/`Cmd+C` if necessary.
     fn extract_selected_text(&self) -> HalResult<Option<SelectionTextResult>>;

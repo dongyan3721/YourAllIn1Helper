@@ -57,6 +57,7 @@ dependencies = [
  "base64 0.22.1",
  "image",
  "mod-clipboard",
+ "mod-script-runner",
  "mod-sticky-note",
  "mod-window-pin",
  "os-hal",
@@ -2897,6 +2898,23 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tracing",
+]
+
+[[package]]
+name = "mod-script-runner"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "app-core",
+ "chrono",
+ "libc",
+ "parking_lot",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

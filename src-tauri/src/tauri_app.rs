@@ -15,6 +15,8 @@ use tauri::{
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
+use crate::script_env::AioScriptEnvironment;
+use crate::script_events::TauriScriptEventSink;
 use crate::{DesktopHost, IpcRequest, IpcResponse};
 
 const ACTION_CLIPBOARD: &str = "clipboard:toggle_popup";
@@ -160,6 +162,11 @@ fn ipc(app: AppHandle, host: State<'_, Arc<DesktopHost>>, request: IpcRequest) -
         emit_update(&app);
     } else if response.ok && request.cmd == "kernel_update_general_config" {
         // 当用户切换多语言时，同步刷新系统托盘菜单多语言文案并通知各窗口
+        let _ = update_tray_menu(&app);
+        emit_update(&app);
+    } else if response.ok && (request.cmd == "script_save" || request.cmd == "script_delete") {
+        // 脚本 CRUD 可能改变单脚本快捷键与托盘快捷脚本，必须复用现有生命周期同步。
+        let _ = register_global_shortcuts(&app);
         let _ = update_tray_menu(&app);
         emit_update(&app);
     }
@@ -435,6 +442,18 @@ fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error> {
     };
 
     let dashboard = MenuItem::with_id(app, "tray_dashboard", lbl_dash, true, None::<&str>)?;
+    let mut quick_scripts: Vec<(String, String)> = Vec::new();
+    if host.kernel().registry().is_enabled("script_runner") {
+        for script in host
+            .script_runner
+            .list_scripts(host.kernel().context())
+            .unwrap_or_default()
+        {
+            if script.show_in_tray {
+                quick_scripts.push((format!("tray_script_{}", script.id), script.name.clone()));
+            }
+        }
+    }
     let clipboard = MenuItem::with_id(
         app,
         "tray_clipboard",
@@ -458,7 +477,13 @@ fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error> {
         None::<&str>,
     )?;
     let quit = MenuItem::with_id(app, "tray_quit", lbl_quit, true, None::<&str>)?;
-    Menu::with_items(app, &[&dashboard, &clipboard, &sticky, &pin, &quit])
+    let menu = Menu::with_items(app, &[&dashboard, &clipboard, &sticky, &pin])?;
+    for (id, label) in quick_scripts {
+        let item = MenuItem::with_id(app, id, label, true, None::<&str>)?;
+        menu.append(&item)?;
+    }
+    menu.append(&quit)?;
+    Ok(menu)
 }
 
 fn update_tray_menu(app: &AppHandle) -> Result<(), tauri::Error> {
@@ -497,6 +522,20 @@ fn setup_tray(app: &AppHandle) -> Result<(), tauri::Error> {
                 }
                 app.exit(0);
             }
+            id if id.starts_with("tray_script_") => {
+                if let Some(host) = app.try_state::<Arc<DesktopHost>>() {
+                    if let Ok(script_id) = id.trim_start_matches("tray_script_").parse::<i64>() {
+                        if let Err(error) = host.script_runner.execute(
+                            host.kernel().context(),
+                            script_id,
+                            Vec::new(),
+                        ) {
+                            tracing::error!(script_id, %error, "Tray script execution failed");
+                        }
+                        emit_update(app);
+                    }
+                }
+            }
             _ => {}
         })
         .build(app)?;
@@ -525,10 +564,18 @@ pub fn run() {
                 app.path().app_data_dir()?
             };
             let backend = Arc::new(TauriWindowBackend::new(app.handle().clone()));
-            let host = Arc::new(DesktopHost::bootstrap_with_window_backend(
+            let native_hal = os_hal::NativeOsHal::new().into_bundle();
+            let script_environment = Arc::new(AioScriptEnvironment::new(
+                native_hal.selection_extractor.clone(),
+            ));
+            let script_events = Arc::new(TauriScriptEventSink::new(app.handle().clone()));
+            let host = Arc::new(DesktopHost::bootstrap_with_adapters_and_scripting(
                 app_data_dir,
                 false,
                 backend,
+                native_hal,
+                script_environment,
+                script_events,
             )?);
             app.manage(host);
 

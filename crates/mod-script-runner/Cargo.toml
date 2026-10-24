@@ -1,0 +1,23 @@
+[package]
+name = "mod-script-runner"
+description = "Module 06: cross-platform custom script library with isolated process execution, streaming logs, timeout and cancellation."
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+app-core = { path = "../app-core" }
+serde.workspace = true
+serde_json.workspace = true
+rusqlite.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+parking_lot.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3.10"

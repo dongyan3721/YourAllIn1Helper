@@ -17,6 +17,10 @@ impl OcrProvider for NativeOsHal {
 }
 
 impl SelectionExtractor for NativeOsHal {
+    fn is_available(&self) -> bool {
+        false
+    }
+
     fn extract_selected_text(&self) -> HalResult<Option<SelectionTextResult>> {
         Err(HalError::Unsupported("native_selection_extraction"))
     }

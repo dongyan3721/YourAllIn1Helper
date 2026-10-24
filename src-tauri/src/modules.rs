@@ -5,14 +5,25 @@ type Mounted = (
     Arc<ClipboardModule>,
     Arc<StickyNoteModule>,
     Arc<WindowPinModule>,
+    Arc<ScriptRunnerModule>,
 );
-pub(super) fn mount(builder: AppKernelBuilder, hal: &OsHalBundle) -> CoreResult<Mounted> {
+pub(super) fn mount(
+    builder: AppKernelBuilder,
+    hal: &OsHalBundle,
+    script_environment: Arc<dyn ScriptEnvironment>,
+    script_events: Arc<dyn ScriptEventSink>,
+) -> CoreResult<Mounted> {
     let clipboard = Arc::new(ClipboardModule::new(hal.input_simulator.clone()));
     let sticky = Arc::new(StickyNoteModule::new());
     let pin = Arc::new(WindowPinModule::new(hal.window_controller.clone()));
+    let script_runner = Arc::new(ScriptRunnerModule::with_event_sink(
+        script_environment,
+        script_events,
+    ));
     let builder = builder
         .register_module_arc(clipboard.clone())?
         .register_module_arc(sticky.clone())?
-        .register_module_arc(pin.clone())?;
-    Ok((builder, clipboard, sticky, pin))
+        .register_module_arc(pin.clone())?
+        .register_module_arc(script_runner.clone())?;
+    Ok((builder, clipboard, sticky, pin, script_runner))
 }

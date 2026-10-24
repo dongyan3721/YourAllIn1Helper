@@ -329,7 +329,12 @@
         </div>
       </section>
 
-      <!-- Tab 4: 窗口置顶管理 (09 mod-window-pin) -->
+      <!-- Tab 4: 自定义脚本 (06 mod-script-runner) -->
+      <section v-else-if="currentTab === 'scripts'" class="tab-pane">
+        <ScriptRunnerPanel />
+      </section>
+
+      <!-- Tab 5: 窗口置顶管理 (09 mod-window-pin) -->
       <section v-else-if="currentTab === 'winpin'" class="tab-pane">
         <p v-if="!windowPinSupported" class="section-card" style="padding: 12px;">
           {{ t('winpin.unsupportedNotice') }}
@@ -432,6 +437,7 @@ import {
 import Icons from './Icons.vue';
 import ProductLogo from './ProductLogo.vue';
 import ModuleManager from './ModuleManager.vue';
+import ScriptRunnerPanel from './ScriptRunnerPanel.vue';
 import {
   currentThemeMode,
   currentAccent,
@@ -454,6 +460,7 @@ const tabs = [
   { id: 'overview', labelKey: 'tabs.overview', icon: 'dashboard' },
   { id: 'clipboard', module: 'clipboard', labelKey: 'tabs.clipboard', icon: 'clipboard' },
   { id: 'sticky', module: 'sticky_note', labelKey: 'tabs.sticky', icon: 'sticky' },
+  { id: 'scripts', module: 'script_runner', labelKey: 'tabs.scripts', icon: 'terminal' },
   { id: 'winpin', module: 'window_pin', labelKey: 'tabs.winpin', icon: 'pin' },
 ];
 
