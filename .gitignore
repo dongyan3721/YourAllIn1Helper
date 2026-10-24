@@ -1,1 +1,29 @@
-.idea
+# IDE & Local Agent Tooling
+.idea/
+.vscode/
+.workbuddy/
+*.swp
+*.swo
+
+# macOS / OS Metadata
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Rust & Cargo Build Artifacts
+/target/
+/.cargo/
+
+# Packaged Application Bundles & Releases
+/dist/
+
+# Runtime Data, Local Databases & Backups
+/.runtime_data/
+*.db
+*.db-shm
+*.db-wal
+*.bak
+*.tmp
+
+# Frontend / Node Dependencies (if added later)
+node_modules/

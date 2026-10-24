@@ -213,7 +213,7 @@ pub trait AppModule<R: Runtime>: Send + Sync + 'static {
 
 | 序号 | 子功能模块 | Crate 名称 | 主程序运行模式 | 窗口 Label 与销毁策略 | 核心 OS HAL 依赖 | SQLite 数据表 | 默认跨平台快捷键 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **01** | **增强截图 (含 OCR/长截图/GIF)** | `mod-screenshot` | 按需唤醒 (贴图驻留) | `capture-overlay` (瞬态)<br>`pin-img-{id}` (置顶驻留) | `ScreenCapturer`<br>`OcrProvider`<br>`InputSimulator` | `ocr_models_meta` | `F1` (截图)<br>`Shift+F1` (长截图)<br>`SecondaryMod+F1` (GIF) |
+| **01** | **增强截图 (手动框选/智能框推导/OCR/长截图/GIF)** | `mod-screenshot` | 按需唤醒 (贴图驻留) | `capture-overlay` (瞬态)<br>`pin-img-{id}` (置顶驻留) | `ScreenCapturer`<br>`RegionDetector` (窗口/UIA框推导)<br>`OcrProvider`<br>`InputSimulator` | `ocr_models_meta` | `F1` (截图)<br>`Shift+F1` (长截图)<br>`SecondaryMod+F1` (GIF) |
 | **02** | **剪切板管理 (类 Ditto)** | `mod-clipboard` | **后台常驻监听** | `clipboard-popup` (瞬态弹窗) | 剪贴板序列号/ChangeCount 监听 + `InputSimulator` | `clipboard_items` (LRU 100) | `PrimaryMod+Shift+V` |
 | **03** | **桌面屏幕注释 (类 gInk)** | `mod-screen-ink` | 按需唤醒 | `screen-ink-canvas` + `screen-ink-toolbar` (瞬态) | `WindowController::set_ignore_cursor_events` | 无 (配置存于 `config.json`) | `PrimaryMod+Shift+D` |
 | **04** | **桌面置顶便笺 (MD+公式)** | `mod-sticky-note` | 启动时按需恢复已钉住便笺 | `sticky-note-{id}` (置顶驻留，关闭即毁) | `WindowController` (置顶与毛玻璃) | `sticky_notes` | `PrimaryMod+Shift+N` |
@@ -226,13 +226,20 @@ pub trait AppModule<R: Runtime>: Send + Sync + 'static {
 
 ## 5. 10 大子功能模块深度拆解与主程序接入点规范
 
-### 5.1 子功能 01：增强截图工具 (基础截图 / 注释 / 贴图 / OCR / 长截图 / GIF 录制)
+### 5.1 子功能 01：增强截图工具 (基础截图 / 智能框检测与手动框选 / 注释 / 贴图 / OCR / 长截图 / GIF 录制)
 
 #### 1. 技术选型与实现机制
 - **屏幕与窗口捕获**：采用 [`xcap`](https://github.com/nashaofu/xcap) 获取多显示器拓扑、窗口列表边界与高速帧捕获；Windows 下针对高帧率 GIF 与长截图结合 [`windows-capture`](https://github.com/NiiightmareXD/windows-capture) (Windows Graphics Capture API)，macOS 下调用 `ScreenCaptureKit` / `CGWindowListCreateImage`。
+- **交互式区域选择（手动拖拽框选 + 类 Snipaste 基于框检测的智能截图区域推导）**：
+  - **手动自由拖拽框选与像素级微调**：按下截图键冻结屏幕后，支持鼠标左键按下拖拽自由框选任意矩形区域；选定后支持 8 个控制手柄（四角+四边）调整尺寸、方向键（`↑↓←→`）`1px` 像素级平移选区、`Shift + 方向键` `1px` 微调选区宽高，以及长按 `Space` 拖拽平移整个选区。
+  - **类 Snipaste 基于框检测的智能区域推导（三级混合矩形检测树 + 滚轮层级扩缩）**：
+    1. **L1 窗口与子窗口边界检测（Z-Order 窗口树）**：触发截图瞬间，Rust 端按屏幕 Z-Order 枚举所有可见窗口（Windows 调用 `EnumWindows` / `EnumChildWindows` 并结合 `DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)` 剔除透明阴影；macOS 调用 `CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly)`）。
+    2. **L2 UI 控件级框检测（原生无障碍树推导）**：通过 `os-hal` 查询光标所在窗口的 UI 元素层级（Windows 调用 `UIAutomation` 的 `IUIAutomation::ElementFromPoint` 及其父链 `BoundingRectangle`；macOS 调用 `AXUIElementCopyElementAtPosition` 读取 `kAXPositionAttribute` 与 `kAXSizeAttribute`），精准识别按钮、输入框、图表、代码块、工具栏与面板容器边界。
+    3. **L3 视觉边缘闭合框推导（图像梯度兜底）**：针对未暴露无障碍树的自绘界面、图片或游戏窗口，在冻结帧局部区域运行轻量 Sobel 梯度投影与连通矩形拟合（Edge-Box Proposal），自动吸附视觉分界线。
+    4. **零延迟悬停高亮与滚轮父子层级推导**：Rust 将预计算的层级矩形树 `Vec<DetectedRegion>` 随冻结帧同步下发前端；鼠标未按下移动时，前端实时高亮光标命中的最小语义矩形框，单击左键直接锁定该推导区域，按下拖拽则无缝切换为手动自由框选；悬停时**滚动鼠标滚轮（或按 `Tab`）可像 Snipaste 一样在“内部最小子控件框 $\leftrightarrow$ 父级面板容器 $\leftrightarrow$ 整个应用窗口 $\leftrightarrow$ 全屏”之间逐级扩大或收缩推导框**。
 - **Snipaste 核心闭环（截图 + 注释 + 钉住 + 缩放）**：
   - 触发截图瞬间，Rust 端立即抓取全屏快照存入内存 Buffer（通过二进制 IPC `tauri::ipc::Response` 零序列化拷贝传给前端），随后弹出全屏无边框窗口 `capture-overlay`。
-  - 前端使用 HTML5 Canvas 渲染快照、放大镜取色器（支持 `RGB/HEX` 复制）及矢量注释图层（矩形、箭头、马赛克、序号标尺、文字）。
+  - 前端使用 HTML5 Canvas 渲染快照、放大镜取色器（支持 `RGB/HEX` 复制，配合 `W/A/S/D` 或方向键逐像素移动光标）及矢量注释图层（矩形、箭头、马赛克、序号标尺、文字）。
   - **钉住（Pin to Screen）**：点击“钉住”时，Rust 端裁剪选区图像并创建独立无边框置顶窗口 `pin-img-{uuid}`，支持鼠标滚轮无极缩放（10%~500%）、`Shift+滚轮` 调节透明度、双击缩成迷你色块。
 - **OCR 引擎（系统原生优先 + 自定义模型硬件降级）**：
   - **第一优先级（零体积系统原生 OCR）**：
@@ -256,7 +263,7 @@ pub trait AppModule<R: Runtime>: Send + Sync + 'static {
           .commit_from_file(user_model_path)?;
       ```
 - **长截图功能（类 QQ NT 滚动拼接）**：
-  - 用户框选区域开启“长截图”后，主程序将该选区设为鼠标穿透 (`set_ignore_cursor_events(true)`)，通过 [`enigo`](https://github.com/enigo-rs/enigo) 自动向选区中心发送滚轮事件（或由用户手动滚动）。Rust 后台线程以 15 FPS 抓取选区图像，剔除首尾固定导航栏后，计算相邻帧行特征哈希与归一化互相关（NCC）定位纵向偏移量 $\Delta y$ 实时拼接。
+  - 用户框选区域（或通过智能框检测锁定目标滚动容器）开启“长截图”后，主程序将该选区设为鼠标穿透 (`set_ignore_cursor_events(true)`)，通过 [`enigo`](https://github.com/enigo-rs/enigo) 自动向选区中心发送滚轮事件（或由用户手动滚动）。Rust 后台线程以 15 FPS 抓取选区图像，剔除首尾固定导航栏后，计算相邻帧行特征哈希与归一化互相关（NCC）定位纵向偏移量 $\Delta y$ 实时拼接。
 - **GIF 录制功能（支持自选分辨率）**：
   - 用户框选录制区域并选择输出分辨率（原画 / 1080p / 720p / 480p / 自定义宽高）与帧率（10/15/24/30 FPS）。Rust 后台线程定时捕获选区帧，使用 [`image`](https://github.com/image-rs/image) 缩放后送入 [`gifski`](https://github.com/imageoptim/gifski) 流式量化编码生成高质量 GIF。
 
@@ -281,7 +288,7 @@ pub trait AppModule<R: Runtime>: Send + Sync + 'static {
   }
   ```
 - **Tauri IPC 通信契约**：
-  - Commands：`screenshot_get_frozen_frame`, `screenshot_pin_to_screen`, `screenshot_execute_ocr`, `screenshot_start_scroll`, `screenshot_stop_scroll`, `screenshot_start_gif`, `screenshot_stop_gif`
+  - Commands：`screenshot_get_frozen_frame`, `screenshot_detect_regions`, `screenshot_query_element_at_point`, `screenshot_pin_to_screen`, `screenshot_execute_ocr`, `screenshot_start_scroll`, `screenshot_stop_scroll`, `screenshot_start_gif`, `screenshot_stop_gif`
   - Events：`screenshot://scroll-frame-stitched`、`screenshot://gif-recording-stats`、`screenshot://ocr-provider-fallback`
 - **窗口接入策略**：`capture-overlay` 完成截图后立即 `destroy()`；`pin-img-{uuid}` 仅在贴图存在时驻留，关闭贴图即 `destroy()`；OCR Session 在闲置 180 秒后自动释放。
 
