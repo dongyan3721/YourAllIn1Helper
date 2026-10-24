@@ -246,7 +246,7 @@ async fn test_cancellation_and_discard_late_fixture() {
     tokio::time::sleep(Duration::from_millis(30)).await;
 
     // 立即取消
-    service.cancel_current().await;
+    service.cancel_current();
 
     // 等待服务端延迟超时
     tokio::time::sleep(Duration::from_millis(400)).await;

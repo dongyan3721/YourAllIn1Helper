@@ -24,6 +24,7 @@ const ACTION_CLIPBOARD: &str = "clipboard:toggle_popup";
 const ACTION_SCREEN_INK: &str = "screen_ink:toggle_session";
 const ACTION_STICKY: &str = "sticky_note:create";
 const ACTION_PIN_FOREGROUND: &str = "window_pin:toggle_foreground";
+const ACTION_TRANSLATOR: &str = "translator:translate_selection";
 
 fn to_core_error(error: impl std::fmt::Display) -> CoreError {
     CoreError::Internal(anyhow::anyhow!(error.to_string()))
@@ -582,8 +583,15 @@ fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error> {
             && host.os_hal.window_controller.supports_external_topmost(),
         None::<&str>,
     )?;
+    let translator_item = MenuItem::with_id(
+        app,
+        "tray_translator",
+        "划词翻译",
+        host.kernel().registry().is_enabled("translator"),
+        None::<&str>,
+    )?;
     let quit = MenuItem::with_id(app, "tray_quit", lbl_quit, true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&dashboard, &clipboard, &ink, &sticky, &pin])?;
+    let menu = Menu::with_items(app, &[&dashboard, &clipboard, &translator_item, &ink, &sticky, &pin])?;
     for (id, label) in quick_scripts {
         let item = MenuItem::with_id(app, id, label, true, None::<&str>)?;
         menu.append(&item)?;
@@ -620,6 +628,7 @@ fn setup_tray(app: &AppHandle) -> Result<(), tauri::Error> {
                 }
             }
             "tray_clipboard" => trigger_action(app, ACTION_CLIPBOARD),
+            "tray_translator" => trigger_action(app, ACTION_TRANSLATOR),
             "tray_ink" => trigger_action(app, ACTION_SCREEN_INK),
             "tray_sticky" => trigger_action(app, ACTION_STICKY),
             "tray_pin" => trigger_action(app, ACTION_PIN_FOREGROUND),
@@ -699,6 +708,16 @@ pub fn run() {
                     }),
                 );
             })));
+            let trans_app = app.handle().clone();
+            host.translator.set_event_sink(Arc::new(move |req_id, event| {
+                let _ = trans_app.emit(
+                    "translator://stream-chunk",
+                    serde_json::json!({
+                        "request_id": req_id,
+                        "event": event,
+                    }),
+                );
+            }));
             app.manage(host);
 
             register_global_shortcuts(app.handle())?;

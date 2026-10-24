@@ -62,6 +62,7 @@ dependencies = [
  "mod-screen-ink",
  "mod-script-runner",
  "mod-sticky-note",
+ "mod-translator",
  "mod-window-pin",
  "objc2",
  "objc2-app-kit",

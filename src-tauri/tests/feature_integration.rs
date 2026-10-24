@@ -59,6 +59,7 @@ fn upgrade_preserves_old_data_and_new_feature_switches_are_independent() {
             "screen_ink",
             "sticky_note",
             "script_runner",
+            "translator",
             "media_proc",
             "window_pin"
         ]

@@ -14,7 +14,7 @@ use crate::{
     },
 };
 use app_core::{CoreError, CoreResult};
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use std::{
     collections::HashMap,
     sync::{
@@ -22,7 +22,6 @@ use std::{
         Arc,
     },
 };
-use tokio::sync::Mutex as TokioMutex;
 
 /// 事件下发回调类型：(request_id, event)
 pub type StreamEventSink = Arc<dyn Fn(u64, TranslationStreamEvent) + Send + Sync + 'static>;
@@ -32,7 +31,7 @@ pub struct TranslatorService {
     providers: Arc<RwLock<HashMap<String, Arc<dyn TranslationProvider>>>>,
     credentials: Arc<dyn CredentialStorage>,
     current_request_id: Arc<AtomicU64>,
-    active_task: Arc<TokioMutex<Option<tokio::task::JoinHandle<()>>>>,
+    active_task: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 impl TranslatorService {
@@ -57,7 +56,7 @@ impl TranslatorService {
             providers: Arc::new(RwLock::new(map)),
             credentials,
             current_request_id: Arc::new(AtomicU64::new(0)),
-            active_task: Arc::new(TokioMutex::new(None)),
+            active_task: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -100,9 +99,8 @@ impl TranslatorService {
     }
 
     /// 取消当前正在进行的翻译任务。
-    pub async fn cancel_current(&self) {
-        let mut lock = self.active_task.lock().await;
-        if let Some(task) = lock.take() {
+    pub fn cancel_current(&self) {
+        if let Some(task) = self.active_task.lock().take() {
             task.abort();
         }
         // 递增 request_id，彻底隔离所有在网络队列中的迟到包
@@ -123,11 +121,8 @@ impl TranslatorService {
 
         // 2. 取消旧任务并生成新的 request_id
         let req_id = self.current_request_id.fetch_add(1, Ordering::SeqCst) + 1;
-        {
-            let mut lock = self.active_task.lock().await;
-            if let Some(task) = lock.take() {
-                task.abort();
-            }
+        if let Some(task) = self.active_task.lock().take() {
+            task.abort();
         }
 
         // 3. 解析目标 Provider
@@ -182,8 +177,7 @@ impl TranslatorService {
             let _ = forwarder.await;
         });
 
-        let mut lock = self.active_task.lock().await;
-        *lock = Some(handle);
+        *self.active_task.lock() = Some(handle);
 
         Ok(req_id)
     }

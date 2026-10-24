@@ -21,6 +21,7 @@ use mod_script_runner::events::ScriptEventSink;
 use mod_script_runner::hotkey::ScriptHotkeySync;
 use mod_script_runner::ScriptRunnerModule;
 use mod_sticky_note::{StickyNoteModule, StickyNoteWindowStateUpdate};
+use mod_translator::TranslatorModule;
 use mod_window_pin::WindowPinModule;
 use os_hal::{ExternalWindowInfo, MockOsHal, NativeOsHal, OsHalBundle};
 use serde::{Deserialize, Serialize};
@@ -86,6 +87,7 @@ pub struct DesktopHost {
     script_runner: Arc<ScriptRunnerModule>,
     screen_ink: Arc<ScreenInkModule>,
     media_proc: Arc<MediaProcModule>,
+    translator: Arc<TranslatorModule>,
     os_hal: OsHalBundle,
     mock_hal: Option<MockOsHal>,
 }
@@ -221,6 +223,7 @@ impl DesktopHost {
             script_runner,
             screen_ink,
             media_proc,
+            translator,
         } = modules::mount(
             builder,
             &os_hal,
@@ -236,6 +239,7 @@ impl DesktopHost {
             script_runner,
             screen_ink,
             media_proc,
+            translator,
             os_hal,
             mock_hal,
         })

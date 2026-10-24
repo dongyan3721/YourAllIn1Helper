@@ -28,7 +28,7 @@ fn catalog_has_ten_slots_and_unimplemented_blocks_cannot_be_enabled() {
     let modules = call(&host, "kernel_list_modules", json!({}));
     let modules = modules.as_array().unwrap();
     assert_eq!(modules.len(), 10);
-    assert_eq!(modules.iter().filter(|m| m["available"] == true).count(), 6);
+    assert_eq!(modules.iter().filter(|m| m["available"] == true).count(), 7);
     assert!(
         !host
             .invoke_ipc(

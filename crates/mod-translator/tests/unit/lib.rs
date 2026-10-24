@@ -210,7 +210,7 @@ async fn test_sequence_ordering_and_late_result_discard() {
         .is_err());
 
     // 2. 取消旧任务递增 sequence ID
-    service.cancel_current().await;
+    service.cancel_current();
 }
 
 #[test]

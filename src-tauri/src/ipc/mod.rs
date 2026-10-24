@@ -6,6 +6,7 @@ mod media;
 mod screen_ink;
 mod script;
 mod sticky_note;
+mod translator;
 mod window_pin;
 impl DesktopHost {
     pub(crate) fn dispatch_inner(&self, cmd: &str, args: Value) -> CoreResult<Value> {
@@ -25,6 +26,8 @@ impl DesktopHost {
                 ("script_runner", Self::dispatch_script)
             } else if cmd.starts_with("ink_") {
                 ("screen_ink", Self::dispatch_screen_ink)
+            } else if cmd.starts_with("translator_") {
+                ("translator", Self::dispatch_translator)
             } else {
                 return Err(CoreError::Config(format!("Unknown IPC command: {}", cmd)));
             };

@@ -127,8 +127,8 @@ impl TranslatorModule {
     }
 
     /// 取消当前正在执行的翻译。
-    pub async fn cancel_current_translation(&self) {
-        self.service.cancel_current().await;
+    pub fn cancel_current_translation(&self) {
+        self.service.cancel_current();
     }
 
     /// 是否处于运行状态。
@@ -228,11 +228,8 @@ impl AppModule for TranslatorModule {
     fn on_shutdown(&self, ctx: &ModuleContext) -> CoreResult<()> {
         self.is_active.store(false, Ordering::SeqCst);
 
-        // 取消正在运行的翻译任务
-        let service = self.service.clone();
-        tokio::spawn(async move {
-            service.cancel_current().await;
-        });
+        // 取消正在运行的翻译任务（纯同步锁清理，无需依赖外部异步上下文）
+        self.service.cancel_current();
 
         // 销毁浮动气泡窗口，防止孤儿残留
         let _ = ctx.window_pool.destroy_window("translate-popover");
