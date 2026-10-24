@@ -4,6 +4,7 @@ mod clipboard;
 mod kernel;
 mod media;
 mod screen_ink;
+mod screenshot;
 mod script;
 mod sticky_note;
 mod window_pin;
@@ -25,6 +26,8 @@ impl DesktopHost {
                 ("script_runner", Self::dispatch_script)
             } else if cmd.starts_with("ink_") {
                 ("screen_ink", Self::dispatch_screen_ink)
+            } else if cmd.starts_with("screenshot_") {
+                ("screenshot", Self::dispatch_screenshot)
             } else {
                 return Err(CoreError::Config(format!("Unknown IPC command: {}", cmd)));
             };

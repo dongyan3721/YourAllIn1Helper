@@ -56,6 +56,10 @@ impl TauriWindowBackend {
 impl WindowBackend for TauriWindowBackend {
     fn create_or_focus_window(&self, spec: &WindowSpec) -> CoreResult<()> {
         if let Some(window) = self.app.get_webview_window(&spec.label) {
+            if spec.label == mod_screenshot::OVERLAY_LABEL {
+                // 截图遮罩只能在前端绘制冻结帧后由 overlay_ready 显示，避免露出未绘制的窗口。
+                return Ok(());
+            }
             if spec.label == "dashboard" {
                 self.app
                     .emit("dashboard://navigate", spec.route.clone())
@@ -88,6 +92,10 @@ impl WindowBackend for TauriWindowBackend {
         }
         if let (Some(x), Some(y)) = (spec.x, spec.y) {
             builder = builder.position(x, y);
+        }
+        if spec.label == mod_screenshot::OVERLAY_LABEL {
+            // 冻结帧先于遮罩：遮罩隐藏创建，位置与尺寸已由模块按被截显示器的逻辑坐标给出。
+            builder = builder.visible(false).shadow(false);
         }
         if spec.label == "window-pin-picker" || spec.label == "screen-ink-canvas" {
             if let Ok(Some(monitor)) = self.app.primary_monitor() {
@@ -169,6 +177,9 @@ impl WindowBackend for TauriWindowBackend {
 
     fn set_window_visible(&self, label: &str, visible: bool) -> CoreResult<()> {
         if let Some(window) = self.app.get_webview_window(label) {
+            if visible && label == mod_screenshot::OVERLAY_LABEL {
+                return crate::screenshot_window::present_capture_overlay(&self.app, &window);
+            }
             if visible {
                 window.show().map_err(to_core_error)?;
                 if label == "screen-ink-toolbar" {
@@ -207,15 +218,46 @@ async fn ipc(app: AppHandle, request: IpcRequest) -> IpcResponse {
         .map(|id| host.kernel().registry().is_enabled(id));
     let response = host.invoke_ipc(&request.cmd, request.args);
     if response.ok && request.cmd == "kernel_set_module_enabled" {
-        if let Err(error) = register_global_shortcuts(&app) {
+        let now_enabled = module_id
+            .as_deref()
+            .map(|id| host.kernel().registry().is_enabled(id));
+        let rollback_reason = match register_global_shortcuts(&app) {
+            Err(error) => Some(error.to_string()),
+            // 只有刚开启的模块自身快捷键注册失败才撤销开启；其他模块的失败已记录供界面显示。
+            Ok(failures) if now_enabled == Some(true) && previous == Some(false) => failures
+                .iter()
+                .find(|f| Some(f.module_id.as_str()) == module_id.as_deref())
+                .map(|f| format!("{}（{}）：{}", f.accelerator, f.action_id, f.error)),
+            Ok(_) => None,
+        };
+        if let Some(reason) = rollback_reason {
             if let (Some(id), Some(enabled)) = (module_id.as_deref(), previous) {
                 let _ = host.kernel().set_module_enabled(id, enabled);
             }
             let _ = register_global_shortcuts(&app);
+            let _ = update_tray_menu(&app);
             emit_update(&app);
-            return IpcResponse::err(format!("更新系统快捷键失败，已尝试还原模块状态：{}", error));
+            return IpcResponse::err(format!(
+                "更新系统快捷键失败，已尝试还原模块状态：{}",
+                reason
+            ));
         }
         let _ = update_tray_menu(&app);
+        if module_id.as_deref() == Some(mod_screenshot::MODULE_ID)
+            && !host
+                .kernel()
+                .registry()
+                .is_enabled(mod_screenshot::MODULE_ID)
+        {
+            // 模块 on_shutdown 已经销毁；这里兜底清理窗口池之外残留的同名原生窗口。
+            for (label, window) in app.webview_windows() {
+                if label == mod_screenshot::OVERLAY_LABEL
+                    || label.starts_with(mod_screenshot::pins::PIN_LABEL_PREFIX)
+                {
+                    let _ = window.destroy();
+                }
+            }
+        }
         if module_id.as_deref() == Some("window_pin")
             && !host.kernel().registry().is_enabled("window_pin")
         {
@@ -258,6 +300,17 @@ async fn ipc(app: AppHandle, request: IpcRequest) -> IpcResponse {
     } else if response.ok && request.cmd == "ink_clear_canvas" {
         let _ = app.emit("screen-ink://clear-canvas", json!({}));
         emit_update(&app);
+    } else if response.ok
+        && matches!(
+            request.cmd.as_str(),
+            "screenshot_start_capture"
+                | "screenshot_cancel"
+                | "screenshot_close_pin"
+                | "screenshot_close_all_pins"
+                | "screenshot_update_settings"
+        )
+    {
+        emit_update(&app);
     }
     response
 }
@@ -282,21 +335,59 @@ fn trigger_action(app: &AppHandle, action_id: &str) {
     }
 }
 
-fn register_global_shortcuts(app: &AppHandle) -> anyhow::Result<()> {
+/// 单个系统快捷键注册失败的记录。
+struct NativeShortcutFailure {
+    module_id: String,
+    action_id: String,
+    accelerator: String,
+    error: String,
+}
+
+/// 按核心注册表重新注册全部系统快捷键。
+///
+/// 单个按键被其他程序占用时继续注册其余按键，失败项写入宿主供界面如实显示，
+/// 由调用方决定是否回滚触发本次同步的模块开关；不再因一个按键失败导致整个应用启动失败。
+fn register_global_shortcuts(app: &AppHandle) -> anyhow::Result<Vec<NativeShortcutFailure>> {
     app.global_shortcut().unregister_all()?;
     let host = app.state::<Arc<DesktopHost>>();
+    let mut failures = Vec::new();
     for shortcut in host.kernel().context().shortcut_registry.list_all() {
-        let action_id = shortcut.spec.action_id;
-        app.global_shortcut().on_shortcut(
+        let action_id = shortcut.spec.action_id.clone();
+        let registered = app.global_shortcut().on_shortcut(
             shortcut.physical_accelerator.as_str(),
             move |app, _, event| {
                 if event.state == ShortcutState::Pressed {
                     trigger_action(app, &action_id);
                 }
             },
-        )?;
+        );
+        if let Err(error) = registered {
+            tracing::error!(
+                action_id = %shortcut.spec.action_id,
+                accelerator = %shortcut.physical_accelerator,
+                %error,
+                "Global shortcut registration failed"
+            );
+            failures.push(NativeShortcutFailure {
+                module_id: shortcut.spec.module_id.clone(),
+                action_id: shortcut.spec.action_id.clone(),
+                accelerator: shortcut.physical_accelerator.clone(),
+                error: error.to_string(),
+            });
+        }
     }
-    Ok(())
+    host.set_native_shortcut_failures(
+        failures
+            .iter()
+            .map(|f| {
+                (
+                    f.action_id.clone(),
+                    format!("{}：{}", f.accelerator, f.error),
+                )
+            })
+            .collect(),
+    );
+    Ok(failures)
 }
 
 #[cfg(target_os = "macos")]
@@ -511,6 +602,13 @@ fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error> {
         .language
         .to_ascii_lowercase();
 
+    let lbl_shot = if lang.starts_with("en") {
+        "Capture Region (F1)"
+    } else if lang.starts_with("ja") || lang.starts_with("jp") {
+        "範囲スクリーンショット (F1)"
+    } else {
+        "区域截图 (F1)"
+    };
     let (lbl_dash, lbl_clip, lbl_ink, lbl_sticky, lbl_pin, lbl_quit) = if lang.starts_with("en") {
         (
             "Open Dashboard",
@@ -553,6 +651,15 @@ fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error> {
             }
         }
     }
+    let screenshot = MenuItem::with_id(
+        app,
+        "tray_screenshot",
+        lbl_shot,
+        host.kernel()
+            .registry()
+            .is_enabled(mod_screenshot::MODULE_ID),
+        None::<&str>,
+    )?;
     let clipboard = MenuItem::with_id(
         app,
         "tray_clipboard",
@@ -583,7 +690,10 @@ fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error> {
         None::<&str>,
     )?;
     let quit = MenuItem::with_id(app, "tray_quit", lbl_quit, true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&dashboard, &clipboard, &ink, &sticky, &pin])?;
+    let menu = Menu::with_items(
+        app,
+        &[&dashboard, &screenshot, &clipboard, &ink, &sticky, &pin],
+    )?;
     for (id, label) in quick_scripts {
         let item = MenuItem::with_id(app, id, label, true, None::<&str>)?;
         menu.append(&item)?;
@@ -619,6 +729,7 @@ fn setup_tray(app: &AppHandle) -> Result<(), tauri::Error> {
                     emit_update(app);
                 }
             }
+            "tray_screenshot" => trigger_action(app, mod_screenshot::ACTION_CAPTURE),
             "tray_clipboard" => trigger_action(app, ACTION_CLIPBOARD),
             "tray_ink" => trigger_action(app, ACTION_SCREEN_INK),
             "tray_sticky" => trigger_action(app, ACTION_STICKY),
@@ -660,7 +771,12 @@ pub fn run() {
     let keep_open = std::env::args().any(|arg| arg == "--keep-open");
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![ipc])
+        .invoke_handler(tauri::generate_handler![
+            ipc,
+            crate::screenshot_binary::screenshot_frame,
+            crate::screenshot_binary::screenshot_pin_image,
+            crate::screenshot_binary::screenshot_export
+        ])
         .setup(move |app| {
             // 人工 GUI 回归可使用独立的数据目录，避免改动日常使用记录。
             let app_data_dir = if let Some(path) = gui_test::data_dir() {
@@ -699,8 +815,13 @@ pub fn run() {
                     }),
                 );
             })));
+            // 仅真实桌面进程向截图模块注入系统剪贴板；无桌面测试保持「不可用」实现。
+            host.screenshot.set_clipboard(Arc::new(
+                crate::screenshot_clipboard::ArboardScreenshotClipboard,
+            ));
             app.manage(host);
 
+            // 个别按键被其他程序占用时继续启动，失败项已记录并在对应功能页显示。
             register_global_shortcuts(app.handle())?;
             setup_tray(app.handle())?;
             start_clipboard_listener(app.handle());
@@ -738,6 +859,16 @@ pub fn run() {
                         let _ = host
                             .sticky_note
                             .close_note(host.kernel().context(), note_id);
+                    } else if let Some(pin_id) =
+                        label.strip_prefix(mod_screenshot::pins::PIN_LABEL_PREFIX)
+                    {
+                        // 系统关闭贴图（如 Cmd+W）：销毁窗口并释放贴图 PNG。
+                        let _ = pool.destroy_window(label);
+                        host.screenshot.forget_pin(pin_id);
+                    } else if label == mod_screenshot::OVERLAY_LABEL {
+                        let _ = host
+                            .screenshot
+                            .cancel_capture(host.kernel().context(), None);
                     } else {
                         let _ = pool.destroy_window(label);
                     }

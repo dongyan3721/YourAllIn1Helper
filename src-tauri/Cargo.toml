@@ -19,6 +19,7 @@ tauri-plugin-global-shortcut = "2"
 arboard = "3.7.0"
 app-core = { path = "../crates/app-core" }
 os-hal = { path = "../crates/os-hal" }
+mod-screenshot = { path = "../crates/mod-screenshot" }
 mod-clipboard = { path = "../crates/mod-clipboard" }
 mod-screen-ink = { path = "../crates/mod-screen-ink" }
 mod-media-proc = { path = "../crates/mod-media-proc" }

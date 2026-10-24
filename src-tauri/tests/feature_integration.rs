@@ -55,6 +55,7 @@ fn upgrade_preserves_old_data_and_new_feature_switches_are_independent() {
     assert_eq!(
         ids,
         [
+            "screenshot",
             "clipboard",
             "screen_ink",
             "sticky_note",

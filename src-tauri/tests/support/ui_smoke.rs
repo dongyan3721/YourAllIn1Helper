@@ -51,6 +51,119 @@ fn check_ink_toolbar_stacking(app: &AppHandle) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// 读取遮罩的真实 AppKit 层级，确认位于菜单栏之上，而不只是「窗口存在」。
+#[cfg(target_os = "macos")]
+fn overlay_native_level(app: &AppHandle) -> anyhow::Result<isize> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let handle = app.clone();
+    app.run_on_main_thread(move || {
+        let result = (|| -> anyhow::Result<isize> {
+            use objc2_app_kit::NSWindow;
+            let overlay = handle
+                .get_webview_window(mod_screenshot::OVERLAY_LABEL)
+                .ok_or_else(|| anyhow::anyhow!("capture overlay missing"))?;
+            // SAFETY: Tauri 持有存活窗口；仅在 AppKit 主线程借用原生指针。
+            let window: &NSWindow = unsafe { &*overlay.ns_window()?.cast::<NSWindow>() };
+            Ok(window.level())
+        })();
+        let _ = sender.send(result);
+    })?;
+    receiver.recv_timeout(std::time::Duration::from_secs(5))?
+}
+
+/// 截图闭环：真实冻结帧 → 隐藏遮罩 → 绘制后显示并提升层级 → 贴图 → 关闭 → 停用清理。
+/// 缺屏幕录制权限时验证如实报错且不创建遮罩。
+fn check_screenshot_lifecycle(app: &AppHandle, host: &Arc<DesktopHost>) -> anyhow::Result<()> {
+    use serde_json::json;
+    let overlay = || app.get_webview_window(mod_screenshot::OVERLAY_LABEL);
+    if !host.screenshot().permission_status().granted {
+        let denied = host.invoke_ipc("screenshot_start_capture", json!({}));
+        anyhow::ensure!(
+            !denied.ok,
+            "capture must fail without screen recording permission"
+        );
+        anyhow::ensure!(overlay().is_none(), "no overlay without permission");
+        println!(
+            "UI_SMOKE_NOTE: screenshot capture skipped, permission denied: {:?}",
+            denied.error
+        );
+        return Ok(());
+    }
+    let started = host.invoke_ipc("screenshot_start_capture", json!({"hide_dashboard": true}));
+    anyhow::ensure!(started.ok, "start capture: {:?}", started.error);
+    let info = started.data.unwrap();
+    let session_id = info["session_id"].as_str().unwrap().to_string();
+    let window = overlay().ok_or_else(|| anyhow::anyhow!("capture overlay WebView"))?;
+    anyhow::ensure!(
+        !window.is_visible()?,
+        "overlay must stay hidden before frame is drawn"
+    );
+    let frame = host.screenshot_frame_bytes(&session_id)?;
+    anyhow::ensure!(
+        frame.len() as u64
+            == info["frame_width"].as_u64().unwrap() * info["frame_height"].as_u64().unwrap() * 4,
+        "frozen frame byte length"
+    );
+    let ready = host.invoke_ipc(
+        "screenshot_overlay_ready",
+        json!({"session_id": session_id}),
+    );
+    anyhow::ensure!(ready.ok, "overlay ready: {:?}", ready.error);
+    anyhow::ensure!(
+        wait_until(|| window.is_visible().unwrap_or(false)),
+        "overlay shown"
+    );
+    #[cfg(target_os = "macos")]
+    {
+        let level = overlay_native_level(app)?;
+        anyhow::ensure!(
+            level > objc2_app_kit::NSMainMenuWindowLevel,
+            "overlay level {level} must be above the menu bar"
+        );
+    }
+    let pinned = host.screenshot_export(
+        &session_id,
+        app_core::SelectionBox {
+            x: 0,
+            y: 0,
+            width: 64,
+            height: 48,
+        },
+        mod_screenshot::export::ExportAction::Pin,
+        None,
+    )?;
+    let pin_label = pinned.pin.as_ref().unwrap().label.clone();
+    anyhow::ensure!(
+        wait_until(|| overlay().is_none() && app.get_webview_window(&pin_label).is_some()),
+        "pin replaces overlay"
+    );
+    let closed = host.invoke_ipc(
+        "screenshot_close_pin",
+        json!({"pin_id": pinned.pin.unwrap().pin_id}),
+    );
+    anyhow::ensure!(closed.ok, "close pin: {:?}", closed.error);
+    anyhow::ensure!(
+        wait_until(|| app.get_webview_window(&pin_label).is_none()),
+        "pin destroyed"
+    );
+
+    let again = host.invoke_ipc("screenshot_start_capture", json!({"hide_dashboard": true}));
+    anyhow::ensure!(again.ok, "second capture: {:?}", again.error);
+    host.kernel()
+        .set_module_enabled(mod_screenshot::MODULE_ID, false)?;
+    anyhow::ensure!(
+        wait_until(|| overlay().is_none()),
+        "disable destroys capture overlay"
+    );
+    anyhow::ensure!(
+        !host.screenshot().has_active_session(),
+        "disable releases frozen frame"
+    );
+    host.kernel()
+        .set_module_enabled(mod_screenshot::MODULE_ID, true)?;
+    Ok(())
+}
+
 pub(super) fn run_ui_smoke_checks(app: AppHandle, keep_open: bool) {
     std::thread::spawn(move || {
         let host = app.state::<Arc<DesktopHost>>().inner().clone();
@@ -73,9 +186,10 @@ pub(super) fn run_ui_smoke_checks(app: AppHandle, keep_open: bool) {
                     .iter()
                     .filter(|m| m["available"] == true)
                     .count()
-                    == 6,
-                "six mounted feature modules"
+                    == 7,
+                "seven mounted feature modules"
             );
+            check_screenshot_lifecycle(&app, &host)?;
             host.kernel().trigger_action(ACTION_CLIPBOARD)?;
             anyhow::ensure!(
                 app.get_webview_window("clipboard-popup").is_some(),

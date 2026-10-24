@@ -113,7 +113,8 @@ pub struct ScreenshotStatus {
 pub struct ScreenshotModule {
     capturer: Arc<dyn ScreenCapturer>,
     regions: Arc<dyn RegionDetector>,
-    clipboard: Arc<dyn ScreenshotClipboard>,
+    /// 宿主可在启动后替换为真实系统剪贴板；无桌面环境保持构造时注入的实现。
+    clipboard: RwLock<Arc<dyn ScreenshotClipboard>>,
     /// 串行化会话的开始/导出/取消；开始截图只 `try_lock`，主线程快捷键永不阻塞等待。
     gate: Mutex<()>,
     session: RwLock<Option<SharedSession>>,
@@ -162,7 +163,7 @@ impl ScreenshotModule {
         Self {
             capturer,
             regions,
-            clipboard,
+            clipboard: RwLock::new(clipboard),
             gate: Mutex::new(()),
             session: RwLock::new(None),
             overlay_visible: AtomicBool::new(false),
@@ -170,6 +171,15 @@ impl ScreenshotModule {
             last_export: RwLock::new(None),
             last_error: RwLock::new(None),
         }
+    }
+
+    /// 替换剪贴板端口（生产宿主在 Tauri 启动后注入系统剪贴板）。
+    pub fn set_clipboard(&self, clipboard: Arc<dyn ScreenshotClipboard>) {
+        *self.clipboard.write() = clipboard;
+    }
+
+    fn clipboard(&self) -> Arc<dyn ScreenshotClipboard> {
+        self.clipboard.read().clone()
     }
 
     // ───────────────────────────── 配置 ─────────────────────────────
@@ -490,7 +500,7 @@ impl ScreenshotModule {
         match action {
             ExportAction::Copy => {
                 // 仅复制时剪贴板失败即整体失败，遮罩恢复供用户改为保存。
-                self.clipboard
+                self.clipboard()
                     .write_image(image.width(), image.height(), image.as_raw())
                     .map_err(|e| internal(format!("复制到系统剪贴板失败：{}", e)))?;
                 outcome.copied = true;
@@ -503,10 +513,11 @@ impl ScreenshotModule {
                 let path = export::write_exclusive(&dir, &stem, &png)?;
                 outcome.saved_path = Some(path.to_string_lossy().to_string());
                 if settings.copy_after_save {
-                    match self
-                        .clipboard
-                        .write_image(image.width(), image.height(), image.as_raw())
-                    {
+                    match self.clipboard().write_image(
+                        image.width(),
+                        image.height(),
+                        image.as_raw(),
+                    ) {
                         Ok(()) => outcome.copied = true,
                         Err(error) => outcome.clipboard_error = Some(error),
                     }
@@ -624,7 +635,7 @@ impl ScreenshotModule {
         let rgba = image::load_from_memory_with_format(&record.png, image::ImageFormat::Png)
             .map_err(|e| internal(format!("贴图解码失败：{}", e)))?
             .to_rgba8();
-        self.clipboard
+        self.clipboard()
             .write_image(rgba.width(), rgba.height(), rgba.as_raw())
             .map_err(|e| internal(format!("复制到系统剪贴板失败：{}", e)))
     }
@@ -647,7 +658,7 @@ impl ScreenshotModule {
         if !(config::is_hex_color(text) || is_rgb_text(text)) {
             return Err(internal("颜色格式无效"));
         }
-        self.clipboard
+        self.clipboard()
             .write_text(text)
             .map_err(|e| internal(format!("复制颜色失败：{}", e)))
     }

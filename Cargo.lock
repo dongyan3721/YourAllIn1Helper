@@ -60,6 +60,7 @@ dependencies = [
  "mod-clipboard",
  "mod-media-proc",
  "mod-screen-ink",
+ "mod-screenshot",
  "mod-script-runner",
  "mod-sticky-note",
  "mod-window-pin",
