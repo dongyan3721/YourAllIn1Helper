@@ -1,0 +1,76 @@
+{
+  "files": [
+    {
+      "file": "01-script-output.png",
+      "sha256": "61e6f05fd31efeeade53500ee1c186f0f4b0350f00b734d9ad4fdd3e412672e9"
+    },
+    {
+      "file": "02-script-timeout.png",
+      "sha256": "bc50f6da73cf80faf26fc820de1d9ed5bf7a0c9b7b5de57ee5ed07d64fa2c3f1"
+    },
+    {
+      "file": "03-script-cancel.png",
+      "sha256": "d3777b24c573d25f14b7e1b76b1707c4adda3868504e05a1686436d688b85eef"
+    },
+    {
+      "file": "04-script-disabled.png",
+      "sha256": "a628eb68ea37ab052dd42382619564ee0179ec40fde7d6c82ec4aa899bbe5018"
+    },
+    {
+      "file": "05-restart-state.png",
+      "sha256": "8729a8a57831dd247346491b60afde36d0e9df2aa545ba6adc73d9beb5feed27"
+    },
+    {
+      "file": "06-native-file-picker.png",
+      "sha256": "1b7ce56c4fc9d14a68bb0e87abefbe80da7f02e558ef7f446d196786ec943d05"
+    },
+    {
+      "file": "07-image-converted.png",
+      "sha256": "ce72aa6ae0edf358a677899be3f67b06559401aa6246ed13336e9c9216f59b4e"
+    },
+    {
+      "file": "08-ffmpeg-audio-completed.png",
+      "sha256": "96ccc80f16962f5b1f66ba13d059ae60ebfcf5b3907008e430c6034c11e643a9"
+    },
+    {
+      "file": "09-ink-stroke.png",
+      "sha256": "07b50036dec3d65173e705d8e18aa4286c882358bede675b4c75f1ad173bb091"
+    },
+    {
+      "file": "10-ink-passthrough.png",
+      "sha256": "025397bbecc48b810de9c2b0d76c147f6af76c4151fd9124ba1b8d49ab485689"
+    },
+    {
+      "file": "11-ink-exited.png",
+      "sha256": "d16355dc10968bb4f4544f0df598f28f1b9fa309825cbe7d094085b3fb1dd134"
+    },
+    {
+      "file": "12-restored-script-history.png",
+      "sha256": "a611d929e1e8b6397922d6907f6ee50d8b2c0b916e7c9aa7a6cd05a9b59e5e42"
+    },
+    {
+      "file": "jpg-probe.json",
+      "sha256": "06aa505ae1b1462b50b240a0464a9795adccd7d2410327e935d221654abd248a"
+    },
+    {
+      "file": "mp3-probe.json",
+      "sha256": "4c6630ee17b885bb4d3a03d9c2595874ee98b8d91ca79eaaefc27d279033f347"
+    },
+    {
+      "file": "native-smoke.log",
+      "sha256": "958878f724df4a3b09ebd705d397906d95042f62493222f810f81fc8b2d8b7a0"
+    },
+    {
+      "file": "rust-tests.log",
+      "sha256": "2c843805426e5efabe670fc603a62963f13c062805a8b91e809a047700a131ed"
+    },
+    {
+      "file": "ui-build.log",
+      "sha256": "7997d602e2f925733e8842ede93bbad42180de846006922cde702bbe4a966a24"
+    },
+    {
+      "file": "ui-tests.log",
+      "sha256": "36eade3ece6be060a036a006e389a30b95954a9e025fea8bd4b002c5049a8b42"
+    }
+  ]
+}

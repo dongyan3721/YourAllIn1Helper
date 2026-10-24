@@ -1,5 +1,7 @@
 # 功能 08 基础多媒体处理：GUI 验收用例
 
+> 集成阶段已完成原生面板、图片缩放转换与音频提取的实际 GUI 操作，见 [2026-10-24 集成报告](INTEGRATION_REPORT_2026-10-24.md)。下表保留本功能分支开发阶段的原始状态，完整组合用例仍待执行。
+
 - 模块：`media_proc` / `mod-media-proc`
 - 分支：`codex/feature-media-proc`
 - 数据隔离：仅使用 `ALL_IN_ONE_GUI_TEST_DATA_DIR` 指向 worktree `.runtime_data` 下的临时目录；输入样本也必须位于该目录。

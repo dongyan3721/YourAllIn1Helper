@@ -1,5 +1,7 @@
 # 全能桌面效率工具 (All-in-One Desktop) 接续开发探索与功能点 Check 文档
 
+03/06/08 三模块集成、构建和实际 GUI 执行范围见 [2026-10-24 集成报告](docs/testing/INTEGRATION_REPORT_2026-10-24.md)；待测项以该报告为准。
+
 > **核心红线声明**：
 > 1. **严禁 Mock 数据**：后续所有功能开发必须对接真实系统底层 API 或真实的跨平台第三方库，严禁用假数据/Mock桩替代真实能力。
 > 2. **代码中文注释**：后续所有编写或重构的代码（Rust 后端、前端 JS/TS/HTML/CSS、脚本等）必须包含规范详尽的中文注释。
@@ -11,7 +13,7 @@
 
 - [x] **平台适配器拆分与生产环境零 Mock 剥离**：`NativeOsHal` 已彻底移除 `MockOsHal` 回退字段；尚未实现的原生能力明确返回 `HalError::Unsupported`，`MockOsHal` 仅用于显式的无桌面自动化测试，绝不作为生产降级。
 - [x] **测试、配置与业务源码分离**：各 Crate 单元测试迁入独立 `tests/unit/` 与 `tests/`，配置结构与持久化拆分至 `config/schema.rs` 与 `config/persistence.rs`，前端多语言配置与字典拆分至 `src-ui/src/config/`、`src-ui/src/locales/` 与 `src-ui/tests/unit/`。
-- [x] **十个功能槽位统一目录与运行时即时开关**：主控台总览支持即时启停已挂载积木（02、04、06、09），其余六项明确标注「待开发」，不创建空壳模块冒充已实现能力。
+- [x] **十个功能槽位统一目录与运行时即时开关**：主控台总览支持即时启停已挂载积木（02、03、04、06、08、09），其余四项明确标注「待开发」，不创建空壳模块冒充已实现能力。
 - [x] **前端国际化多语言系统 (i18n)**：支持 `zh-CN`（简体中文）、`en-US`（English）、`ja-JP`（日本語）三语实时切换、跨 WebView 窗口秒级同步、系统托盘菜单动态本地化，并通过 `kernel_update_general_config` IPC 原子持久化至 `config.json`。
 - [x] **官方高保真纯矢量 SVG 产品 Logo 与全套桌面图标**：基于「哆啦A梦四维百宝袋与竹蜻蜓旋翼道具」设计完成纯矢量 `logo.svg`、`ProductLogo.vue` 组件及 32-bit RGBA 跨平台应用/托盘图标。
 - [x] **GUI 回归测试体系**：建立 [GUI 测试计划](docs/testing/GUI_TEST_PLAN.md)、测试报告与截图证据归档规范，具体接入约定以 [功能积木架构说明](docs/MODULE_ARCHITECTURE.md) 为准，新功能可从 `templates/module/` 起步。
@@ -96,12 +98,12 @@ flowchart TD
 | **00** | **微内核与前端公共底座** | `app-core`<br>`src-tauri`<br>`src-ui` | **已完成 100%** | - [x] `AppKernel` 插件注册与统一生命周期上下文注入<br>- [x] 十槽位功能积木注册表（`MODULE_CATALOG`）与运行时动态启停开关（`set_module_enabled`）<br>- [x] Level 0 纯后台常驻（0 WebView，内存 < 25MB）<br>- [x] Level 1 瞬态窗口即用即销毁（`destroy()`）<br>- [x] Level 2 置顶窗口按需驻留<br>- [x] SQLite WAL 模式与 Schema 自动增量迁移<br>- [x] 版本化配置（`v1 -> v2 -> v3`）向前/向后兼容迁移与 schema/persistence 分离<br>- [x] 跨平台快捷键逻辑修饰键归一化與动态重绑<br>- [x] 零运行时 PATH 探测器与 macOS GUI 环境修补<br>- [x] Snipaste 三级智能框与滚轮层级推导算法<br>- [x] Apple HIG 主题引擎（浅色/深色/跟随系统 + 6 种强调色跨窗口同步）<br>- [x] **前端国际化多语言系统（`zh-CN` / `en-US` / `ja-JP` 字典分离、跨窗口同步、托盘本地化与 `config.json` 持久化）**<br>- [x] **哆啦A梦百宝袋旋翼高保真纯矢量 SVG 产品 Logo（`logo.svg`、`ProductLogo.vue` 及全套 RGBA 桌面图标）**<br>- [x] 源码、配置文件与独立单元测试（`tests/unit/`）物理分离 | `rusqlite`, `tokio`, `serde`, `tauri`, `vue` |
 | **01** | **增强截图与贴图** | `mod-screenshot` | **待新建** *(Phase 2)* | - [ ] 全屏透明捕获画布 (`capture-overlay`) 零拷贝渲染快照<br>- [ ] 鼠标自由拖拽框选、8 个手柄缩放、方向键 1px 微调<br>- [ ] 智能框检测推导高亮与滚轮逐级扩缩（子控件 $\leftrightarrow$ 窗口 $\leftrightarrow$ 屏幕）<br>- [ ] 屏幕放大镜与 RGB/HEX 像素取色器<br>- [ ] 矢量标注工具箱（矩形、箭头、马赛克、序号、文字）<br>- [ ] Snipaste 贴图独立置顶无边框窗口（滚轮缩放、透明度、双击折叠）<br>- [ ] **原生系统 OCR（macOS Vision / Windows.Media.Ocr，绝无 Mock）**<br>- [ ] 滚动长截图实时 NCC 特征拼接<br>- [ ] 高质量 GIF 录制与 `gifski` 编码导出 | `xcap`, `image`, Apple `Vision` / `windows-rs`, `gifski` |
 | **02** | **剪切板管理器** | `mod-clipboard` | **已完成 100%** | - [x] SQLite `clipboard_items` 表持久化<br>- [x] 文本/图片 SHA-256 去重与重复更新时间戳置顶<br>- [x] LRU-100 自动淘汰与 Pin 固定项豁免<br>- [x] 防污染屏蔽守卫（配合划词翻译与密码本）<br>- [x] 快速粘贴上屏（瞬态弹窗先销毁再发按键）<br>- [x] 系统剪贴板实时监听后台线程（真实文本+真实图片双通道，支持模块停用休眠）<br>- [x] 图片剪贴板真实 PNG 落盘与 JPEG Base64 缩略图渲染<br>- [x] 支持图片写回系统剪贴板与模拟粘贴<br>- [x] 工程化 Vue 3 极简弹窗（含多语言、主题跟随、空列表 Esc 销毁、上下键/回车键快速粘贴） | `arboard`, `image`, `enigo`, `sha2`, `rusqlite` |
-| **03** | **桌面屏幕注释** | `mod-screen-ink` | **待新建** *(Phase 2)* | - [ ] 双窗口分离架构：全屏透明画布 + 置顶胶囊工具栏<br>- [ ] 快捷键一键切换“画笔绘制”与“鼠标穿透底层桌面”模式<br>- [ ] 压感笔迹、半透明荧光笔、2 秒消隐激光笔、几何图形<br>- [ ] 橡皮擦、一键清屏与历史撤销重做<br>- [ ] 屏幕底图与墨迹 PNG 合成导出/一键复制入剪贴板 | `xcap`, `image`, Canvas 2D / WebGL |
+| **03** | **桌面屏幕注释** | `mod-screen-ink` | **已接入，GUI 回归见集成报告** | - [x] 透明画布与独立工具栏、鼠标穿透<br>- [x] 画笔/荧光笔/激光笔/几何标注、撤销重做<br>- [x] 单帧底图合成、独占文件保存与复制结果反馈<br>- [x] 窗口创建失败回滚、停用销毁与事件同步<br>- [ ] 跨多显示器完整验收 | `xcap`, `image`, Canvas 2D, Tauri |
 | **04** | **桌面置顶富文本便笺** | `mod-sticky-note` | **已完成 100%** | - [x] `sticky_notes` 表结构与 CRUD<br>- [x] Level 2 驻留生命周期（关闭便笺立即销毁 WebView，停用模块自动收起、启用按需恢复）<br>- [x] 独立无边框置顶窗口、边缘拖拽拉伸、多主题色、透明度调节<br>- [x] 真实标准 Markdown 解析与真实 KaTeX 矢量数学公式渲染<br>- [x] 内容 400ms 防抖自动写入数据库<br>- [x] 支持便笺一键导出为标准 Markdown 文件 (.md)<br>- [x] 主控台便笺库管理（打开/唤醒/归档/删除）与全界面多语言国际化支持 | `rusqlite`, `uuid`, `marked`, `katex` |
 | **05** | **应用使用时长统计** | `mod-app-usage` | **待新建** *(Phase 3)* | - [ ] **真实前台焦点应用监听（无 Mock，读取 Bundle ID/进程名/窗口标题）**<br>- [ ] **真实息屏与键鼠空闲（AFK）无操作检测**<br>- [ ] 内存秒级会话累加 + 焦点切换/每分钟低 I/O 批量 UPSERT<br>- [ ] 主控台可视化看板（每日总时长、每小时分布柱状图、分类饼图）<br>- [ ] 应用分类管理与白名单/忽略名单设置 | macOS `NSWorkspace`, Win32 `WinEventHook` |
 | **06** | **自定义脚本收录与执行** | `mod-script-runner` | **已接入** | - [x] 结合 `EnvProbeService` 调度 Python/Node/Shell/PowerShell/AppleScript/Batch/VBScript<br>- [x] 显式注入真实 `$AIO_CLIPBOARD` 与 `$AIO_SELECTION`，Unsupported 不伪造<br>- [x] 为单条脚本绑定全局快捷键并接入启停生命周期<br>- [x] 动态挂载到系统托盘“快捷脚本”子菜单<br>- [x] 子进程管道流式输出、取消/超时杀进程与主控台日志面板 | `std::process`, `app-core::env_probe`, `rusqlite` |
 | **07** | **全局划词翻译** | `mod-translator` | **待新建** *(Phase 3)* | - [ ] **无障碍通道选中文本读取（AXUIElement / UIAutomation，无 Mock）**<br>- [ ] 模拟按键复制兜底通道 + 剪贴板防污染自动闭环<br>- [ ] 划词结束触发 20x20 悬浮小图标或快捷键直接呼出<br>- [ ] 瞬态悬浮气泡窗 (`translate-popover`) 跟随光标<br>- [ ] 多翻译源 API 网关（Google、DeepL、OpenAI 兼容模型 SSE 流式输出） | macOS `AXUIElement`, Win32 `UIAutomation` |
-| **08** | **基础多媒体处理** | `mod-media-proc` | **待新建** *(Phase 4)* | - [ ] 纯 Rust 图片批处理（PNG/JPG/WebP/AVIF/ICO 互转、有损/无损压缩）<br>- [ ] 系统 FFmpeg 音视频裁剪任务队列（无损快速切割与重新编码）<br>- [ ] 视频提取音频、音量标准化处理<br>- [ ] 解析 `ffmpeg -progress pipe:1` 实时向前端推送任务进度百分比<br>- [ ] 主控台拖拽文件批量转换面板 | `image`, `rayon`, 系统 `ffmpeg` 子进程 |
+| **08** | **基础多媒体处理** | `mod-media-proc` | **已接入，GUI 回归见集成报告** | - [x] PNG/JPEG/WebP/BMP/ICO 编解码、质量与缩放<br>- [x] FFmpeg 转换/裁剪/提取音频/音量调整<br>- [x] 进度、并发、取消与停用清理、历史持久化<br>- [x] FFmpeg 9.0.2 真实样本集成测试<br>- [ ] Windows 实机回归 | `image`, 本机 FFmpeg/FFprobe |
 | **09** | **任意窗口置顶小工具** | `mod-window-pin` | **框架已接入；macOS 原窗口持续置顶不支持** | - [x] 双触发模式：当前活动窗口置顶 + 全屏准星拾取外部窗口<br>- [x] 内存句柄生命周期追踪与守护<br>- [x] **守护进程退出 (`on_shutdown`) 或模块停用时自动还原所有外部窗口原始状态**<br>- [x] macOS 原生高精度窗口枚举（彻底过滤 Layer 24 的 Window Server 与 Layer 20 的 Dock 等系统合成层，无 Mock）<br>- [x] 解决 macOS 无屏幕录制权限时标题丢失问题，平滑回退至 NSRunningApplication 本地化真实应用名称<br>- [x] 全屏准星拾取层彻底移除全屏暗色蒙层与模糊，采用原生 `crosshair` 十字准星与悬浮微高亮<br>- [x] 平台能力边界誠实声明（macOS `supports_external_topmost() == false` 时明确提示并禁用置顶按钮，保留窗口枚举与激活）<br>- [x] 主控台外部真实窗口列表管理、一键刷新、激活与多语言国际化支持 | `xcap`, `objc2`, `enigo`, Win32 / macOS 窗口 API |
 | **10** | **生物识别加密密码本** | `mod-password-vault` | **待新建** *(Phase 3)* | - [ ] **真实原生系统生物识别鉴权（Touch ID / Windows Hello，无 Mock）**<br>- [ ] 主密码 Argon2id 派生 + 256 位 DEK + AES-256-GCM 字段级加密<br>- [ ] 内存敏感密钥包装与 180 秒无操作自动清零上锁<br>- [ ] 密码复制时联动剪贴板防污染屏蔽，并在 30 秒后自动清空系统剪贴板<br>- [ ] 密码库增删改查、分类筛选与密码生成器 | `argon2`, `aes-gcm`, `zeroize`, 系统 LocalAuthentication |
 
@@ -124,5 +126,5 @@ flowchart LR
    - 建立 `capture-overlay` 全屏透明画布与 Snipaste 贴图窗口 `pin-img-{id}`；
    - 接入真实 macOS Apple `Vision` OCR / Windows `Windows.Media.Ocr`；
    - 严格保持「配置、业务代码、单测分离」与详尽**中文注释**。
-2. **创建 `crates/mod-screen-ink`（03 桌面屏幕注释）**：
-   - 落地 `screen-ink-canvas` 全屏透明画布与 `screen-ink-toolbar` 胶囊工具栏双窗口联动及鼠标穿透控制。
+2. **补齐新模块跨平台及多显示器回归**：
+   - 03/06/08 已完成本地集成；验收结果及待复核项以本次集成报告为准，不以模块自测代替 GUI 结果。

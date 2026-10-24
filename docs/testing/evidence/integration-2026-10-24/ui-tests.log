@@ -1,0 +1,13 @@
+$ node --test tests/unit/i18n.test.mjs tests/unit/ink.test.mjs
+✔ zh-CN, en-US, and ja-JP locale files have identical key schemas and non-empty translations (1.750458ms)
+✔ high-fidelity SVG product logo exists in both public and assets directories and contains valid vector geometry (0.150292ms)
+✔ InkHistoryManager maintains undo/redo stack properly (0.379958ms)
+✔ LaserPointerManager automatically prunes points older than 2000ms (0.0925ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 46.025917

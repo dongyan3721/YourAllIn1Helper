@@ -1,0 +1,37 @@
+{
+  "prepared_at": "2026-10-24T21:27:57.097653+08:00",
+  "app": "/Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/integration-qa/All-in-One Toolbox Integration QA.app",
+  "data_dir": "/Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/integration-qa-data",
+  "executable_sha256": "28f856ab8724567f85caaaa2f9dec0b85a5de7740395dc15089d70955fac7e28",
+  "stage": "integration GUI regression",
+  "previous_builds": [
+    {
+      "prepared_at": "2026-10-24T21:03:54.161529+08:00",
+      "app": "/Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/integration-qa/All-in-One Toolbox Integration QA.app",
+      "data_dir": "/Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/integration-qa-data",
+      "executable_sha256": "61b90e336a13a1ac23be6104051642c3966e498fb64a5ece7d08537148a20e7f",
+      "stage": "initial integrated build; screen-ink review fixes pending"
+    },
+    {
+      "prepared_at": "2026-10-24T21:25:43.570211+08:00",
+      "app": "/Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/integration-qa/All-in-One Toolbox Integration QA.app",
+      "data_dir": "/Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/integration-qa-data",
+      "executable_sha256": "6637636f677cdd625906a8115ee4bd42dc8477bca87c81dcf1bbf9bd77fb745e",
+      "stage": "integration GUI regression",
+      "source_head": "df7e42bb32f3166d9a79b3e81d2e2d1fee95a66d",
+      "source_dirty": true
+    }
+  ],
+  "source_head": "df7e42bb32f3166d9a79b3e81d2e2d1fee95a66d",
+  "source_dirty": true,
+  "delivered_app": "/Users/santa_antilles/Desktop/your_all_in_one/dist/All-in-One Toolbox.app",
+  "verified_production_commit": "5fa64a99d62d1811d37a171b66e996e990beb288",
+  "verified_executable_sha256": "28f856ab8724567f85caaaa2f9dec0b85a5de7740395dc15089d70955fac7e28",
+  "build_source_note": "Built with the native media picker fix before its merge commit; source_head/source_dirty preserve the build-time state. Remaining changes at verification are documentation/evidence only.",
+  "environment": {
+    "macos": "27.0",
+    "build": "26A428",
+    "arch": "arm64",
+    "ffmpeg": "9.0.2"
+  }
+}

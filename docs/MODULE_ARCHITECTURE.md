@@ -15,7 +15,7 @@
 | `crates/os-hal/src/platform/windows/` | 外部窗口能力和各操作系统实现 |
 | `crates/os-hal/src/mock.rs` | 显式注入的测试适配器；生产适配器不再回退到 Mock |
 | `crates/mod-*/src/` | 功能自身的领域逻辑 |
-| `src-tauri/src/modules.rs` | 主程序唯一的具体功能装配点 |
+| `src-tauri/src/modules.rs` | 主程序唯一的具体功能装配点；命名字段返回同一组模块 Arc |
 | `src-tauri/src/ipc/` | 按功能分离的 IPC 适配及统一开关检查 |
 | `*/tests/unit/` | 从业务源码搬出的单元测试，保留访问私有实现的能力 |
 | `*/tests/*.rs` | 对公共接口的集成与生命周期测试 |
@@ -55,7 +55,7 @@
 3. 实现生命周期、迁移、快捷键；后台任务句柄归模块持有。配置类型和测试放各自文件。
 4. 在 `src-tauri/src/modules.rs` 构造实例并通过 `register_module_arc` 挂载。同一个 Arc 用于注册表和 IPC，避免运行两个实例。
 5. 在 `src-tauri/src/ipc/` 加适配器，并在路由中经 `with_enabled` 进入；前端根据目录状态显示入口。
-6. 为启停、资源清理、禁用时拒绝调用、设置持久化写测试。目录中已有的六个待开发槽位挂载后自动变为 available。
+6. 为启停、资源清理、禁用时拒绝调用、设置持久化写测试。目录中已有的四个待开发槽位挂载后自动变为 available。
 
 ## 平台边界
 
