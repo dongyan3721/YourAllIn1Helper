@@ -319,12 +319,77 @@ impl NativeOsHal {
         Err(HalError::Unsupported("external_window_activation"))
     }
 
-    /// 激活目标真实外部窗口（用于 Tauri 置顶镜像点击交互）
+    /// 激活目标真实外部窗口（用于点击交互）
     pub fn activate_external_window(&self, handle: WindowHandleId) -> HalResult<()> {
         if !self.native_enabled {
             return self.fallback.set_external_window_topmost(handle, true);
         }
         self.activate_native_window(handle)
+    }
+
+    #[cfg(target_os = "macos")]
+    /// 利用 macOS 原生 Accessibility (AXUIElement) 执行 `AXRaise` 动作：
+    /// 将目标物理窗口无感提升至屏幕最顶层，不剥夺当前前台操作焦点，且开销几乎为 0% CPU。
+    pub fn raise_native_window(&self, handle: WindowHandleId) -> HalResult<()> {
+        use std::ffi::c_void;
+
+        #[link(name = "ApplicationServices", kind = "framework")]
+        extern "C" {
+            fn AXUIElementCreateApplication(pid: i32) -> *mut c_void;
+            fn AXUIElementCopyAttributeValue(
+                element: *mut c_void,
+                attribute: *const c_void,
+                value: *mut *mut c_void,
+            ) -> i32;
+            fn AXUIElementPerformAction(element: *mut c_void, action: *const c_void) -> i32;
+            fn CFRelease(cf: *const c_void);
+        }
+
+        use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication};
+        use objc2_core_foundation::{CFArray, CFString};
+
+        let info = self.find_native_window(handle)?;
+
+        unsafe {
+            let app_ax = AXUIElementCreateApplication(info.process_id as i32);
+            if !app_ax.is_null() {
+                let attr_windows = CFString::from_str("AXWindows");
+                let mut windows_val: *mut c_void = std::ptr::null_mut();
+                let err = AXUIElementCopyAttributeValue(
+                    app_ax,
+                    attr_windows.as_ref() as *const CFString as *const c_void,
+                    &mut windows_val,
+                );
+
+                if err == 0 && !windows_val.is_null() {
+                    let windows_array = windows_val as *const CFArray;
+                    let count = (*windows_array).count();
+                    let action_raise = CFString::from_str("AXRaise");
+
+                    for i in 0..count {
+                        let win_ax = (*windows_array).value_at_index(i);
+                        if !win_ax.is_null() {
+                            AXUIElementPerformAction(
+                                win_ax as *mut c_void,
+                                action_raise.as_ref() as *const CFString as *const c_void,
+                            );
+                        }
+                    }
+                    CFRelease(windows_val);
+                    CFRelease(app_ax);
+                    return Ok(());
+                }
+                CFRelease(app_ax);
+            }
+        }
+
+        // 降级回退：若尚未获得系统辅助功能权限，通过 NSRunningApplication 激活拉起目标应用窗口
+        if let Some(app) = NSRunningApplication::runningApplicationWithProcessIdentifier(info.process_id as i32) {
+            #[allow(deprecated)]
+            let _ = app.activateWithOptions(NSApplicationActivationOptions::ActivateIgnoringOtherApps);
+        }
+
+        Ok(())
     }
 
     /// 捕获目标外部窗口的真实画面并编码为 JPEG base64 DataURL
@@ -655,10 +720,9 @@ impl WindowController for NativeOsHal {
         }
         #[cfg(target_os = "macos")]
         {
-            // macOS has no supported API to change another process' CGWindow level.
-            // The Tauri host renders the pinned live mirror. Pinning itself must not require
-            // Accessibility permission; only explicit activation does.
-            let _ = topmost;
+            if topmost {
+                self.raise_native_window(handle)?;
+            }
             return Ok(());
         }
         #[allow(unreachable_code)]

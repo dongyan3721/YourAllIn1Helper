@@ -9,6 +9,9 @@
     <!-- 窗口置顶全屏准星拾取层视图 -->
     <WindowPinPicker v-else-if="nativeWindowType === 'window-pin-picker'" />
 
+    <!-- macOS 原生置顶轻量图钉角标视图 -->
+    <PinBadge v-else-if="nativeWindowType === 'pin-badge'" />
+
     <!-- macOS 原生置顶镜像画中画视图 -->
     <PinMirror v-else-if="nativeWindowType === 'pin-mirror'" />
 
@@ -24,6 +27,7 @@ import ClipboardPopup from './components/ClipboardPopup.vue';
 import StickyNote from './components/StickyNote.vue';
 import WindowPinPicker from './components/WindowPinPicker.vue';
 import PinMirror from './components/PinMirror.vue';
+import PinBadge from './components/PinBadge.vue';
 import { initTheme } from './utils/theme';
 
 // 全局初始化 macOS 主题（白蓝色调、主题色与明暗跟随）
@@ -39,6 +43,8 @@ const rawWindow = urlParams.get('window') || '';
 const nativeWindowType = ref(
   rawWindow.startsWith('sticky-note')
     ? 'sticky-note'
+    : rawWindow.startsWith('pin-badge')
+    ? 'pin-badge'
     : rawWindow.startsWith('pin-mirror')
     ? 'pin-mirror'
     : rawWindow

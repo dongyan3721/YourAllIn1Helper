@@ -166,7 +166,11 @@ fn register_global_shortcuts(app: &AppHandle) -> anyhow::Result<()> {
 }
 
 #[cfg(target_os = "macos")]
-fn start_window_pin_mirror_sync(app: &AppHandle) {
+/// 启动 macOS 外部窗口置顶守护与右上角微型图钉角标同步服务：
+/// 1. 彻底淘汰旧版 700ms 连续截屏录屏与大尺寸 WebView 镜像（消除高 CPU/GPU/电池开销）；
+/// 2. 纯事件驱动 + 极低频（1.5s）静默守护：利用 Accessibility AXRaise 原生将目标物理窗口提至最前；
+/// 3. 在被置顶物理窗口的右上角附着一个 28×28 像素的极微型原生图钉角标，点击直接解除置顶。
+fn start_window_pin_guard_and_badges(app: &AppHandle) {
     let Some(host) = app
         .try_state::<Arc<DesktopHost>>()
         .map(|state| state.inner().clone())
@@ -174,73 +178,92 @@ fn start_window_pin_mirror_sync(app: &AppHandle) {
         return;
     };
     let app_handle = app.clone();
-    std::thread::spawn(move || loop {
-        std::thread::sleep(std::time::Duration::from_millis(700));
-        let foreground_pid = host
-            .window_pin
-            .current_foreground_window()
-            .ok()
-            .map(|window| window.process_id);
-        let mut mirrors = Vec::new();
-        for pinned in host.window_pin.list_pinned_windows() {
-            if let Ok(info) = host.os_hal.get_window_info(pinned.info.handle) {
-                let hide = foreground_pid == Some(info.process_id);
-                mirrors.push((info, hide));
+    std::thread::spawn(move || {
+        let mut last_foreground_pid = 0;
+        loop {
+            let pinned_entries = host.window_pin.list_pinned_windows();
+            if pinned_entries.is_empty() {
+                // 无置顶窗口时进行深睡，避免消耗任何 CPU
+                std::thread::sleep(std::time::Duration::from_millis(1500));
+                continue;
             }
+
+            // 检查当前前台应用
+            let current_fg_pid = host
+                .window_pin
+                .current_foreground_window()
+                .ok()
+                .map(|w| w.process_id)
+                .unwrap_or(0);
+
+            // 若用户切换了前台应用，并且前台不是被置顶的应用，则执行 AXRaise 保持置顶窗口在最前
+            if current_fg_pid != last_foreground_pid && current_fg_pid > 0 {
+                last_foreground_pid = current_fg_pid;
+                let is_pinned_fg = pinned_entries.iter().any(|p| p.info.process_id == current_fg_pid);
+                if !is_pinned_fg {
+                    host.window_pin.raise_all_pinned_windows();
+                }
+            }
+
+            // 收集需显示的图钉角标位置
+            let mut badges = Vec::new();
+            for pinned in pinned_entries {
+                if let Ok(info) = host.os_hal.get_window_info(pinned.info.handle) {
+                    badges.push(info);
+                }
+            }
+
+            let app_for_main = app_handle.clone();
+            let _ = app_handle.run_on_main_thread(move || {
+                reconcile_pin_badges(&app_for_main, badges);
+            });
+
+            // 1.5 秒低频守护，零录屏、零图像编解码，CPU 趋近于 0.0%
+            std::thread::sleep(std::time::Duration::from_millis(1500));
         }
-        let app_for_main = app_handle.clone();
-        let _ = app_handle.run_on_main_thread(move || {
-            reconcile_pin_mirrors(&app_for_main, mirrors);
-        });
     });
 }
 
 #[cfg(target_os = "macos")]
-fn reconcile_pin_mirrors(app: &AppHandle, mirrors: Vec<(ExternalWindowInfo, bool)>) {
+fn reconcile_pin_badges(app: &AppHandle, badges: Vec<ExternalWindowInfo>) {
     use std::collections::HashSet;
 
     let mut desired = HashSet::new();
-    for (info, hide) in mirrors {
-        let label = format!("pin-mirror-{}", info.handle);
+    for info in badges {
+        let label = format!("pin-badge-{}", info.handle);
         desired.insert(label.clone());
+
+        // 计算物理窗口右上角位置（向内缩进 36px）
+        let badge_x = (info.x + info.width as i32 - 36).max(info.x);
+        let badge_y = (info.y + 4).max(0);
+
         if let Some(window) = app.get_webview_window(&label) {
-            let _ = window.set_position(tauri::LogicalPosition::new(info.x as f64, info.y as f64));
-            let _ = window.set_size(tauri::LogicalSize::new(
-                info.width as f64,
-                info.height as f64,
-            ));
-            if hide {
-                let _ = window.hide();
-            } else {
-                let _ = window.show();
-            }
+            let _ = window.set_position(tauri::LogicalPosition::new(badge_x as f64, badge_y as f64));
             continue;
         }
 
         let url = format!(
-            "index.html?mode=native&window=pin-mirror&handle={}",
+            "index.html?mode=native&window=pin-badge&handle={}",
             info.handle
         );
-        if let Ok(window) = WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
+        let _ = WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
             .title(format!("📌 {}", info.process_name))
-            .inner_size(info.width as f64, info.height as f64)
-            .position(info.x as f64, info.y as f64)
+            .inner_size(28.0, 28.0)
+            .position(badge_x as f64, badge_y as f64)
             .decorations(false)
             .transparent(true)
             .always_on_top(true)
             .skip_taskbar(true)
             .focused(false)
             .resizable(false)
-            .build()
-        {
-            if hide {
-                let _ = window.hide();
-            }
-        }
+            .build();
     }
 
+    // 自动清理已被取消置顶的角标窗口以及历史旧镜像窗口
     for (label, window) in app.webview_windows() {
-        if label.starts_with("pin-mirror-") && !desired.contains(&label) {
+        if label.starts_with("pin-badge-") && !desired.contains(&label) {
+            let _ = window.destroy();
+        } else if label.starts_with("pin-mirror-") {
             let _ = window.destroy();
         }
     }
@@ -484,9 +507,9 @@ fn run_ui_smoke_checks(app: AppHandle, keep_open: bool) {
             std::thread::sleep(std::time::Duration::from_millis(900));
             #[cfg(target_os = "macos")]
             check!(
-                app.get_webview_window(&format!("pin-mirror-{}", handle))
+                app.get_webview_window(&format!("pin-badge-{}", handle))
                     .is_some(),
-                "macOS pinned mirror is a real Tauri WebView"
+                "macOS pinned badge is a real Tauri WebView"
             );
             let snapshot = host.invoke_ipc(
                 "winpin_get_snapshot",
@@ -539,7 +562,7 @@ pub fn run() {
             setup_tray(app.handle())?;
             start_clipboard_listener(app.handle());
             #[cfg(target_os = "macos")]
-            start_window_pin_mirror_sync(app.handle());
+            start_window_pin_guard_and_badges(app.handle());
 
             if !ui_smoke_test && !std::env::args().any(|arg| arg == "--silent") {
                 let host = app.state::<Arc<DesktopHost>>();

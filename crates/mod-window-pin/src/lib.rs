@@ -145,6 +145,18 @@ impl WindowPinModule {
             .map_err(|e| CoreError::Internal(anyhow::anyhow!(e)))
     }
 
+    /// 触发所有已置顶外部窗口的置顶提升动作（在用户切换前台应用时无感触发，保持置顶）
+    pub fn raise_all_pinned_windows(&self) -> usize {
+        let handles: Vec<WindowHandleId> = self.pinned_windows.read().keys().copied().collect();
+        let mut count = 0;
+        for handle in handles {
+            if self.window_controller.set_external_window_topmost(handle, true).is_ok() {
+                count += 1;
+            }
+        }
+        count
+    }
+
     /// 恢复所有已置顶的外部窗口（在守护进程退出 `on_shutdown` 时自动调用）
     pub fn restore_all_pinned_windows(&self) -> usize {
         let handles: Vec<WindowHandleId> = self.pinned_windows.read().keys().copied().collect();
