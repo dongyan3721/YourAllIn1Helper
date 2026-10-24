@@ -1,0 +1,132 @@
+[
+  {
+    "file": "01-overview.png",
+    "bytes": 259546,
+    "sha256": "197ed5fcf9a253af0bfe58087105dc7f75f7af459b07dedc28a0b44da6f71ece"
+  },
+  {
+    "file": "02-dark-theme.png",
+    "bytes": 239155,
+    "sha256": "a956213f73cd684f67611e7bc2611142db1ecf0c1011c348534532e5c8b43163"
+  },
+  {
+    "file": "03-purple-theme.png",
+    "bytes": 238467,
+    "sha256": "55cdbb1b6d4b4622b2d340b6c40829c5fc61219565ccf5a415395899134d9398"
+  },
+  {
+    "file": "04-module-catalog-bottom.png",
+    "bytes": 258557,
+    "sha256": "db9ed0c7b34ec74ee684316058736ecd28116ed88f52807f82fec1220ef55d7e"
+  },
+  {
+    "file": "05-defect-clipboard-notice.png",
+    "bytes": 164528,
+    "sha256": "c11af7016481d2c523e5744e9a6ad36ef9d08e7900d9ff32a8a190648ffc2e87"
+  },
+  {
+    "file": "06-window-pin-unavailable.png",
+    "bytes": 182638,
+    "sha256": "5ca1d932bf9c04addb7fe964284bc7d44ef18089f5a87f16b536eabd82fdb5d1"
+  },
+  {
+    "file": "07-clipboard-disabled.png",
+    "bytes": 256165,
+    "sha256": "d92fc30868400c9667df803f63ce80e8db49726474d7dc72ca79efcd0882e3b7"
+  },
+  {
+    "file": "08-clipboard-popup.png",
+    "bytes": 45241,
+    "sha256": "f2a583e1503c844c43c453db5c80ec9fb80f80f21c5ba7e80786cc772e1e3dbc"
+  },
+  {
+    "file": "09-defect-empty-popup-escape.png",
+    "bytes": 43209,
+    "sha256": "8fb79f895b5f7211cb2da4db87704d6b5a9ef29a3c7206463ce82d36c30ae2dc"
+  },
+  {
+    "file": "10-sticky-markdown-preview.png",
+    "bytes": 46098,
+    "sha256": "80f40fb2b4c0f8b64a9c2106c4e6b0f6dab659ad73641e92150c18e735eeed14"
+  },
+  {
+    "file": "11-sticky-theme-opacity.png",
+    "bytes": 42965,
+    "sha256": "4e80a20571c65f1c53b4f62a29724e13db9f39f5abdc401cf6dcf1b33e060102"
+  },
+  {
+    "file": "12-clipboard-notice-fixed.png",
+    "bytes": 152599,
+    "sha256": "efdde2fdddf991647e6ac28be26f146e2535871c051bfeb657aba89b17e66678"
+  },
+  {
+    "file": "13-popup-light-empty-fixed.png",
+    "bytes": 50762,
+    "sha256": "52c0a27a384f17c4888cc89c5b19f9570c11c8bc685f80b4600877c98a494ebf"
+  },
+  {
+    "file": "14-sticky-disabled.png",
+    "bytes": 255713,
+    "sha256": "a9e6b25073819c83ed527bd31f97b0eeda24d948a06d46df64b66f6c8fa41033"
+  },
+  {
+    "file": "15-before-restart.png",
+    "bytes": 148005,
+    "sha256": "4d49572a4fddea78f2a95da1504d163b9278a39fd3e04d52c88ccac230f54752"
+  },
+  {
+    "file": "16-after-restart-disabled-state.png",
+    "bytes": 255248,
+    "sha256": "2956467e043674414568963462abda757c5398d9b9c006799afbc1b9053394e4"
+  },
+  {
+    "file": "17-disabled-copy-not-captured.png",
+    "bytes": 143182,
+    "sha256": "cd2f92e476f1fac5559edd402e2b75fde2c26d50ea048dc27adb1e3a590c4090"
+  },
+  {
+    "file": "18-window-pin-disabled.png",
+    "bytes": 255725,
+    "sha256": "72091374226069553bd4e2633eeb28e9806d2e30e126103e9496b8b98a8f3516"
+  },
+  {
+    "file": "19-final-window-pin-limit.png",
+    "bytes": 182836,
+    "sha256": "53cc3e87a07d5367786fdf7bdc05e3fd6c92df461057189477873dba5f354855"
+  },
+  {
+    "file": "20-sticky-restored-after-restart.png",
+    "bytes": 41415,
+    "sha256": "a73abb6227ca7bf379ece7a05d5a3abbe221fa9a09b1f9124e9b8c0de50f3c5f"
+  },
+  {
+    "file": "21-catalog-and-shortcuts.png",
+    "bytes": 258574,
+    "sha256": "a60586b9315b588c5b2b8f84f0c64553a3557de4494b3c47c6dc5bc5651aef91"
+  },
+  {
+    "file": "22-final-module-layout.png",
+    "bytes": 255720,
+    "sha256": "a3acedf111d62f909acd839560e4725c5c5a08ebe1add2c35a19f252db4ad1e3"
+  },
+  {
+    "file": "23-final-dark-theme.png",
+    "bytes": 234343,
+    "sha256": "5edd7ddacbfd3eb0d7a2b851ed65a2ff03426fcf563129a4fcc62988f8478823"
+  },
+  {
+    "file": "24-final-dark-popup.png",
+    "bytes": 58446,
+    "sha256": "de1dd64ec778ca35bf908a2ec9e19b429292f9e2870c74a47e4384e52d013690"
+  },
+  {
+    "file": "25-final-archived-note.png",
+    "bytes": 149833,
+    "sha256": "0446c01e1648f4b90dc887fdca70ae33a7ffb263efc345e990c06a0206b2cfd3"
+  },
+  {
+    "file": "26-final-restored-switches.png",
+    "bytes": 256786,
+    "sha256": "69af81bcc396ada0351ce421508b6bf29179bfbd05a764c1d9a4f190a19c7a0e"
+  }
+]

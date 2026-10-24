@@ -1,0 +1,195 @@
+{
+  "date": "2026-10-24",
+  "timezone": "Asia/Shanghai",
+  "completed_at": "2026-10-24T17:07:12.029746+08:00",
+  "method": "Computer Use: actual release App UI interactions",
+  "release_executable_sha256": "200870cb021000824c861072e4990de6960698d4a0376135736edce8e159c121",
+  "summary": {
+    "total": 20,
+    "passed": 19,
+    "pending_verification": 1,
+    "fixed_gui_defects": 4
+  },
+  "cases": [
+    {
+      "id": "GUI-01",
+      "status": "通过",
+      "actual": "最新 release App 正常启动，主控台无白屏；最终仅一个主控台窗口。",
+      "evidence": [
+        "evidence/2026-10-24/22-final-module-layout.png"
+      ]
+    },
+    {
+      "id": "GUI-02",
+      "status": "通过",
+      "actual": "已查看十个槽位并滚动至第十项；02/04/09 可开关，其余七项为待开发且禁用。",
+      "evidence": [
+        "evidence/2026-10-24/21-catalog-and-shortcuts.png",
+        "evidence/2026-10-24/22-final-module-layout.png"
+      ]
+    },
+    {
+      "id": "GUI-03",
+      "status": "通过",
+      "actual": "实际切换三个功能页与总览；空列表、归档列表正常。剪贴板串页提示修复后复测通过。",
+      "evidence": [
+        "evidence/2026-10-24/12-clipboard-notice-fixed.png",
+        "evidence/2026-10-24/25-final-archived-note.png",
+        "evidence/2026-10-24/19-final-window-pin-limit.png"
+      ]
+    },
+    {
+      "id": "GUI-04",
+      "status": "通过",
+      "actual": "实际切换深色、浅色、跟随系统及紫色强调色，观察新弹窗同步主题；最终恢复浅色/经典蓝。",
+      "evidence": [
+        "evidence/2026-10-24/23-final-dark-theme.png",
+        "evidence/2026-10-24/24-final-dark-popup.png",
+        "evidence/2026-10-24/26-final-restored-switches.png"
+      ]
+    },
+    {
+      "id": "GUI-05",
+      "status": "通过",
+      "actual": "关闭剪贴板后标签和快捷键行移除；便笺仍可使用。",
+      "evidence": [
+        "evidence/2026-10-24/07-clipboard-disabled.png",
+        "evidence/2026-10-24/16-after-restart-disabled-state.png"
+      ]
+    },
+    {
+      "id": "GUI-06",
+      "status": "待复核",
+      "actual": "已执行关闭/开启和 ⇧⌘V 按键注入；关闭时不弹出，开启后标签/快捷键恢复，但注入按键没有打开弹窗。按钮入口正常。实体键盘行为尚未验证，不能标为通过。",
+      "evidence": [
+        "evidence/2026-10-24/07-clipboard-disabled.png",
+        "evidence/2026-10-24/21-catalog-and-shortcuts.png"
+      ]
+    },
+    {
+      "id": "GUI-07",
+      "status": "通过",
+      "actual": "修复后无搜索结果时 Escape 关闭弹窗；另通过原生 Window 菜单将主控台设为键盘窗口，弹窗销毁，之后可重新创建。",
+      "evidence": [
+        "evidence/2026-10-24/13-popup-light-empty-fixed.png"
+      ]
+    },
+    {
+      "id": "GUI-08",
+      "status": "通过",
+      "actual": "新建 GUI-QA-20261024 便笺，输入中英文 Markdown/LaTeX；界面显示已保存。",
+      "evidence": [
+        "evidence/2026-10-24/10-sticky-markdown-preview.png",
+        "evidence/2026-10-24/11-sticky-theme-opacity.png"
+      ]
+    },
+    {
+      "id": "GUI-09",
+      "status": "通过",
+      "actual": "编辑/预览往返后标题、粗体、列表及 E=mc² 渲染正常，源码未丢失。",
+      "evidence": [
+        "evidence/2026-10-24/10-sticky-markdown-preview.png",
+        "evidence/2026-10-24/20-sticky-restored-after-restart.png"
+      ]
+    },
+    {
+      "id": "GUI-10",
+      "status": "通过",
+      "actual": "便笺由 neutral/95% 调整为 sky/68%，窗口颜色和透明度实际变化；关闭、重开、重启后保留。",
+      "evidence": [
+        "evidence/2026-10-24/11-sticky-theme-opacity.png",
+        "evidence/2026-10-24/20-sticky-restored-after-restart.png",
+        "evidence/2026-10-24/25-final-archived-note.png"
+      ]
+    },
+    {
+      "id": "GUI-11",
+      "status": "通过",
+      "actual": "便笺关闭后库中显示已归档关闭；点击唤醒窗口后原内容、标题、sky/68% 恢复。",
+      "evidence": [
+        "evidence/2026-10-24/25-final-archived-note.png",
+        "evidence/2026-10-24/20-sticky-restored-after-restart.png"
+      ]
+    },
+    {
+      "id": "GUI-12",
+      "status": "通过",
+      "actual": "便笺打开时关闭模块：标签/快捷键移除，原生窗口数从 2 降为 1；重新启用自动恢复原便笺。",
+      "evidence": [
+        "evidence/2026-10-24/14-sticky-disabled.png",
+        "evidence/2026-10-24/20-sticky-restored-after-restart.png"
+      ]
+    },
+    {
+      "id": "GUI-13",
+      "status": "通过",
+      "actual": "从便笺实际选中文本并 ⌘C，出现一条含 ALPHA 标记的历史；重复复制相同源码后仍为一条。",
+      "evidence": [
+        "evidence/2026-10-24/12-clipboard-notice-fixed.png",
+        "evidence/2026-10-24/21-catalog-and-shortcuts.png"
+      ]
+    },
+    {
+      "id": "GUI-14",
+      "status": "通过",
+      "actual": "ALPHA 搜索匹配，NO-MATCH 搜索为空；在弹窗点击固定后变为已固定/取消固定，重开及重启后仍保留。",
+      "evidence": [
+        "evidence/2026-10-24/13-popup-light-empty-fixed.png",
+        "evidence/2026-10-24/24-final-dark-popup.png"
+      ]
+    },
+    {
+      "id": "GUI-15",
+      "status": "通过",
+      "actual": "关闭模块后复制 GUI-QA-DISABLED-BETA-20261024，恢复模块后仅有原 ALPHA 记录，搜索 BETA 无结果。",
+      "evidence": [
+        "evidence/2026-10-24/17-disabled-copy-not-captured.png"
+      ]
+    },
+    {
+      "id": "GUI-16",
+      "status": "通过",
+      "actual": "窗口枚举/刷新可用，筛选不存在文本显示空结果；macOS 限制提示明确，置顶当前窗口和准星按钮禁用。",
+      "evidence": [
+        "evidence/2026-10-24/19-final-window-pin-limit.png"
+      ]
+    },
+    {
+      "id": "GUI-17",
+      "status": "通过",
+      "actual": "窗口置顶模块关闭时标签消失，开启后恢复；未产生置顶目标或残留角标。",
+      "evidence": [
+        "evidence/2026-10-24/18-window-pin-disabled.png",
+        "evidence/2026-10-24/19-final-window-pin-limit.png"
+      ]
+    },
+    {
+      "id": "GUI-18",
+      "status": "通过",
+      "actual": "保持剪贴板关闭后从界面退出并重启同一 QA App；关闭状态、缺失入口和缺失快捷键均保留。",
+      "evidence": [
+        "evidence/2026-10-24/15-before-restart.png",
+        "evidence/2026-10-24/16-after-restart-disabled-state.png"
+      ]
+    },
+    {
+      "id": "GUI-19",
+      "status": "通过",
+      "actual": "退出前保持便笺打开；重启后窗口数为 2，原便笺实际恢复，内容/公式/标题/68% 正确。",
+      "evidence": [
+        "evidence/2026-10-24/15-before-restart.png",
+        "evidence/2026-10-24/16-after-restart-disabled-state.png",
+        "evidence/2026-10-24/20-sticky-restored-after-restart.png"
+      ]
+    },
+    {
+      "id": "GUI-20",
+      "status": "通过",
+      "actual": "三模块恢复开启，主题恢复浅色/蓝色，测试便笺归档；通过界面退出，Computer Use 返回 App quit。记录保留在隔离目录用于复核。",
+      "evidence": [
+        "evidence/2026-10-24/25-final-archived-note.png",
+        "evidence/2026-10-24/26-final-restored-switches.png"
+      ]
+    }
+  ]
+}

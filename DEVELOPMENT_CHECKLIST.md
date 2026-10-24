@@ -6,6 +6,12 @@
 
 ---
 
+## 当前架构补充（2026-10-24）
+
+已完成平台适配器拆分、测试与源码分离、配置 schema/持久化分离，以及十个功能槽位的统一开关。GUI 回归是必备测试条目，执行 [GUI 测试计划](docs/testing/GUI_TEST_PLAN.md) 并记录日期报告及截图。具体接入约定以 [功能积木架构说明](docs/MODULE_ARCHITECTURE.md) 为准，新功能可从 `templates/module/` 起步。
+
+当前实际实现仍为 02、04、09，其他七项明确标注待开发；主控台总览可即时启停已实现积木。macOS 外部原窗口持续置顶为不支持状态，09 不再标记跨平台 100% 完成。原生尚未实现的能力返回 Unsupported；Mock 只用于显式的无桌面测试，不作为生产降级。
+
 ## 1. Git 提交历史全轨迹回溯与架构演进
 
 当前仓库共包含 **6 次** 提交，记录了项目从设计规划、微内核底座构建、功能原型开发到宿主架构重大调整的全过程：
@@ -87,7 +93,7 @@ flowchart TD
 | **06** | **自定义脚本收录与执行** | `mod-script-runner` | **待新建** *(Phase 4)* | - [ ] 结合 `EnvProbeService` 调度 Python/Node/Shell/PowerShell/AppleScript<br>- [ ] 注入 `$AIO_CLIPBOARD` 与 `$AIO_SELECTION` 动态环境变量<br>- [ ] 为单条脚本绑定全局快捷键<br>- [ ] 动态挂载到系统托盘“快捷脚本”子菜单<br>- [ ] 异步子进程管道流式输出与主控台日志终端面板 | `tokio::process`, `app-core::env_probe` |
 | **07** | **全局划词翻译** | `mod-translator` | **待新建** *(Phase 3)* | - [ ] **无障碍通道选中文本读取（AXUIElement / UIAutomation，无 Mock）**<br>- [ ] 模拟按键复制兜底通道 + 剪贴板防污染自动闭环<br>- [ ] 划词结束触发 20x20 悬浮小图标或快捷键直接呼出<br>- [ ] 瞬态悬浮气泡窗 (`translate-popover`) 跟随光标<br>- [ ] 多翻译源 API 网关（Google、DeepL、OpenAI 兼容模型 SSE 流式输出） | macOS `AXUIElement`, Win32 `UIAutomation` |
 | **08** | **基础多媒体处理** | `mod-media-proc` | **待新建** *(Phase 4)* | - [ ] 纯 Rust 图片批处理（PNG/JPG/WebP/AVIF/ICO 互转、有损/无损压缩）<br>- [ ] 系统 FFmpeg 音视频裁剪任务队列（无损快速切割与重新编码）<br>- [ ] 视频提取音频、音量标准化处理<br>- [ ] 解析 `ffmpeg -progress pipe:1` 实时向前端推送任务进度百分比<br>- [ ] 主控台拖拽文件批量转换面板 | `image`, `rayon`, 系统 `ffmpeg` 子进程 |
-| **09** | **任意窗口置顶小工具** | `mod-window-pin` | **已完成 100%** | - [x] 双触发模式：当前活动窗口置顶 + 全屏准星拾取外部窗口<br>- [x] 内存句柄生命周期追踪与守护<br>- [x] **守护进程退出 (`on_shutdown`) 自动还原所有外部窗口原始状态**<br>- [x] macOS 原生高精度窗口枚举（彻底过滤 Layer 24 的 Window Server 与 Layer 20 的 Dock 等系统合成层，无 Mock）<br>- [x] 解决 macOS 无屏幕录制权限时标题丢失问题，平滑回退至 NSRunningApplication 本地化真实应用名称<br>- [x] 全屏准星拾取层彻底移除全屏暗色蒙层与模糊，采用原生 `crosshair` 十字准星与悬浮微高亮<br>- [x] 主控台外部真实窗口列表管理、一键刷新与还原 | `xcap`, `objc2`, `enigo`, Win32 / macOS 窗口 API |
+| **09** | **任意窗口置顶小工具** | `mod-window-pin` | **框架已接入；macOS 原窗口持续置顶不支持** | - [x] 双触发模式：当前活动窗口置顶 + 全屏准星拾取外部窗口<br>- [x] 内存句柄生命周期追踪与守护<br>- [x] **守护进程退出 (`on_shutdown`) 自动还原所有外部窗口原始状态**<br>- [x] macOS 原生高精度窗口枚举（彻底过滤 Layer 24 的 Window Server 与 Layer 20 的 Dock 等系统合成层，无 Mock）<br>- [x] 解决 macOS 无屏幕录制权限时标题丢失问题，平滑回退至 NSRunningApplication 本地化真实应用名称<br>- [x] 全屏准星拾取层彻底移除全屏暗色蒙层与模糊，采用原生 `crosshair` 十字准星与悬浮微高亮<br>- [x] 主控台外部真实窗口列表管理、一键刷新与还原 | `xcap`, `objc2`, `enigo`, Win32 / macOS 窗口 API |
 | **10** | **生物识别加密密码本** | `mod-password-vault` | **待新建** *(Phase 3)* | - [ ] **真实原生系统生物识别鉴权（Touch ID / Windows Hello，无 Mock）**<br>- [ ] 主密码 Argon2id 派生 + 256 位 DEK + AES-256-GCM 字段级加密<br>- [ ] 内存敏感密钥包装与 180 秒无操作自动清零上锁<br>- [ ] 密码复制时联动剪贴板防污染屏蔽，并在 30 秒后自动清空系统剪贴板<br>- [ ] 密码库增删改查、分类筛选与密码生成器 | `argon2`, `aes-gcm`, `zeroize`, 系统 LocalAuthentication |
 
 ---
