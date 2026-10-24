@@ -22,7 +22,7 @@ fn catalog_has_ten_slots_and_unimplemented_blocks_cannot_be_enabled() {
     let modules = call(&host, "kernel_list_modules", json!({}));
     let modules = modules.as_array().unwrap();
     assert_eq!(modules.len(), 10);
-    assert_eq!(modules.iter().filter(|m| m["available"] == true).count(), 3);
+    assert_eq!(modules.iter().filter(|m| m["available"] == true).count(), 4);
     assert!(
         !host
             .invoke_ipc(
@@ -186,4 +186,145 @@ fn general_config_language_update_persists_across_restarts() {
     assert_eq!(reboot_status["config"]["general"]["language"], "en-US");
     assert_eq!(reboot_status["config"]["general"]["theme"], "dark");
     rebooted.kernel().shutdown().unwrap();
+}
+
+#[test]
+fn script_ipc_crud_run_and_disable_cleanup() {
+    let dir = tempfile::tempdir().unwrap();
+    let host = DesktopHost::bootstrap(dir.path(), true).unwrap();
+
+    let probe = call(&host, "script_probe_interpreters", json!({}));
+    let shell_ready = probe["interpreters"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|item| item["script_type"] == "shell" && item["available"] == true);
+    assert!(probe["environment"].is_object());
+
+    let saved = call(
+        &host,
+        "script_save",
+        json!({"script": {
+            "name": "ipc script",
+            "script_type": "shell",
+            "is_inline": true,
+            "content_or_path": "printf 'ipc-out\\n'; printf 'ipc-err\\n' >&2; exit 2\n",
+            "args": [],
+            "timeout_secs": 15,
+            "output_handling": "stream"
+        }}),
+    );
+    let script_id = saved["id"].as_i64().unwrap();
+    assert_eq!(saved["name"], "ipc script");
+    assert_eq!(
+        call(&host, "script_list", json!({}))
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+
+    if shell_ready {
+        let run = call(
+            &host,
+            "script_execute",
+            json!({"script_id": script_id, "args": []}),
+        );
+        let run_id = run["run_id"].as_str().unwrap().to_string();
+        let record = loop {
+            let runs = call(&host, "script_list_runs", json!({"script_id": script_id}));
+            let record = runs.as_array().unwrap().first().cloned().unwrap();
+            if record["status"] != "running" {
+                break record;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        };
+        assert_eq!(record["run_id"], run_id);
+        assert_eq!(record["status"], "failed");
+        assert_eq!(record["exit_code"], 2);
+        assert!(record["stdout_tail"].as_str().unwrap().contains("ipc-out"));
+        assert!(record["stderr_tail"].as_str().unwrap().contains("ipc-err"));
+        let logs = call(&host, "script_get_logs", json!({"run_id": run_id}));
+        assert!(!logs["live"].as_bool().unwrap());
+        assert!(logs["run"].is_object());
+    }
+
+    // 长时间运行的脚本在关闭模块时被强制终止，执行记录保留。
+    if shell_ready {
+        let sleeping = call(
+            &host,
+            "script_save",
+            json!({"script": {
+                "name": "sleep script",
+                "script_type": "shell",
+                "is_inline": true,
+                "content_or_path": "sleep 30\n",
+                "timeout_secs": 60,
+                "output_handling": "stream"
+            }}),
+        );
+        let sleeping_id = sleeping["id"].as_i64().unwrap();
+        let running = call(
+            &host,
+            "script_execute",
+            json!({"script_id": sleeping_id, "args": []}),
+        );
+        let running_run_id = running["run_id"].as_str().unwrap().to_string();
+        std::thread::sleep(std::time::Duration::from_millis(120));
+        toggle(&host, "script_runner", false);
+        assert!(!host.invoke_ipc("script_list", json!({})).ok);
+        assert!(
+            !host
+                .invoke_ipc("script_execute", json!({"script_id": sleeping_id}))
+                .ok
+        );
+        toggle(&host, "script_runner", true);
+        let runs = call(&host, "script_list_runs", json!({"limit": 10}));
+        let stopped = runs
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|run| run["run_id"] == running_run_id.as_str())
+            .cloned()
+            .expect("run record survives module disable");
+        assert_eq!(stopped["status"], "cancelled");
+    }
+
+    // 删除脚本不删除历史执行记录。
+    call(&host, "script_delete", json!({"script_id": script_id}));
+    let scripts = call(&host, "script_list", json!({}));
+    assert!(!scripts
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|script| script["id"] == script_id));
+}
+
+#[test]
+fn script_settings_validate_and_persist_across_restarts() {
+    let dir = tempfile::tempdir().unwrap();
+    let host = DesktopHost::bootstrap(dir.path(), false).unwrap();
+    assert!(!host
+        .invoke_ipc(
+            "script_update_settings",
+            json!({"settings": {"max_log_bytes": 1, "default_timeout_secs": 0, "keep_run_logs": 1}})
+        )
+        .ok);
+    let config = call(
+        &host,
+        "script_update_settings",
+        json!({"settings": {"max_log_bytes": 8192, "default_timeout_secs": 12, "keep_run_logs": 25}}),
+    );
+    assert_eq!(config["max_log_bytes"], 8192);
+    assert_eq!(config["default_timeout_secs"], 12);
+    assert_eq!(config["keep_run_logs"], 25);
+    host.kernel().shutdown().unwrap();
+    drop(host);
+
+    let host = DesktopHost::bootstrap(dir.path(), false).unwrap();
+    let config = call(&host, "script_get_settings", json!({}));
+    assert_eq!(config["max_log_bytes"], 8192);
+    assert_eq!(config["default_timeout_secs"], 12);
+    assert_eq!(config["keep_run_logs"], 25);
+    host.kernel().shutdown().unwrap();
 }

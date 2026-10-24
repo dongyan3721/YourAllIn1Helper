@@ -278,6 +278,10 @@ impl WindowController for MockOsHal {
 }
 
 impl SelectionExtractor for MockOsHal {
+    fn is_available(&self) -> bool {
+        true
+    }
+
     fn extract_selected_text(&self) -> HalResult<Option<SelectionTextResult>> {
         let guard = self.selected_text.read();
         Ok(guard.as_ref().map(|text| SelectionTextResult {

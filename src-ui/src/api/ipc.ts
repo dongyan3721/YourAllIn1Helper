@@ -69,6 +69,89 @@ export interface ModuleStatus {
   unavailable_reason: string;
 }
 
+
+/** 脚本类型（与 Rust `ScriptType` 的 snake_case 序列化一致） */
+export type ScriptKind =
+  | 'python'
+  | 'node'
+  | 'shell'
+  | 'applescript'
+  | 'powershell'
+  | 'batch'
+  | 'vbscript';
+
+/** 解释器探测结果 */
+export interface ScriptInterpreter {
+  script_type: ScriptKind;
+  supported: boolean;
+  available: boolean;
+  resolved_path: string | null;
+  version_summary: string | null;
+  install_hint: string;
+  unavailable_reason: string | null;
+}
+
+/** AIO_CLIPBOARD / AIO_SELECTION 实际注入能力 */
+export interface ScriptEnvCapabilities {
+  clipboard: boolean;
+  selection: boolean;
+  detail: string;
+}
+
+/** 脚本库记录 */
+export interface ScriptRecord {
+  id: number;
+  name: string;
+  script_type: ScriptKind;
+  is_inline: boolean;
+  content_or_path: string;
+  args: string[];
+  working_dir: string | null;
+  hotkey: string | null;
+  show_in_tray: boolean;
+  timeout_secs: number;
+  output_handling: 'stream' | 'final' | 'discard' | string;
+  created_at: number;
+  updated_at: number;
+  hotkey_active: boolean;
+}
+
+export type ScriptRunStatus =
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'timed_out'
+  | 'cancelled'
+  | 'spawn_failed'
+  | 'interrupted';
+
+/** 脚本执行记录 */
+export interface ScriptRunRecord {
+  run_id: string;
+  script_id: number;
+  script_name: string;
+  status: ScriptRunStatus;
+  exit_code: number | null;
+  timed_out: boolean;
+  pid: number | null;
+  started_at: number;
+  finished_at: number | null;
+  duration_ms: number | null;
+  stdout_tail: string;
+  stderr_tail: string;
+  error_message: string | null;
+  log_bytes: number;
+  dropped_bytes: number;
+}
+
+/** 增量日志条目 */
+export interface ScriptLogEntry {
+  seq: number;
+  stream: 'stdout' | 'stderr';
+  text: string;
+  at: number;
+}
+
 /** 微内核运行状态概览 */
 export interface KernelStatus {
   target_os: string;
