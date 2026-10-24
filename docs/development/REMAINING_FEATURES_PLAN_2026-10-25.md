@@ -6,13 +6,15 @@
 
 | 功能 | 拟负责人 | 分支 | 本轮状态 |
 | --- | --- | --- | --- |
-| 01 增强截图与贴图 | Cursor / Claude Opus 5.5 | `codex/feature-screenshot` | 优先派发 M1，确认实际开始后再标记开发中 |
+| 01 增强截图与贴图 | Cursor / Claude Opus 5.5 | `codex/feature-screenshot` | M1 已派发；已执行目录/分支/HEAD 检查并读取设计文档，开发进行中 |
 | 05 应用使用时长 | OpenCode / DeepSeek V4.1 Flash 1017 | `codex/feature-app-usage` | 任务已规划，待派发 |
 | 07 全局划词翻译 | Antigravity / Gemini 3.8 Flash | `codex/feature-translator` | 任务已规划，先完成选区读取与服务端契约 |
 | 10 生物识别密码本 | WorkBuddy / Kimi K3.1 Pro | `codex/feature-password-vault` | 任务已规划，先提交密钥设计，再实现 |
 | 公共契约与最终集成 | OpenAI Codex | 独立集成分支 | 审查、冲突处理、共享能力、打包与 GUI 验收 |
 
 Cursor 本轮明确启动；另外三位的分工是后续安排，不能据此宣称它们已经领取或正在运行。模型是用户指定配置，实际界面/会话不符时必须先校正；遇额度阻塞记录真实状态，不擅自改模型或购买额度。
+
+派发核验：Cursor 会话标题为 `Screenshot enhancement M1 task`，模型选择器为 `Claude Opus 5.5 1M High`，命令实际返回专用 worktree、`codex/feature-screenshot` 和 `70b607cad02ac7872b4500aef883cbb5fc2df53b`。已观察到实际命令与文档读取；这仅证明任务已启动，不代表已有可验收产物。
 
 ## 先行公共工作（Codex 负责）
 
