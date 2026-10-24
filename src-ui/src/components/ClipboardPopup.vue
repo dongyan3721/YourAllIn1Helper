@@ -180,6 +180,12 @@ async function closePopup() {
 
 /** 键盘方向键快捷选择 */
 function handleKeyNavigation(e: KeyboardEvent) {
+  // Esc 是窗口生命周期操作，不能被“空列表/无搜索结果”的导航短路拦截。
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    closePopup();
+    return;
+  }
   const listLen = filteredItems.value.length;
   if (listLen === 0) return;
 
@@ -189,9 +195,6 @@ function handleKeyNavigation(e: KeyboardEvent) {
   } else if (e.key === 'ArrowUp') {
     e.preventDefault();
     selectedIndex.value = (selectedIndex.value - 1 + listLen) % listLen;
-  } else if (e.key === 'Escape') {
-    e.preventDefault();
-    closePopup();
   }
 }
 
@@ -221,7 +224,8 @@ onMounted(async () => {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: rgba(26, 26, 28, 0.94);
+  /* 跟随全局主题，避免浅色模式使用深色背景而文字仍为深色。 */
+  background: var(--macos-bg-window);
   backdrop-filter: blur(28px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.1);
   outline: none;
