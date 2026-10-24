@@ -246,6 +246,7 @@ fn reconcile_pin_mirrors(app: &AppHandle, mirrors: Vec<(ExternalWindowInfo, bool
     }
 }
 
+/// 启动系统剪贴板实时后台监听器（支持文本与图片双通道实时自动捕获）
 fn start_clipboard_listener(app: &AppHandle) {
     let Some(host) = app
         .try_state::<Arc<DesktopHost>>()
@@ -253,26 +254,55 @@ fn start_clipboard_listener(app: &AppHandle) {
     else {
         return;
     };
+    let app_handle = app.clone();
     std::thread::spawn(move || {
         let Ok(mut clipboard) = arboard::Clipboard::new() else {
-            tracing::error!("Unable to initialize system clipboard listener");
+            tracing::error!("无法初始化系统剪贴板监听器 (arboard)");
             return;
         };
         let mut last_text = clipboard.get_text().ok();
+        let mut last_image_hash: Option<String> = None;
+
         loop {
             std::thread::sleep(std::time::Duration::from_millis(250));
+
+            // 通道一：优先检查系统剪贴板文本变更
             match clipboard.get_text() {
                 Ok(text) if !text.trim().is_empty() && Some(&text) != last_text.as_ref() => {
-                    if let Err(error) =
-                        host.clipboard
-                            .capture_text(host.kernel().context(), &text, None)
-                    {
-                        tracing::warn!(%error, "Failed to capture system clipboard text");
+                    let ctx = host.kernel().context();
+                    if let Ok(Some(_)) = host.clipboard.capture_text(ctx, &text, None) {
+                        emit_update(&app_handle);
                     }
                     last_text = Some(text);
+                    last_image_hash = None;
+                    continue;
                 }
-                Ok(text) => last_text = Some(text),
-                Err(_) => {}
+                Ok(text) => {
+                    last_text = Some(text);
+                }
+                Err(_) => {
+                    // 若读取文本失败，可能是剪贴板当前为图片，进入通道二检查图片变更
+                    if let Ok(image) = clipboard.get_image() {
+                        let img_hash = mod_clipboard::ClipboardModule::compute_hash(
+                            "image",
+                            &image.bytes,
+                        );
+                        if Some(&img_hash) != last_image_hash.as_ref() {
+                            let ctx = host.kernel().context();
+                            if let Ok(Some(_)) = host.clipboard.capture_image_rgba(
+                                ctx,
+                                image.width as u32,
+                                image.height as u32,
+                                &image.bytes,
+                                None,
+                            ) {
+                                emit_update(&app_handle);
+                            }
+                            last_image_hash = Some(img_hash);
+                            last_text = None;
+                        }
+                    }
+                }
             }
         }
     });

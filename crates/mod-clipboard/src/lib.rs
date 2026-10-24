@@ -1,36 +1,39 @@
-//! `mod-clipboard` — Module 02: Ditto-style Clipboard Manager.
+//! `mod-clipboard` —— 子功能 02：Ditto 风格剪切板管理器
 //!
-//! Features:
-//! - **SQLite `clipboard_items` Table**: Stores text and image clipboard records with unique `content_hash`.
-//! - **SHA-256 Deduplication**: Re-copying an existing item updates its `updated_at` timestamp to float
-//!   it to the top of the list without creating duplicate rows.
-//! - **LRU-100 Automatic Eviction**: Enforces `config.clipboard.max_history_items` (default 100) for
-//!   unpinned items while permanently preserving pinned (`is_pinned = 1`) items.
-//! - **Anti-Pollution Guard**: Checks `EventBus::is_clipboard_suppressed()` before recording changes so
-//!   simulated `Ctrl+C` (Translator) and secret password copies (Password Vault) are ignored.
-//! - **Quick Paste**: Restores item content and invokes `os_hal::InputSimulator::send_paste_shortcut()`.
+//! 核心设计与特性：
+//! - **SQLite `clipboard_items` 数据持久化**：统一存储文本与图片记录，基于 SHA-256 唯一哈希值排重；
+//! - **内容排重与时间戳更新**：重复复制相同内容时，自动更新 `updated_at` 浮动到历史最顶端，不产生重复记录；
+//! - **LRU-100 自动淘汰**：严格执行配置项 `config.clipboard.max_history_items`（默认 100 条）淘汰未固定项，已钉住（`is_pinned = 1`）的条目永久保留；
+//! - **防污染屏蔽守卫（Anti-Pollution）**：在捕获前检查 `EventBus::is_clipboard_suppressed()`，自动屏蔽划词翻译模拟复制、密码本复制等敏感/内部操作；
+//! - **图片真实落盘与缩略图**：自动将剪贴板图片落盘为 PNG 文件，并生成低开销 JPEG Base64 缩略图供前端秒开展示；
+//! - **快速粘贴上屏**：支持文本与真实图片写回系统剪贴板，先销毁瞬态弹窗，再调用 `os_hal::InputSimulator::send_paste_shortcut()` 模拟粘贴。
 
 use app_core::{
     AppModule, CoreError, CoreResult, ModuleContext, ModuleMigration, ShortcutSpec, SystemEvent,
     WindowSpec,
 };
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use chrono::Utc;
+use image::{codecs::jpeg::JpegEncoder, imageops::FilterType, DynamicImage, ImageBuffer, Rgba};
 use os_hal::{InputSimulator, MockOsHal};
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::sync::Arc;
+use std::{fs, sync::Arc};
 use tracing::info;
 
-/// Type of clipboard entry stored in `clipboard_items`.
+/// 剪贴板历史记录类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ClipboardItemType {
+    /// 纯文本记录
     Text,
+    /// 图片记录（包含本地落盘相对路径与 Base64 缩略图）
     Image,
 }
 
 impl ClipboardItemType {
+    /// 转为数据库存储的字符串枚举
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Text => "text",
@@ -38,6 +41,7 @@ impl ClipboardItemType {
         }
     }
 
+    /// 从数据库字符串映射为枚举类型
     pub fn from_db_str(s: &str) -> Self {
         match s {
             "image" => Self::Image,
@@ -46,23 +50,34 @@ impl ClipboardItemType {
     }
 }
 
-/// A single clipboard history record returned to the UI (`clipboard-popup`).
+/// 返回给前端 UI（`clipboard-popup`）的单条剪贴板记录数据结构
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClipboardRecord {
+    /// 唯一主键自增 ID
     pub id: i64,
+    /// 记录类型（文本/图片）
     pub item_type: ClipboardItemType,
+    /// 文本内容（仅文本类型有值）
     pub content_text: Option<String>,
+    /// 图片 blob 文件相对路径（仅图片类型有值，保存在 clipboard_blobs/ 目录下）
     pub blob_rel_path: Option<String>,
+    /// 图片 Base64 缩略图（用于前端列表即时渲染）
     pub thumb_base64: Option<String>,
+    /// SHA-256 去重哈希值
     pub content_hash: String,
+    /// 复制来源应用程序名称（如 "Terminal", "VS Code" 等）
     pub source_app_name: Option<String>,
+    /// 是否已固定（已固定条目不受 LRU 自动淘汰影响）
     pub is_pinned: bool,
+    /// 首次创建时间戳（毫秒）
     pub created_at: i64,
+    /// 最近更新/重新复制时间戳（毫秒）
     pub updated_at: i64,
 }
 
-/// Module 02 implementation (`mod-clipboard`).
+/// 剪切板管理模块实现
 pub struct ClipboardModule {
+    /// 键盘与鼠标按键模拟器（用于模拟 Cmd+V / Ctrl+V）
     input_simulator: Arc<dyn InputSimulator>,
 }
 
@@ -73,11 +88,12 @@ impl Default for ClipboardModule {
 }
 
 impl ClipboardModule {
+    /// 创建剪贴板模块实例
     pub fn new(input_simulator: Arc<dyn InputSimulator>) -> Self {
         Self { input_simulator }
     }
 
-    /// Computes a deterministic SHA-256 hex digest for deduplication.
+    /// 计算前缀加字节流的 SHA-256 十六进制哈希值，作为全局去重唯一键
     pub fn compute_hash(prefix: &str, bytes: &[u8]) -> String {
         let mut hasher = Sha256::new();
         hasher.update(prefix.as_bytes());
@@ -86,14 +102,15 @@ impl ClipboardModule {
         format!("{:x}", hasher.finalize())
     }
 
-    /// Captures a text entry into `clipboard_items` with deduplication and LRU eviction.
-    /// Returns `Ok(None)` if clipboard capture is currently suppressed or disabled in config.
+    /// 捕获并存储文本条目，支持去重与 LRU 自动淘汰
+    /// 若当前事件总线处于防污染屏蔽状态或文本为空，则直接返回 `Ok(None)`
     pub fn capture_text(
         &self,
         ctx: &ModuleContext,
         text: &str,
         source_app_name: Option<&str>,
     ) -> CoreResult<Option<ClipboardRecord>> {
+        // 检查防污染标记：密码本复制或划词翻译模拟复制时直接跳过
         if ctx.event_bus.is_clipboard_suppressed() {
             return Ok(None);
         }
@@ -108,6 +125,109 @@ impl ClipboardModule {
 
         let content_hash = Self::compute_hash("text", text.as_bytes());
         let now = Utc::now().timestamp_millis();
+
+        let item_id = ctx.db.with_conn(|conn| {
+            let tx = conn.transaction()?;
+            let effective_now = Self::next_monotonic_timestamp(&tx, now)?;
+
+            // 检查数据库中是否已存在相同哈希的记录
+            let existing_id: Option<i64> = tx
+                .query_row(
+                    "SELECT id FROM clipboard_items WHERE content_hash = ?1",
+                    params![content_hash],
+                    |row| row.get(0),
+                )
+                .optional()?;
+
+            let record_id = if let Some(id) = existing_id {
+                // 已存在相同内容：仅更新 updated_at 与可能补充的来源应用名，使其浮动到最顶部
+                tx.execute(
+                    "UPDATE clipboard_items
+                     SET updated_at = ?1, source_app_name = COALESCE(?2, source_app_name)
+                     WHERE id = ?3",
+                    params![effective_now, source_app_name, id],
+                )?;
+                id
+            } else {
+                // 新内容：插入新记录
+                tx.execute(
+                    "INSERT INTO clipboard_items (
+                        item_type, content_text, blob_rel_path, thumb_base64,
+                        content_hash, source_app_name, is_pinned, created_at, updated_at
+                    ) VALUES ('text', ?1, NULL, NULL, ?2, ?3, 0, ?4, ?4)",
+                    params![text, content_hash, source_app_name, effective_now],
+                )?;
+                tx.last_insert_rowid()
+            };
+
+            // 执行 LRU 淘汰：删除超出容量限制的最旧未固定记录
+            Self::evict_lru_unpinned(&tx, max_items)?;
+            tx.commit()?;
+            Ok(record_id)
+        })?;
+
+        // 向内部事件总线发布更新事件，通知 UI 刷新
+        ctx.event_bus.publish(SystemEvent::ClipboardUpdated {
+            item_id,
+            item_type: "text".to_string(),
+        });
+
+        self.get_item_by_id(ctx, item_id)
+    }
+
+    /// 捕获并存储原始 RGBA 图片条目（全流程真实落盘与缩略图生成）
+    pub fn capture_image_rgba(
+        &self,
+        ctx: &ModuleContext,
+        width: u32,
+        height: u32,
+        rgba_bytes: &[u8],
+        source_app_name: Option<&str>,
+    ) -> CoreResult<Option<ClipboardRecord>> {
+        // 检查防污染标记
+        if ctx.event_bus.is_clipboard_suppressed() {
+            return Ok(None);
+        }
+
+        let (enabled, capture_images, max_items) = {
+            let cfg = ctx.config.read();
+            (
+                cfg.clipboard.enabled,
+                cfg.clipboard.capture_images,
+                cfg.clipboard.max_history_items,
+            )
+        };
+        if !enabled || !capture_images || width == 0 || height == 0 || rgba_bytes.is_empty() {
+            return Ok(None);
+        }
+
+        // 计算图片像素哈希
+        let content_hash = Self::compute_hash("image", rgba_bytes);
+        let now = Utc::now().timestamp_millis();
+
+        // 构建 DynamicImage 对象
+        let rgba_image: ImageBuffer<Rgba<u8>, Vec<u8>> =
+            ImageBuffer::from_raw(width, height, rgba_bytes.to_vec()).ok_or_else(|| {
+                CoreError::Internal(anyhow::anyhow!("无法从 RGBA 字节流构建图片缓冲区"))
+            })?;
+        let dynamic = DynamicImage::ImageRgba8(rgba_image);
+
+        // 获取或创建 blobs 存储目录
+        let blobs_dir = ctx.app_data_dir.join("clipboard_blobs");
+        fs::create_dir_all(&blobs_dir)?;
+
+        // 保存完整 PNG 文件
+        let file_name = format!("{}.png", content_hash);
+        let blob_full_path = blobs_dir.join(&file_name);
+        if !blob_full_path.exists() {
+            dynamic
+                .save_with_format(&blob_full_path, image::ImageFormat::Png)
+                .map_err(|e| CoreError::Internal(anyhow::anyhow!("保存剪贴板 PNG 失败: {}", e)))?;
+        }
+        let blob_rel_path = format!("clipboard_blobs/{}", file_name);
+
+        // 生成不超过 240px 的高质量 Base64 缩略图
+        let thumb_base64 = Self::generate_thumbnail(&dynamic, 240)?;
 
         let item_id = ctx.db.with_conn(|conn| {
             let tx = conn.transaction()?;
@@ -134,8 +254,14 @@ impl ClipboardModule {
                     "INSERT INTO clipboard_items (
                         item_type, content_text, blob_rel_path, thumb_base64,
                         content_hash, source_app_name, is_pinned, created_at, updated_at
-                    ) VALUES ('text', ?1, NULL, NULL, ?2, ?3, 0, ?4, ?4)",
-                    params![text, content_hash, source_app_name, effective_now],
+                    ) VALUES ('image', NULL, ?1, ?2, ?3, ?4, 0, ?5, ?5)",
+                    params![
+                        blob_rel_path,
+                        thumb_base64,
+                        content_hash,
+                        source_app_name,
+                        effective_now
+                    ],
                 )?;
                 tx.last_insert_rowid()
             };
@@ -147,13 +273,13 @@ impl ClipboardModule {
 
         ctx.event_bus.publish(SystemEvent::ClipboardUpdated {
             item_id,
-            item_type: "text".to_string(),
+            item_type: "image".to_string(),
         });
 
         self.get_item_by_id(ctx, item_id)
     }
 
-    /// Captures an image entry into `clipboard_items` with deduplication and LRU eviction.
+    /// 兼容旧接口的图片捕获
     pub fn capture_image(
         &self,
         ctx: &ModuleContext,
@@ -231,7 +357,7 @@ impl ClipboardModule {
         self.get_item_by_id(ctx, item_id)
     }
 
-    /// Queries clipboard history ordered by `is_pinned DESC, updated_at DESC, id DESC`.
+    /// 查询剪贴板历史记录，按“固定项置顶、最近更新时间倒序”排列
     pub fn list_items(
         &self,
         ctx: &ModuleContext,
@@ -276,7 +402,7 @@ impl ClipboardModule {
         })
     }
 
-    /// Fetches a single clipboard record by its primary key `id`.
+    /// 根据唯一 ID 获取单条剪贴板记录
     pub fn get_item_by_id(
         &self,
         ctx: &ModuleContext,
@@ -296,7 +422,7 @@ impl ClipboardModule {
         })
     }
 
-    /// Toggles the `is_pinned` status of a clipboard item so it is exempt from LRU-100 eviction.
+    /// 切换条目的固定状态（已固定项豁免 LRU 淘汰）
     pub fn toggle_pin(&self, ctx: &ModuleContext, id: i64) -> CoreResult<bool> {
         ctx.db.with_conn(|conn| {
             conn.execute(
@@ -314,24 +440,57 @@ impl ClipboardModule {
         })
     }
 
-    /// Deletes a single clipboard item by `id`.
+    /// 删除单条剪贴板记录（若为图片则同步尝试清理 blob 文件）
     pub fn delete_item(&self, ctx: &ModuleContext, id: i64) -> CoreResult<bool> {
-        ctx.db.with_conn(|conn| {
-            let affected =
-                conn.execute("DELETE FROM clipboard_items WHERE id = ?1", params![id])?;
-            Ok(affected > 0)
-        })
+        let record = self.get_item_by_id(ctx, id)?;
+        let affected = ctx.db.with_conn(|conn| {
+            let n = conn.execute("DELETE FROM clipboard_items WHERE id = ?1", params![id])?;
+            Ok(n)
+        })?;
+
+        // 清理本地关联的 blob 图片
+        if let Some(rec) = record {
+            if let Some(rel) = rec.blob_rel_path {
+                let full = ctx.app_data_dir.join(rel);
+                let _ = fs::remove_file(full);
+            }
+        }
+        Ok(affected > 0)
     }
 
-    /// Clears all unpinned clipboard items while preserving pinned entries.
+    /// 清空所有未固定的历史记录（永久保留已固定项）
     pub fn clear_unpinned(&self, ctx: &ModuleContext) -> CoreResult<usize> {
-        ctx.db.with_conn(|conn| {
-            let deleted = conn.execute("DELETE FROM clipboard_items WHERE is_pinned = 0", [])?;
-            Ok(deleted)
-        })
+        // 先查询所有将被删除的未固定图片的相对路径
+        let blobs_to_delete: Vec<String> = ctx.db.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT blob_rel_path FROM clipboard_items
+                 WHERE is_pinned = 0 AND blob_rel_path IS NOT NULL",
+            )?;
+            let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+            let mut paths = Vec::new();
+            for r in rows {
+                if let Ok(p) = r {
+                    paths.push(p);
+                }
+            }
+            Ok(paths)
+        })?;
+
+        let deleted = ctx.db.with_conn(|conn| {
+            let count = conn.execute("DELETE FROM clipboard_items WHERE is_pinned = 0", [])?;
+            Ok(count)
+        })?;
+
+        for rel in blobs_to_delete {
+            let full = ctx.app_data_dir.join(rel);
+            let _ = fs::remove_file(full);
+        }
+
+        Ok(deleted)
     }
 
-    /// Pastes the selected item to the foreground window, destroying the transient `clipboard-popup` first.
+    /// 快速粘贴选中条目到前台目标窗口
+    /// 先立即销毁瞬态 `clipboard-popup` 原生窗口，更新最近使用时间，然后模拟按键粘贴
     pub fn paste_item(
         &self,
         ctx: &ModuleContext,
@@ -339,13 +498,13 @@ impl ClipboardModule {
         _as_plain_text: bool,
     ) -> CoreResult<ClipboardRecord> {
         let record = self.get_item_by_id(ctx, id)?.ok_or_else(|| {
-            CoreError::Internal(anyhow::anyhow!("Clipboard item {} not found", id))
+            CoreError::Internal(anyhow::anyhow!("未找到剪贴板条目 {}", id))
         })?;
 
-        // Destroy the transient popup window before simulating Ctrl+V / Cmd+V
+        // 模拟按键前先彻底销毁瞬态弹窗，将焦点归还给原前台应用窗口
         let _ = ctx.window_pool.destroy_window("clipboard-popup");
 
-        // Bump `updated_at` so recently pasted item rises to the top
+        // 刷新最近使用时间戳，使刚粘贴的项立即置顶
         let now = Utc::now().timestamp_millis();
         ctx.db.with_conn(|conn| {
             let effective_now = Self::next_monotonic_timestamp(conn, now)?;
@@ -356,6 +515,7 @@ impl ClipboardModule {
             Ok(())
         })?;
 
+        // 触发物理按键模拟（Cmd+V / Ctrl+V）
         self.input_simulator
             .send_paste_shortcut()
             .map_err(|e| CoreError::Internal(anyhow::anyhow!(e)))?;
@@ -363,6 +523,7 @@ impl ClipboardModule {
         Ok(record)
     }
 
+    /// 保证时间戳单调递增，避免毫秒级冲突
     fn next_monotonic_timestamp(conn: &rusqlite::Connection, now: i64) -> CoreResult<i64> {
         let max_ts: i64 = conn.query_row(
             "SELECT COALESCE(MAX(updated_at), 0) FROM clipboard_items",
@@ -372,6 +533,7 @@ impl ClipboardModule {
         Ok(now.max(max_ts + 1))
     }
 
+    /// 淘汰未固定的旧记录
     fn evict_lru_unpinned(conn: &rusqlite::Connection, max_unpinned: usize) -> CoreResult<()> {
         conn.execute(
             "DELETE FROM clipboard_items
@@ -387,6 +549,7 @@ impl ClipboardModule {
         Ok(())
     }
 
+    /// 将数据库行映射为强类型记录结构体
     fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ClipboardRecord> {
         let type_str: String = row.get(1)?;
         let is_pinned_int: i64 = row.get(7)?;
@@ -403,6 +566,24 @@ impl ClipboardModule {
             updated_at: row.get(9)?,
         })
     }
+
+    /// 生成轻量 JPEG Base64 缩略图
+    fn generate_thumbnail(dynamic: &DynamicImage, max_dim: u32) -> CoreResult<String> {
+        let thumb = if dynamic.width() > max_dim || dynamic.height() > max_dim {
+            dynamic.resize(max_dim, max_dim, FilterType::Triangle)
+        } else {
+            dynamic.clone()
+        };
+        let mut buf = Vec::new();
+        let mut encoder = JpegEncoder::new_with_quality(&mut buf, 75);
+        encoder
+            .encode_image(&thumb)
+            .map_err(|e| CoreError::Internal(anyhow::anyhow!("缩略图编码失败: {}", e)))?;
+        Ok(format!(
+            "data:image/jpeg;base64,{}",
+            BASE64_STANDARD.encode(buf)
+        ))
+    }
 }
 
 impl AppModule for ClipboardModule {
@@ -418,7 +599,7 @@ impl AppModule for ClipboardModule {
         vec![ModuleMigration::new(
             "clipboard",
             1,
-            "Create clipboard_items table with content_hash unique index and LRU index",
+            "创建 clipboard_items 剪贴板表及 LRU 复合索引",
             "CREATE TABLE IF NOT EXISTS clipboard_items (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 item_type TEXT NOT NULL CHECK(item_type IN ('text', 'image')),
@@ -446,7 +627,7 @@ impl AppModule for ClipboardModule {
     }
 
     fn on_init(&self, _ctx: &ModuleContext) -> CoreResult<()> {
-        info!("ClipboardModule initialized (background listener ready, 0 WebViews)");
+        info!("剪切板模块 mod-clipboard 初始化就绪 (后台守护监听，0 常驻 WebView)");
         Ok(())
     }
 
@@ -488,14 +669,14 @@ mod tests {
 
         let ctx = kernel.context();
 
-        // Lower max_history_items to 3 for testing LRU eviction
+        // 调整容量上限为 3 条以测试 LRU 自动淘汰
         kernel
             .update_config(|cfg| {
                 cfg.clipboard.max_history_items = 3;
             })
             .unwrap();
 
-        // 1. Insert 3 items and pin the first one
+        // 1. 插入 3 条文本并固定第一条
         let r1 = clip_mod
             .capture_text(ctx, "First pinned item", Some("Notes"))
             .unwrap()
@@ -515,14 +696,14 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        // Re-copying "Second item" should deduplicate and move it to the top of unpinned items
+        // 重新复制 "Second item"，验证排重且置顶
         let r2_again = clip_mod
             .capture_text(ctx, "Second item", Some("Browser"))
             .unwrap()
             .unwrap();
         assert_eq!(r2.id, r2_again.id);
 
-        // Adding a 5th item should evict the oldest unpinned item ("Third item"), keeping pinned r1 + 3 unpinned = 4 total
+        // 插入第 5 条，应当淘汰最旧的未固定项 ("Third item")，保留已固定的 r1 + 3条未固定 = 4条
         let _r5 = clip_mod
             .capture_text(ctx, "Fifth item", Some("Terminal"))
             .unwrap()
@@ -533,7 +714,7 @@ mod tests {
         assert_eq!(all[0].content_text.as_deref(), Some("First pinned item"));
         assert!(all[0].is_pinned);
 
-        // 2. Test suppression guard (e.g. during Password Vault copy or Translator Ctrl+C)
+        // 2. 测试防污染屏蔽守卫（如密码本复制或划词翻译取词）
         ctx.event_bus
             .set_clipboard_suppression(true, "password_vault_secret");
         let suppressed = clip_mod
@@ -542,12 +723,49 @@ mod tests {
         assert!(suppressed.is_none());
         ctx.event_bus.set_clipboard_suppression(false, "done");
 
-        // 3. Test shortcut toggle & paste_item destroying transient popup
+        // 3. 测试快捷键唤醒与粘贴销毁
         kernel.trigger_action("clipboard:toggle_popup").unwrap();
         assert_eq!(ctx.window_pool.active_window_count(), 1);
 
         clip_mod.paste_item(ctx, r2.id, true).unwrap();
         assert_eq!(ctx.window_pool.active_window_count(), 0);
         assert_eq!(mock_hal.paste_trigger_count(), 1);
+    }
+
+    #[test]
+    fn test_clipboard_image_capture_and_blob_storage() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let mock_hal = MockOsHal::new();
+        let clip_mod = ClipboardModule::new(Arc::new(mock_hal.clone()));
+
+        let kernel = AppKernelBuilder::new(temp_dir.path())
+            .with_in_memory_db(true)
+            .with_target_os(TargetOs::MacOs)
+            .register_module(ClipboardModule::new(Arc::new(mock_hal.clone())))
+            .unwrap()
+            .bootstrap()
+            .unwrap();
+
+        let ctx = kernel.context();
+
+        // 构造一个 10x10 的红色 RGBA 像素图片
+        let width = 10u32;
+        let height = 10u32;
+        let mut pixels = Vec::new();
+        for _ in 0..(width * height) {
+            pixels.extend_from_slice(&[255, 0, 0, 255]);
+        }
+
+        let rec = clip_mod
+            .capture_image_rgba(ctx, width, height, &pixels, Some("ScreenshotApp"))
+            .unwrap()
+            .expect("图片条目应当成功捕获");
+
+        assert_eq!(rec.item_type, ClipboardItemType::Image);
+        assert!(rec.thumb_base64.is_some());
+        assert!(rec.blob_rel_path.is_some());
+
+        let blob_path = ctx.app_data_dir.join(rec.blob_rel_path.as_ref().unwrap());
+        assert!(blob_path.exists());
     }
 }

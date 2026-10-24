@@ -1,14 +1,11 @@
-//! `mod-window-pin` — Module 09: DeskPins-style External Window Topmost Utility.
+//! `mod-window-pin` —— 子功能 09：任意窗口置顶小工具 (DeskPins)
 //!
-//! Features:
-//! - **Dual Trigger Modes**:
-//!   - `PrimaryMod+Shift+P` (`window_pin:toggle_foreground`): Toggles topmost (`HWND_TOPMOST` /
-//!     macOS floating level) on the currently active foreground window.
-//!   - `PrimaryMod+SecondaryMod+P` (`window_pin:pick_cursor`): Enters crosshair picker mode to
-//!     pin any arbitrary third-party window at cursor coordinates `(x, y)`.
-//! - **Guaranteed Cleanup on Shutdown**: Tracks all pinned external window handles in memory and
-//!   automatically restores every pinned window to non-topmost (`HWND_NOTOPMOST`) inside
-//!   `on_shutdown`, ensuring external apps are never stranded topmost when the daemon exits.
+//! 核心设计与特性：
+//! - **双触发模式**：
+//!   - `PrimaryMod+Shift+P` (`window_pin:toggle_foreground`)：直接置顶/取消置顶当前活动的前台窗口；
+//!   - `PrimaryMod+SecondaryMod+P` (`window_pin:pick_cursor`)：唤醒全屏准星拾取层，点击任意第三方外部窗口置顶；
+//! - **程序退出兜底还原保证**：内存中严密跟踪所有处于置顶状态的外部窗口句柄，在微内核守护进程退出 (`on_shutdown`) 或异常崩溃时，
+//!   自动遍历并恢复所有外部窗口为普通非置顶层级（Windows `HWND_NOTOPMOST` / macOS 销毁置顶镜像），防止外部窗口残留置顶导致系统桌面失控。
 
 use app_core::{AppModule, CoreError, CoreResult, ModuleContext, ShortcutSpec};
 use chrono::Utc;
@@ -18,17 +15,21 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
 use tracing::{info, warn};
 
-/// Metadata for an external window currently pinned topmost by `mod-window-pin`.
+/// 记录被本工具置顶的外部窗口元数据
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PinnedWindowEntry {
+    /// 外部窗口静态快照信息（包含句柄、标题、进程名、PID、坐标尺寸等）
     pub info: ExternalWindowInfo,
+    /// 置顶时间戳（毫秒）
     pub pinned_at: i64,
 }
 
-/// Module 09 implementation (`mod-window-pin`).
+/// 窗口置顶模块实现
 #[derive(Clone)]
 pub struct WindowPinModule {
+    /// 跨平台窗口控制器（封装底层 Win32 API 或 macOS 抽象接口）
     window_controller: Arc<dyn WindowController>,
+    /// 内存中维护的已置顶外部窗口句柄映射表
     pinned_windows: Arc<RwLock<HashMap<WindowHandleId, PinnedWindowEntry>>>,
 }
 
@@ -39,6 +40,7 @@ impl Default for WindowPinModule {
 }
 
 impl WindowPinModule {
+    /// 创建窗口置顶模块实例
     pub fn new(window_controller: Arc<dyn WindowController>) -> Self {
         Self {
             window_controller,
@@ -46,8 +48,8 @@ impl WindowPinModule {
         }
     }
 
-    /// Toggles topmost state for the current foreground window (`winpin_toggle_foreground` IPC).
-    /// Returns `Ok((ExternalWindowInfo, is_now_pinned))`.
+    /// 切换当前前台活动窗口的置顶状态（`winpin_toggle_foreground` IPC）
+    /// 返回 `Ok((ExternalWindowInfo, is_now_pinned))`
     pub fn toggle_foreground_window(&self) -> CoreResult<(ExternalWindowInfo, bool)> {
         let fg = self
             .window_controller
@@ -56,8 +58,7 @@ impl WindowPinModule {
         self.toggle_handle(fg.handle)
     }
 
-    /// Picks the external window at physical screen coordinates `(x, y)` and pins/toggles it
-    /// (`winpin_pick_at_cursor` IPC).
+    /// 拾取物理屏幕坐标 `(x, y)` 处的外部窗口并切换其置顶状态（`winpin_pick_at_cursor` IPC）
     pub fn pick_at_cursor(&self, x: i32, y: i32) -> CoreResult<(ExternalWindowInfo, bool)> {
         let target = self
             .window_controller
@@ -66,7 +67,7 @@ impl WindowPinModule {
         self.toggle_handle(target.handle)
     }
 
-    /// Toggles topmost state for a specific external window `handle`.
+    /// 切换指定外部窗口句柄 `handle` 的置顶状态
     pub fn toggle_handle(&self, handle: WindowHandleId) -> CoreResult<(ExternalWindowInfo, bool)> {
         let currently_pinned = self.pinned_windows.read().contains_key(&handle);
         if currently_pinned {
@@ -78,7 +79,7 @@ impl WindowPinModule {
         }
     }
 
-    /// Explicitly pins an external window `handle` topmost.
+    /// 将指定外部窗口设为置顶最前
     pub fn pin_window(&self, handle: WindowHandleId) -> CoreResult<ExternalWindowInfo> {
         self.window_controller
             .set_external_window_topmost(handle, true)
@@ -97,12 +98,12 @@ impl WindowPinModule {
         info!(
             handle,
             title = %updated_info.title,
-            "Pinned external window topmost"
+            "成功将外部窗口设为置顶最前"
         );
         Ok(updated_info)
     }
 
-    /// Explicitly unpins an external window `handle` and restores its normal Z-order (`winpin_unpin` IPC).
+    /// 取消指定外部窗口的置顶最前状态，恢复正常 Z 轴层级（`winpin_unpin` IPC）
     pub fn unpin_window(&self, handle: WindowHandleId) -> CoreResult<ExternalWindowInfo> {
         self.window_controller
             .set_external_window_topmost(handle, false)
@@ -117,12 +118,12 @@ impl WindowPinModule {
         info!(
             handle,
             title = %updated_info.title,
-            "Restored external window to non-topmost"
+            "已恢复外部窗口为普通非置顶层级"
         );
         Ok(updated_info)
     }
 
-    /// Lists all currently pinned external windows (`winpin_list_all` IPC).
+    /// 列出所有当前被本工具置顶的外部窗口列表（`winpin_list_all` IPC）
     pub fn list_pinned_windows(&self) -> Vec<PinnedWindowEntry> {
         let mut entries: Vec<PinnedWindowEntry> =
             self.pinned_windows.read().values().cloned().collect();
@@ -130,21 +131,21 @@ impl WindowPinModule {
         entries
     }
 
-    /// Lists all external windows known to the OS HAL (`winpin_list_candidates` IPC).
+    /// 列出操作系统当前所有可见的外部窗口候选列表（`winpin_list_candidates` IPC）
     pub fn list_candidate_windows(&self) -> CoreResult<Vec<ExternalWindowInfo>> {
         self.window_controller
             .list_external_windows()
             .map_err(|e| CoreError::Internal(anyhow::anyhow!(e)))
     }
 
-    /// Queries the current foreground window from OS HAL.
+    /// 查询当前获得焦点的前台外部窗口
     pub fn current_foreground_window(&self) -> CoreResult<ExternalWindowInfo> {
         self.window_controller
             .get_foreground_window()
             .map_err(|e| CoreError::Internal(anyhow::anyhow!(e)))
     }
 
-    /// Unpins all currently tracked external windows (invoked automatically during `on_shutdown`).
+    /// 恢复所有已置顶的外部窗口（在守护进程退出 `on_shutdown` 时自动调用）
     pub fn restore_all_pinned_windows(&self) -> usize {
         let handles: Vec<WindowHandleId> = self.pinned_windows.read().keys().copied().collect();
         let mut restored = 0;
@@ -158,7 +159,7 @@ impl WindowPinModule {
                     restored += 1;
                 }
                 Err(err) => {
-                    warn!(handle, error = %err, "Failed to unpin external window during shutdown cleanup");
+                    warn!(handle, error = %err, "退出还原外部窗口置顶状态失败");
                 }
             }
         }
@@ -214,7 +215,7 @@ impl AppModule for WindowPinModule {
         let restored = self.restore_all_pinned_windows();
         info!(
             restored_windows = restored,
-            "WindowPinModule restored all pinned external windows before exit"
+            "WindowPinModule 在退出前已安全还原所有置顶外部窗口"
         );
         Ok(())
     }
@@ -239,19 +240,19 @@ mod tests {
             .bootstrap()
             .unwrap();
 
-        // Trigger PrimaryMod+Shift+P -> pins foreground window (handle 1001)
+        // 触发快捷键 PrimaryMod+Shift+P -> 置顶前台窗口 (句柄 1001)
         kernel
             .trigger_action("window_pin:toggle_foreground")
             .unwrap();
         assert!(mock_hal.get_window_info(1001).unwrap().is_topmost);
         assert_eq!(winpin.list_pinned_windows().len(), 1);
 
-        // Pin second window by cursor coordinates (250, 200 -> hits handle 1001 or 1002)
+        // 置顶第二个窗口 (句柄 1002)
         winpin.pin_window(1002).unwrap();
         assert!(mock_hal.get_window_info(1002).unwrap().is_topmost);
         assert_eq!(winpin.list_pinned_windows().len(), 2);
 
-        // Shut down kernel -> must automatically restore all external windows to non-topmost!
+        // 守护进程退出关闭 -> 必须自动将所有外部窗口还原为普通非置顶状态！
         kernel.shutdown().unwrap();
         assert!(!mock_hal.get_window_info(1001).unwrap().is_topmost);
         assert!(!mock_hal.get_window_info(1002).unwrap().is_topmost);

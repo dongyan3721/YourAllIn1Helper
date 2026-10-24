@@ -1,13 +1,11 @@
-//! `mod-sticky-note` — Module 04: Desktop Pinned Rich-Text Sticky Notes (Markdown + LaTeX).
+//! `mod-sticky-note` —— 子功能 04：桌面置顶富文本便笺 (Markdown + LaTeX)
 //!
-//! Features:
-//! - **Level 2 Pinned Resident Window Strategy**: On `on_init`, queries `sticky_notes` for notes
-//!   where `is_open = 1` and restores only those windows via `WindowPoolManager`. If no notes
-//!   are open on desktop, 0 WebViews are spawned on startup.
-//! - **Real-time Persistence**: Stores Markdown + LaTeX content (`content_md`), theme color,
-//!   opacity, geometry (`pos_x`, `pos_y`, `width`, `height`), and pin state in `sticky_notes`.
-//! - **Close & Destroy**: Closing a note marks `is_open = 0` in SQLite and immediately invokes
-//!   `window_pool.destroy_window("sticky-note-{id}")` to free WebView memory.
+//! 核心设计与特性：
+//! - **Level 2 钉住驻留窗口生命周期**：在 `on_init` 初始化时，仅查询 `sticky_notes` 中 `is_open = 1` 的便笺并恢复原生窗口；
+//!   若桌面无打开便笺，启动时保持 0 WebView 常驻；
+//! - **实时与防抖持久化**：便笺标题、Markdown 内容、LaTeX 公式、主题色、透明度、窗口几何坐标与置顶状态统一持久化至 SQLite；
+//! - **关闭即销毁释放内存**：用户点击便笺关闭按钮时，将 `is_open` 标记为 0，并立即调用 `window_pool.destroy_window("sticky-note-{id}")` 销毁 WebView 进程；
+//! - **Markdown + LaTeX 导出**：支持一键将便笺内容导出为标准 `.md` 文件或格式化文本。
 
 use app_core::{
     AppModule, CoreError, CoreResult, ModuleContext, ModuleMigration, ShortcutSpec, WindowSpec,
@@ -18,49 +16,68 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 use uuid::Uuid;
 
-/// Persistent data model for a desktop sticky note (`sticky_notes` table).
+/// 桌面便笺持久化数据模型（对应 SQLite `sticky_notes` 表）
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StickyNoteRecord {
+    /// 便笺全局唯一 UUID 字符串
     pub id: String,
+    /// 便笺标题
     pub title: String,
+    /// Markdown 与 LaTeX 混合正文内容
     pub content_md: String,
+    /// 主题色彩方案（如 'amber', 'sky', 'emerald', 'rose', 'violet', 'dark'）
     pub theme_color: String,
+    /// 窗口透明度 (0.2 ~ 1.0)
     pub opacity: f64,
+    /// 屏幕 X 像素物理坐标
     pub pos_x: Option<i32>,
+    /// 屏幕 Y 像素物理坐标
     pub pos_y: Option<i32>,
+    /// 窗口宽度（像素）
     pub width: u32,
+    /// 窗口高度（像素）
     pub height: u32,
+    /// 是否始终置顶最前 (Always On Top)
     pub is_pinned: bool,
+    /// 是否在桌面上打开显示 (0: 已关闭/归档, 1: 桌面打开中)
     pub is_open: bool,
+    /// 最近更新时间戳（毫秒）
     pub updated_at: i64,
 }
 
-/// Geometry and pin state update payload from the `sticky-note-{id}` window.
+/// 接收来自前端原生窗口拖拽调整大小、移动位置、置顶或透明度修改的同步载荷
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct StickyNoteWindowStateUpdate {
+    /// 最新屏幕 X 坐标
     pub pos_x: Option<i32>,
+    /// 最新屏幕 Y 坐标
     pub pos_y: Option<i32>,
+    /// 最新窗口宽度
     pub width: u32,
+    /// 最新窗口高度
     pub height: u32,
+    /// 最新置顶状态
     pub is_pinned: bool,
+    /// 最新透明度
     pub opacity: f64,
 }
 
-/// Module 04 implementation (`mod-sticky-note`).
+/// 便笺模块实现
 #[derive(Default, Clone)]
 pub struct StickyNoteModule;
 
 impl StickyNoteModule {
+    /// 创建便笺模块实例
     pub fn new() -> Self {
         Self
     }
 
-    /// Formats the canonical WebView window label for a sticky note ID.
+    /// 根据便笺 ID 生成规范的 WebView 原生窗口 Label
     pub fn window_label_for(note_id: &str) -> String {
         format!("sticky-note-{}", note_id)
     }
 
-    /// Creates a new sticky note in SQLite and immediately opens its `PinnedResident` WebView window.
+    /// 创建一个新便笺并立即在桌面上打开其独立的 Level 2 原生 WebView 窗口
     pub fn create_note(
         &self,
         ctx: &ModuleContext,
@@ -115,7 +132,7 @@ impl StickyNoteModule {
         Ok(record)
     }
 
-    /// Retrieves a single sticky note by `id`.
+    /// 获取单条便笺完整记录
     pub fn get_note(
         &self,
         ctx: &ModuleContext,
@@ -135,7 +152,7 @@ impl StickyNoteModule {
         })
     }
 
-    /// Lists all sticky notes (or only currently open desktop notes when `only_open = true`).
+    /// 查询便笺列表（`only_open = true` 时仅返回当前在桌面打开的便笺）
     pub fn list_notes(
         &self,
         ctx: &ModuleContext,
@@ -164,7 +181,7 @@ impl StickyNoteModule {
         })
     }
 
-    /// Saves Markdown + LaTeX content for a sticky note (`sticky_save_content` IPC).
+    /// 保存便笺标题与 Markdown 内容（前端 500ms 防抖调用）
     pub fn save_content(
         &self,
         ctx: &ModuleContext,
@@ -192,7 +209,7 @@ impl StickyNoteModule {
 
             if affected == 0 {
                 return Err(CoreError::Internal(anyhow::anyhow!(
-                    "Sticky note '{}' not found",
+                    "未找到指定的便笺 '{}'",
                     note_id
                 )));
             }
@@ -200,11 +217,11 @@ impl StickyNoteModule {
         })?;
 
         self.get_note(ctx, note_id)?.ok_or_else(|| {
-            CoreError::Internal(anyhow::anyhow!("Sticky note '{}' disappeared", note_id))
+            CoreError::Internal(anyhow::anyhow!("便笺 '{}' 更新后读取异常", note_id))
         })
     }
 
-    /// Updates window geometry, opacity, and topmost pin state (`sticky_update_window_state` IPC).
+    /// 更新便笺窗口大小、坐标位置、透明度与置顶状态
     pub fn update_window_state(
         &self,
         ctx: &ModuleContext,
@@ -243,7 +260,7 @@ impl StickyNoteModule {
         Ok(())
     }
 
-    /// Marks a sticky note as closed (`is_open = 0`) and immediately destroys its WebView window.
+    /// 关闭便笺（标记 `is_open = 0` 并立即销毁对应的 WebView 窗口归还系统内存）
     pub fn close_note(&self, ctx: &ModuleContext, note_id: &str) -> CoreResult<()> {
         let now = Utc::now().timestamp_millis();
         ctx.db.with_conn(|conn| {
@@ -259,7 +276,7 @@ impl StickyNoteModule {
         Ok(())
     }
 
-    /// Re-opens an existing sticky note onto the desktop (`is_open = 1`) and spawns its `PinnedResident` WebView window.
+    /// 重新在桌面唤醒已关闭的便笺（`is_open = 1` 并创建 WebView 窗口）
     pub fn open_note(&self, ctx: &ModuleContext, note_id: &str) -> CoreResult<StickyNoteRecord> {
         let now = Utc::now().timestamp_millis();
         ctx.db.with_conn(|conn| {
@@ -269,7 +286,7 @@ impl StickyNoteModule {
             )?;
             if affected == 0 {
                 return Err(CoreError::Internal(anyhow::anyhow!(
-                    "Sticky note '{}' not found",
+                    "未找到要打开的便笺 '{}'",
                     note_id
                 )));
             }
@@ -277,13 +294,13 @@ impl StickyNoteModule {
         })?;
 
         let record = self.get_note(ctx, note_id)?.ok_or_else(|| {
-            CoreError::Internal(anyhow::anyhow!("Sticky note '{}' not found", note_id))
+            CoreError::Internal(anyhow::anyhow!("未找到便笺 '{}'", note_id))
         })?;
         self.spawn_note_window(ctx, &record)?;
         Ok(record)
     }
 
-    /// Permanently deletes a sticky note from SQLite and destroys its WebView window if open.
+    /// 彻底从数据库删除便笺，若处于打开状态则销毁其原生窗口
     pub fn delete_note(&self, ctx: &ModuleContext, note_id: &str) -> CoreResult<bool> {
         let label = Self::window_label_for(note_id);
         let _ = ctx.window_pool.destroy_window(&label);
@@ -295,6 +312,24 @@ impl StickyNoteModule {
         })
     }
 
+    /// 将便笺格式化导出为 Markdown 字符串
+    pub fn export_markdown(&self, ctx: &ModuleContext, note_id: &str) -> CoreResult<String> {
+        let note = self.get_note(ctx, note_id)?.ok_or_else(|| {
+            CoreError::Internal(anyhow::anyhow!("未找到便笺 '{}'", note_id))
+        })?;
+
+        let date_str = chrono::DateTime::from_timestamp_millis(note.updated_at)
+            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+            .unwrap_or_else(|| "未知时间".to_string());
+
+        let md = format!(
+            "# {}\n\n> 导出时间：{}\n> 便笺 ID：{}\n\n{}\n",
+            note.title, date_str, note.id, note.content_md
+        );
+        Ok(md)
+    }
+
+    /// 派生并打开便笺对应的原生 WebView 窗口
     fn spawn_note_window(&self, ctx: &ModuleContext, note: &StickyNoteRecord) -> CoreResult<()> {
         let mut spec = WindowSpec::sticky_note(
             &note.id,
@@ -308,6 +343,7 @@ impl StickyNoteModule {
         ctx.window_pool.open_window(spec)
     }
 
+    /// 将数据库行映射为强类型便笺结构体
     fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StickyNoteRecord> {
         let is_pinned_int: i64 = row.get(9)?;
         let is_open_int: i64 = row.get(10)?;
@@ -341,7 +377,7 @@ impl AppModule for StickyNoteModule {
         vec![ModuleMigration::new(
             "sticky_note",
             1,
-            "Create sticky_notes table for Markdown + LaTeX sticky notes",
+            "创建 sticky_notes 便笺表与活跃查询复合索引",
             "CREATE TABLE IF NOT EXISTS sticky_notes (
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL DEFAULT '',
@@ -370,15 +406,15 @@ impl AppModule for StickyNoteModule {
     }
 
     fn on_init(&self, ctx: &ModuleContext) -> CoreResult<()> {
-        // Restore only notes that were left open on desktop (`is_open = 1`).
-        // If 0 notes are open, 0 WebView windows are created (preserving Level 0 memory budget).
+        // 启动时仅恢复桌面未关闭的便笺 (is_open = 1)
+        // 若桌面无便笺，则创建 0 个 WebView 窗口，保持 Level 0 内存预算目标
         let open_notes = self.list_notes(ctx, true)?;
         for note in &open_notes {
             self.spawn_note_window(ctx, note)?;
         }
         info!(
             restored_open_notes = open_notes.len(),
-            "StickyNoteModule initialized"
+            "便笺模块 StickyNoteModule 初始化就绪"
         );
         Ok(())
     }
@@ -401,7 +437,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let sticky = StickyNoteModule::new();
 
-        // 1. First boot: 0 open notes -> 0 WebViews on startup
+        // 1. 首次冷启动：0 个便笺打开 -> 0 个 WebView 实例
         let kernel = AppKernelBuilder::new(temp_dir.path())
             .with_target_os(TargetOs::MacOs)
             .register_module(sticky.clone())
@@ -412,7 +448,7 @@ mod tests {
         let ctx = kernel.context();
         assert_eq!(ctx.window_pool.active_window_count(), 0);
 
-        // 2. Create a note with Markdown + LaTeX formula
+        // 2. 创建便笺（包含 Markdown 与 LaTeX 公式）
         let note = sticky
             .create_note(
                 ctx,
@@ -423,7 +459,7 @@ mod tests {
             .unwrap();
         assert_eq!(ctx.window_pool.active_window_count(), 1);
 
-        // 3. Update window state and content
+        // 3. 更新窗口尺寸、状态与内容
         sticky
             .update_window_state(
                 ctx,
@@ -446,7 +482,12 @@ mod tests {
         assert!(!updated.is_pinned);
         assert_eq!(updated.width, 380);
 
-        // 4. Close the note -> destroys WebView immediately (back to 0 active WebViews)
+        // 4. 导出 Markdown 格式验证
+        let exported = sticky.export_markdown(ctx, &note.id).unwrap();
+        assert!(exported.contains("# 更新后的标题"));
+        assert!(exported.contains("- [x] 已完成"));
+
+        // 5. 关闭便笺 -> 立即销毁 WebView 窗口释放内存
         sticky.close_note(ctx, &note.id).unwrap();
         assert_eq!(ctx.window_pool.active_window_count(), 0);
         kernel.shutdown().unwrap();

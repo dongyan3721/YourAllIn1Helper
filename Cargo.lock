@@ -54,6 +54,8 @@ dependencies = [
  "anyhow",
  "app-core",
  "arboard",
+ "base64 0.22.1",
+ "image",
  "mod-clipboard",
  "mod-sticky-note",
  "mod-window-pin",
@@ -2883,7 +2885,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "app-core",
+ "base64 0.22.1",
  "chrono",
+ "image",
  "os-hal",
  "parking_lot",
  "rusqlite",
