@@ -20,6 +20,7 @@ arboard = "3.7.0"
 app-core = { path = "../crates/app-core" }
 os-hal = { path = "../crates/os-hal" }
 mod-clipboard = { path = "../crates/mod-clipboard" }
+mod-screen-ink = { path = "../crates/mod-screen-ink" }
 mod-sticky-note = { path = "../crates/mod-sticky-note" }
 mod-window-pin = { path = "../crates/mod-window-pin" }
 anyhow.workspace = true

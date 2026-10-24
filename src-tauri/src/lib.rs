@@ -13,6 +13,7 @@ use app_core::{
     TargetOs, WindowBackend, WindowSpec,
 };
 use mod_clipboard::ClipboardModule;
+use mod_screen_ink::ScreenInkModule;
 use mod_sticky_note::{StickyNoteModule, StickyNoteWindowStateUpdate};
 use mod_window_pin::WindowPinModule;
 use os_hal::{ExternalWindowInfo, MockOsHal, NativeOsHal, OsHalBundle};
@@ -71,6 +72,7 @@ pub struct DesktopHost {
     clipboard: Arc<ClipboardModule>,
     sticky_note: Arc<StickyNoteModule>,
     window_pin: Arc<WindowPinModule>,
+    screen_ink: Arc<ScreenInkModule>,
     os_hal: OsHalBundle,
     mock_hal: Option<MockOsHal>,
 }
@@ -124,12 +126,14 @@ impl DesktopHost {
             .with_in_memory_db(in_memory_db)
             .with_target_os(TargetOs::current())
             .with_window_backend(window_backend);
-        let (builder, clipboard, sticky_note, window_pin) = modules::mount(builder, &os_hal)?;
+        let (builder, clipboard, sticky_note, window_pin, screen_ink) =
+            modules::mount(builder, &os_hal)?;
         Ok(Self {
             kernel: builder.bootstrap()?,
             clipboard,
             sticky_note,
             window_pin,
+            screen_ink,
             os_hal,
             mock_hal,
         })

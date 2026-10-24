@@ -18,6 +18,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use crate::{DesktopHost, IpcRequest, IpcResponse};
 
 const ACTION_CLIPBOARD: &str = "clipboard:toggle_popup";
+const ACTION_SCREEN_INK: &str = "screen_ink:toggle_session";
 const ACTION_STICKY: &str = "sticky_note:create";
 const ACTION_PIN_FOREGROUND: &str = "window_pin:toggle_foreground";
 
@@ -77,7 +78,7 @@ impl WindowBackend for TauriWindowBackend {
         if let (Some(x), Some(y)) = (spec.x, spec.y) {
             builder = builder.position(x, y);
         }
-        if spec.label == "window-pin-picker" {
+        if spec.label == "window-pin-picker" || spec.label == "screen-ink-canvas" {
             if let Ok(Some(monitor)) = self.app.primary_monitor() {
                 let size = monitor.size();
                 let position = monitor.position();
@@ -85,6 +86,19 @@ impl WindowBackend for TauriWindowBackend {
                 builder = builder
                     .inner_size(size.width as f64 / scale, size.height as f64 / scale)
                     .position(position.x as f64 / scale, position.y as f64 / scale);
+            }
+        }
+        if spec.label == "screen-ink-toolbar" {
+            if let Ok(Some(monitor)) = self.app.primary_monitor() {
+                let size = monitor.size();
+                let position = monitor.position();
+                let scale = monitor.scale_factor();
+                let mon_w = size.width as f64 / scale;
+                let mon_x = position.x as f64 / scale;
+                let mon_y = position.y as f64 / scale;
+                let x = mon_x + (mon_w - spec.width) / 2.0;
+                let y = mon_y + 32.0;
+                builder = builder.position(x, y);
             }
         }
 
@@ -153,6 +167,15 @@ fn ipc(app: AppHandle, host: State<'_, Arc<DesktopHost>>, request: IpcRequest) -
         {
             for (label, window) in app.webview_windows() {
                 if label.starts_with("pin-badge-") || label.starts_with("pin-mirror-") {
+                    let _ = window.destroy();
+                }
+            }
+        }
+        if module_id.as_deref() == Some("screen_ink")
+            && !host.kernel().registry().is_enabled("screen_ink")
+        {
+            for label in ["screen-ink-canvas", "screen-ink-toolbar"] {
+                if let Some(window) = app.get_webview_window(label) {
                     let _ = window.destroy();
                 }
             }
@@ -408,10 +431,11 @@ fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error> {
         .language
         .to_ascii_lowercase();
 
-    let (lbl_dash, lbl_clip, lbl_sticky, lbl_pin, lbl_quit) = if lang.starts_with("en") {
+    let (lbl_dash, lbl_clip, lbl_ink, lbl_sticky, lbl_pin, lbl_quit) = if lang.starts_with("en") {
         (
             "Open Dashboard",
             "Clipboard History (⇧⌘V)",
+            "Screen Annotation (⇧⌘D)",
             "New Sticky Note (⇧⌘N)",
             "Pin Active Window (⇧⌘P)",
             "Quit",
@@ -420,6 +444,7 @@ fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error> {
         (
             "ダッシュボードを開く",
             "クリップボード履歴 (⇧⌘V)",
+            "画面注釈 (⇧⌘D)",
             "新規付箋ノート (⇧⌘N)",
             "アクティブウィンドウを固定 (⇧⌘P)",
             "終了",
@@ -428,6 +453,7 @@ fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error> {
         (
             "打开主控台",
             "剪贴板历史 (⇧⌘V)",
+            "屏幕注释 (⇧⌘D)",
             "新建置顶便笺 (⇧⌘N)",
             "置顶当前窗口 (⇧⌘P)",
             "退出",
@@ -440,6 +466,13 @@ fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error> {
         "tray_clipboard",
         lbl_clip,
         host.kernel().registry().is_enabled("clipboard"),
+        None::<&str>,
+    )?;
+    let ink = MenuItem::with_id(
+        app,
+        "tray_ink",
+        lbl_ink,
+        host.kernel().registry().is_enabled("screen_ink"),
         None::<&str>,
     )?;
     let sticky = MenuItem::with_id(
@@ -458,7 +491,7 @@ fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error> {
         None::<&str>,
     )?;
     let quit = MenuItem::with_id(app, "tray_quit", lbl_quit, true, None::<&str>)?;
-    Menu::with_items(app, &[&dashboard, &clipboard, &sticky, &pin, &quit])
+    Menu::with_items(app, &[&dashboard, &clipboard, &ink, &sticky, &pin, &quit])
 }
 
 fn update_tray_menu(app: &AppHandle) -> Result<(), tauri::Error> {
@@ -489,6 +522,7 @@ fn setup_tray(app: &AppHandle) -> Result<(), tauri::Error> {
                 }
             }
             "tray_clipboard" => trigger_action(app, ACTION_CLIPBOARD),
+            "tray_ink" => trigger_action(app, ACTION_SCREEN_INK),
             "tray_sticky" => trigger_action(app, ACTION_STICKY),
             "tray_pin" => trigger_action(app, ACTION_PIN_FOREGROUND),
             "tray_quit" => {

@@ -10,6 +10,7 @@
   "tabs": {
     "overview": "Overview",
     "clipboard": "02. Clipboard",
+    "screen_ink": "03. Screen Ink",
     "sticky": "04. Sticky Notes",
     "winpin": "09. Window Pin"
   },
@@ -198,6 +199,72 @@
       "activateTooltip": "Bring original application window to front",
       "unpinBtn": "Unpin",
       "unpinTooltip": "Unpin window and close mirror"
+    }
+  },
+  "screen_ink": {
+    "dragTooltip": "Drag to move toolbar",
+    "colorTooltip": "Select stroke color",
+    "undo": "Undo",
+    "redo": "Redo",
+    "clear": "Clear Canvas",
+    "passthroughActiveTooltip": "Operating desktop (clicks pass through, click to resume drawing)",
+    "passthroughInactiveTooltip": "Switch to desktop mode (keep ink and interact with underlying apps)",
+    "saveTooltip": "Composite screen background and save/copy",
+    "exitTooltip": "Exit Screen Annotation (⇧⌘D)",
+    "toastSaveSuccess": "Snapshot successfully composited and copied to clipboard",
+    "toastSaveFailed": "Failed to composite snapshot",
+    "toastPassthroughOn": "Desktop mode enabled: mouse events pass through to underlying apps",
+    "toastPassthroughOff": "Drawing mode resumed",
+    "toastSaving": "Capturing screen frame and compositing ink...",
+    "tools": {
+      "pen": "Pressure Pen (Smooth ink)",
+      "highlighter": "Highlighter (Semi-transparent)",
+      "laser": "Laser Pointer (2s auto vanishing)",
+      "line": "Line",
+      "rect": "Rectangle",
+      "arrow": "Arrow",
+      "eraser": "Eraser"
+    },
+    "widths": {
+      "thin": "Thin (2px)",
+      "medium": "Medium (4px)",
+      "thick": "Thick (8px)"
+    },
+    "dashboard": {
+      "toolbarDesc": "gInk-style fullscreen transparent annotation with floating capsule toolbar, desktop passthrough, and snapshot compositing.",
+      "startBtn": "Start Screen Ink",
+      "exitBtn": "Exit Screen Ink",
+      "passthroughBtn": "Desktop Mode",
+      "resumeDrawBtn": "Resume Drawing",
+      "clearBtn": "Clear Screen Ink",
+      "statusTitle": "Current Session Status",
+      "statusDesc": "Real-time dual-window lifecycle and interaction mode",
+      "sessionStateLabel": "Session State",
+      "activeState": "Active (Ready)",
+      "inactiveState": "Inactive (0 Memory)",
+      "sessionStateSub": "Toggle anytime with ⇧⌘D",
+      "canvasModeLabel": "Interaction Mode",
+      "drawingMode": "Ink Drawing Mode",
+      "passthroughMode": "Desktop Passthrough Mode",
+      "canvasModeSub": "Quickly switch with ⇧⌘E",
+      "dualWindowLabel": "Dual Window Architecture",
+      "dualWindowVal": "Canvas + Independent Toolbar",
+      "dualWindowSub": "Resolves passthrough vs clicking conflict",
+      "guideTitle": "Feature Guide & Shortcuts",
+      "guideDesc": "Native OS integration and borderless topmost specs",
+      "colFeature": "Feature",
+      "colDetail": "Description",
+      "colHotkey": "Shortcut / Mechanism",
+      "featDualWindow": "True Dual-Window Separation",
+      "descDualWindow": "Fullscreen transparent canvas renders ink, floating capsule toolbar remains clickable",
+      "featPassthrough": "Desktop Passthrough Mode",
+      "descPassthrough": "Canvas ignores cursor events while desktop apps remain interactive, toolbar stays active",
+      "featLaser": "2s Vanishing Laser Pointer",
+      "descLaser": "Laser trail fades linearly within 2000ms without cluttering the undo/redo history",
+      "laserAutoFade": "2s Auto Fade",
+      "featComposite": "Single-Frame Screen Compositing",
+      "descComposite": "Captures frozen physical screen via ScreenCapturer, overlays Alpha ink, and copies to clipboard",
+      "compositeReal": "Real OS Compositing"
     }
   }
 }

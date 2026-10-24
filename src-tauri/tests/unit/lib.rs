@@ -11,7 +11,7 @@ fn test_desktop_host_ipc_full_workflow() {
     assert!(status.ok);
     let data = status.data.unwrap();
     assert_eq!(data["active_window_count"], 0);
-    assert_eq!(data["modules"].as_array().unwrap().len(), 3);
+    assert_eq!(data["modules"].as_array().unwrap().len(), 4);
 
     // 2. Trigger Clipboard shortcut -> opens `clipboard-popup` (1 active WebView)
     let trig = host.invoke_ipc(

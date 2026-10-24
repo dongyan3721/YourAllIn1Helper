@@ -10,6 +10,7 @@
   "tabs": {
     "overview": "概要",
     "clipboard": "02. クリップボード",
+    "screen_ink": "03. 画面注釈",
     "sticky": "04. 付箋ノート",
     "winpin": "09. 最前面固定"
   },
@@ -198,6 +199,72 @@
       "activateTooltip": "元のアプリウィンドウを前面に表示",
       "unpinBtn": "固定解除",
       "unpinTooltip": "最前面固定を解除してミラーを閉じる"
+    }
+  },
+  "screen_ink": {
+    "dragTooltip": "ドラッグしてツールバーを移動",
+    "colorTooltip": "描画色を選択",
+    "undo": "元に戻す",
+    "redo": "やり直す",
+    "clear": "描画をクリア",
+    "passthroughActiveTooltip": "デスクトップ操作中 (マウスクリック透過、描画に戻るにはクリック)",
+    "passthroughInactiveTooltip": "デスクトップ操作モードへ (描画を保持したまま下のアプリを操作)",
+    "saveTooltip": "画面背景と合成して保存/コピー",
+    "exitTooltip": "画面注釈を終了 (⇧⌘D)",
+    "toastSaveSuccess": "スナップショットを合成保存しクリップボードにコピーしました",
+    "toastSaveFailed": "スナップショットの合成に失敗しました",
+    "toastPassthroughOn": "デスクトップ操作モード：マウス操作が下のアプリに透過します",
+    "toastPassthroughOff": "描画モードに戻りました",
+    "toastSaving": "画面キャプチャと合成処理を実行中...",
+    "tools": {
+      "pen": "筆圧ペン (スムーズ描画)",
+      "highlighter": "蛍光ペン (半透明ハイライト)",
+      "laser": "レーザーポインタ (2秒自動消去)",
+      "line": "直線",
+      "rect": "矩形枠",
+      "arrow": "矢印",
+      "eraser": "消しゴム"
+    },
+    "widths": {
+      "thin": "細線 (2px)",
+      "medium": "中線 (4px)",
+      "thick": "太線 (8px)"
+    },
+    "dashboard": {
+      "toolbarDesc": "gInkスタイルの全画面透明注釈と独立最前面カプセルツールバー。デスクトップ透過と合成保存に対応。",
+      "startBtn": "画面注釈を開始",
+      "exitBtn": "画面注釈を終了",
+      "passthroughBtn": "デスクトップ操作",
+      "resumeDrawBtn": "描画モードに戻る",
+      "clearBtn": "描画をクリア",
+      "statusTitle": "現在のセッション状態",
+      "statusDesc": "2ウィンドウのライフサイクルと操作透過モードをリアルタイム監視",
+      "sessionStateLabel": "セッション状態",
+      "activeState": "実行中 (準備完了)",
+      "inactiveState": "未起動 (メモリ消費 0)",
+      "sessionStateSub": "ショートカット ⇧⌘D でいつでも起動・終了",
+      "canvasModeLabel": "操作モード",
+      "drawingMode": "描画モード",
+      "passthroughMode": "デスクトップ透過モード",
+      "canvasModeSub": "ショートカット ⇧⌘E で即座に切り替え",
+      "dualWindowLabel": "2ウィンドウ設計",
+      "dualWindowVal": "全画面キャンバス + 独立ツールバー",
+      "dualWindowSub": "全画面透過とツールバー操作の競合を解消",
+      "guideTitle": "機能説明とショートカット",
+      "guideDesc": "ネイティブOS機能連携と枠なし最前面仕様",
+      "colFeature": "機能",
+      "colDetail": "説明",
+      "colHotkey": "ショートカット / 仕組み",
+      "featDualWindow": "2ウィンドウの完全分離",
+      "descDualWindow": "全画面透明キャンバスが描画を担当し、独立カプセルツールバーは常にクリック可能",
+      "featPassthrough": "デスクトップ操作透過モード",
+      "descPassthrough": "キャンバスのみマウス操作を透過し、背後のアプリを通常通り操作可能",
+      "featLaser": "2秒消去レーザーポインタ",
+      "descLaser": "指示トレースは2000msで線形フェードアウトし、履歴スタックを汚しません",
+      "laserAutoFade": "2秒自動消去",
+      "featComposite": "単一フレーム画面と描画の合成",
+      "descComposite": "ScreenCapturer で取得した画面に描画をAlpha合成し、ファイル保存およびクリップボードへ書き込み",
+      "compositeReal": "実OSキャプチャ合成"
     }
   }
 }
