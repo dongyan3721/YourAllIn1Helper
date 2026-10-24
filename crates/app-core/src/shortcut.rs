@@ -337,8 +337,9 @@ impl ShortcutRegistry {
     pub fn resolve_accelerator(&self, accelerator: &str) -> Option<(String, String)> {
         let normalized = ShortcutNormalizer::normalize_for_os(accelerator, self.target_os)
             .unwrap_or_else(|_| accelerator.to_string());
-        let by_accel = self.by_accelerator.read();
+        // Use the same lock ordering as register/unregister during runtime switches.
         let by_action = self.by_action.read();
+        let by_accel = self.by_accelerator.read();
         let action_id = by_accel.get(&normalized)?;
         let record = by_action.get(action_id)?;
         Some((record.spec.module_id.clone(), record.spec.action_id.clone()))

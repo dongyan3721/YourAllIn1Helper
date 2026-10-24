@@ -4,12 +4,12 @@
 //! - **双触发模式**：
 //!   - `PrimaryMod+Shift+P` (`window_pin:toggle_foreground`)：直接置顶/取消置顶当前活动的前台窗口；
 //!   - `PrimaryMod+SecondaryMod+P` (`window_pin:pick_cursor`)：唤醒全屏准星拾取层，点击任意第三方外部窗口置顶；
-//! - **程序退出兜底还原保证**：内存中严密跟踪所有处于置顶状态的外部窗口句柄，在微内核守护进程退出 (`on_shutdown`) 或异常崩溃时，
-//!   自动遍历并恢复所有外部窗口为普通非置顶层级（Windows `HWND_NOTOPMOST` / macOS 销毁置顶镜像），防止外部窗口残留置顶导致系统桌面失控。
+//! - **关闭与退出清理**：跟踪由本模块置顶的窗口，关闭功能或正常退出时恢复其层级。
+//! - **平台能力检查**：Windows 使用原生置顶；macOS 的外部原窗口持续置顶明确返回不支持。
 
 use app_core::{AppModule, CoreError, CoreResult, ModuleContext, ShortcutSpec};
 use chrono::Utc;
-use os_hal::{ExternalWindowInfo, MockOsHal, WindowController, WindowHandleId};
+use os_hal::{ExternalWindowInfo, WindowController, WindowHandleId};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
@@ -31,12 +31,6 @@ pub struct WindowPinModule {
     window_controller: Arc<dyn WindowController>,
     /// 内存中维护的已置顶外部窗口句柄映射表
     pinned_windows: Arc<RwLock<HashMap<WindowHandleId, PinnedWindowEntry>>>,
-}
-
-impl Default for WindowPinModule {
-    fn default() -> Self {
-        Self::new(Arc::new(MockOsHal::new()))
-    }
 }
 
 impl WindowPinModule {
@@ -150,7 +144,11 @@ impl WindowPinModule {
         let handles: Vec<WindowHandleId> = self.pinned_windows.read().keys().copied().collect();
         let mut count = 0;
         for handle in handles {
-            if self.window_controller.set_external_window_topmost(handle, true).is_ok() {
+            if self
+                .window_controller
+                .set_external_window_topmost(handle, true)
+                .is_ok()
+            {
                 count += 1;
             }
         }
@@ -189,6 +187,9 @@ impl AppModule for WindowPinModule {
     }
 
     fn default_shortcuts(&self) -> Vec<ShortcutSpec> {
+        if !self.window_controller.supports_external_topmost() {
+            return Vec::new();
+        }
         vec![
             ShortcutSpec::new(
                 "window_pin",
@@ -223,8 +224,14 @@ impl AppModule for WindowPinModule {
         Ok(())
     }
 
-    fn on_shutdown(&self, _ctx: &ModuleContext) -> CoreResult<()> {
+    fn on_shutdown(&self, ctx: &ModuleContext) -> CoreResult<()> {
+        ctx.window_pool.destroy_window("window-pin-picker")?;
         let restored = self.restore_all_pinned_windows();
+        if !self.list_pinned_windows().is_empty() {
+            return Err(CoreError::Config(
+                "Some external windows could not be restored".into(),
+            ));
+        }
         info!(
             restored_windows = restored,
             "WindowPinModule 在退出前已安全还原所有置顶外部窗口"
@@ -234,40 +241,5 @@ impl AppModule for WindowPinModule {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use app_core::{AppKernelBuilder, TargetOs};
-
-    #[test]
-    fn test_window_pin_toggle_and_auto_restore_on_shutdown() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let mock_hal = MockOsHal::new();
-        let winpin = WindowPinModule::new(Arc::new(mock_hal.clone()));
-
-        let kernel = AppKernelBuilder::new(temp_dir.path())
-            .with_in_memory_db(true)
-            .with_target_os(TargetOs::Windows)
-            .register_module(winpin.clone())
-            .unwrap()
-            .bootstrap()
-            .unwrap();
-
-        // 触发快捷键 PrimaryMod+Shift+P -> 置顶前台窗口 (句柄 1001)
-        kernel
-            .trigger_action("window_pin:toggle_foreground")
-            .unwrap();
-        assert!(mock_hal.get_window_info(1001).unwrap().is_topmost);
-        assert_eq!(winpin.list_pinned_windows().len(), 1);
-
-        // 置顶第二个窗口 (句柄 1002)
-        winpin.pin_window(1002).unwrap();
-        assert!(mock_hal.get_window_info(1002).unwrap().is_topmost);
-        assert_eq!(winpin.list_pinned_windows().len(), 2);
-
-        // 守护进程退出关闭 -> 必须自动将所有外部窗口还原为普通非置顶状态！
-        kernel.shutdown().unwrap();
-        assert!(!mock_hal.get_window_info(1001).unwrap().is_topmost);
-        assert!(!mock_hal.get_window_info(1002).unwrap().is_topmost);
-        assert_eq!(winpin.list_pinned_windows().len(), 0);
-    }
-}
+#[path = "../tests/unit/lib.rs"]
+mod tests;

@@ -13,7 +13,7 @@
       <!-- 分段选择器 (Segmented Control) 切换标签 -->
       <nav class="macos-segmented">
         <button
-          v-for="tab in tabs"
+          v-for="tab in visibleTabs"
           :key="tab.id"
           class="macos-segment-item"
           :class="{ active: currentTab === tab.id }"
@@ -99,6 +99,8 @@
             <span class="metric-sub">enigo 模拟 Cmd+V / Ctrl+V</span>
           </div>
         </div>
+
+        <ModuleManager :modules="status?.module_catalog || []" @changed="refreshDashboard" />
 
         <!-- 全局快捷键注册表 -->
         <div class="section-card">
@@ -311,6 +313,7 @@
 
       <!-- Tab 4: 窗口置顶管理 (09 mod-window-pin) -->
       <section v-else-if="currentTab === 'winpin'" class="tab-pane">
+        <p v-if="!windowPinSupported" class="section-card" style="padding: 12px;">当前系统不支持将其他应用的原窗口持续置顶。窗口枚举和激活仍可使用。</p>
         <div class="pane-toolbar">
           <div class="macos-search-box" style="max-width: 320px;">
             <Icons name="search" size="13" />
@@ -331,11 +334,11 @@
               <Icons name="power" size="12" />
               <span>一键还原全部置顶</span>
             </button>
-            <button class="macos-button primary" @click="toggleForegroundPin">
+            <button class="macos-button primary" @click="toggleForegroundPin" :disabled="!windowPinSupported">
               <Icons name="pin" size="12" />
               <span>置顶当前活动窗口 (⇧⌘P)</span>
             </button>
-            <button class="macos-button" @click="openPinPicker">
+            <button class="macos-button" @click="openPinPicker" :disabled="!windowPinSupported">
               <Icons name="crosshair" size="12" />
               <span>准星拾取 (⌥⌘P)</span>
             </button>
@@ -377,6 +380,7 @@
                         class="macos-button"
                         :class="{ primary: !win.is_topmost }"
                         @click="togglePinHandle(win.handle)"
+                        :disabled="!windowPinSupported"
                       >
                         {{ win.is_topmost ? '取消置顶' : '置顶' }}
                       </button>
@@ -396,7 +400,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import {
   invokeIpc,
   type KernelStatus,
@@ -406,6 +410,7 @@ import {
   type PinnedWindowEntry,
 } from '../api/ipc';
 import Icons from './Icons.vue';
+import ModuleManager from './ModuleManager.vue';
 import {
   currentThemeMode,
   currentAccent,
@@ -418,9 +423,9 @@ import {
 /** 选项卡配置列表 */
 const tabs = [
   { id: 'overview', name: '总览', icon: 'dashboard' },
-  { id: 'clipboard', name: '02. 剪贴板', icon: 'clipboard' },
-  { id: 'sticky', name: '04. 便笺库', icon: 'sticky' },
-  { id: 'winpin', name: '09. 窗口置顶', icon: 'pin' },
+  { id: 'clipboard', module: 'clipboard', name: '02. 剪贴板', icon: 'clipboard' },
+  { id: 'sticky', module: 'sticky_note', name: '04. 便笺库', icon: 'sticky' },
+  { id: 'winpin', module: 'window_pin', name: '09. 窗口置顶', icon: 'pin' },
 ];
 
 /** 当前选中的选项卡 ID */
@@ -432,6 +437,10 @@ const clipItems = ref<ClipboardRecord[]>([]);
 const notes = ref<StickyNoteRecord[]>([]);
 const externalWindows = ref<ExternalWindowInfo[]>([]);
 const pinnedWindows = ref<PinnedWindowEntry[]>([]);
+
+const moduleEnabled = (id: string) => status.value?.module_catalog.some((module) => module.id === id && module.enabled) ?? false;
+const visibleTabs = computed(() => tabs.filter((tab) => !tab.module || moduleEnabled(tab.module)));
+const windowPinSupported = computed(() => status.value?.module_catalog.find((module) => module.id === 'window_pin')?.supported ?? false);
 
 /** 过滤搜索词 */
 const clipSearchKeyword = ref('');
@@ -464,13 +473,14 @@ const filteredExternalWindows = computed(() => {
 /** 刷新全部内核与模块数据 */
 async function refreshDashboard() {
   try {
-    const [s, c, n, w] = await Promise.all([
-      invokeIpc<KernelStatus>('kernel_get_status'),
-      invokeIpc<ClipboardRecord[]>('clipboard_list_items', { limit: 100 }),
-      invokeIpc<StickyNoteRecord[]>('sticky_list_notes', { only_open: false }),
-      invokeIpc<{ candidates: ExternalWindowInfo[]; pinned: PinnedWindowEntry[] }>('winpin_list_candidates'),
-    ]);
+    const s = await invokeIpc<KernelStatus>('kernel_get_status');
     status.value = s;
+    if (!visibleTabs.value.some((tab) => tab.id === currentTab.value)) currentTab.value = 'overview';
+    const [c, n, w] = await Promise.all([
+      moduleEnabled('clipboard') ? invokeIpc<ClipboardRecord[]>('clipboard_list_items', { limit: 100 }) : Promise.resolve([]),
+      moduleEnabled('sticky_note') ? invokeIpc<StickyNoteRecord[]>('sticky_list_notes', { only_open: false }) : Promise.resolve([]),
+      moduleEnabled('window_pin') ? invokeIpc<{ candidates: ExternalWindowInfo[]; pinned: PinnedWindowEntry[] }>('winpin_list_candidates') : Promise.resolve({ candidates: [], pinned: [] }),
+    ]);
     clipItems.value = c;
     notes.value = n;
     externalWindows.value = w.candidates || [];
@@ -607,12 +617,12 @@ function formatDateTime(ts: number) {
   return `${m}-${day} ${h}:${min}`;
 }
 
+let refreshTimer: ReturnType<typeof setInterval> | undefined;
 onMounted(async () => {
   await refreshDashboard();
-  setInterval(() => {
-    refreshDashboard();
-  }, 1000);
+  refreshTimer = setInterval(refreshDashboard, 1000);
 });
+onUnmounted(() => { if (refreshTimer) clearInterval(refreshTimer); });
 </script>
 
 <style scoped>

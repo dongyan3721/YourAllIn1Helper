@@ -27,3 +27,7 @@ pub use types::{
     HalError, HalResult, OcrBackendKind, OcrLineResult, OcrRecognitionResult, SelectionSource,
     SelectionTextResult, WindowHandleId,
 };
+
+#[cfg(test)]
+#[path = "../tests/unit/platform.rs"]
+mod tests;

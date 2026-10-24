@@ -59,9 +59,20 @@ export interface PinnedWindowEntry {
   pinned_at: number;
 }
 
+export interface ModuleStatus {
+  number: number;
+  id: string;
+  name: string;
+  available: boolean;
+  enabled: boolean;
+  supported: boolean;
+  unavailable_reason: string;
+}
+
 /** 微内核运行状态概览 */
 export interface KernelStatus {
   target_os: string;
+  module_catalog: ModuleStatus[];
   active_window_count: number;
   active_windows: Array<{
     spec: {

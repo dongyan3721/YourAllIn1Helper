@@ -1,0 +1,23 @@
+{
+  "config_version": 3,
+  "modules": {
+    "enabled": {
+      "screenshot": true,
+      "clipboard": true,
+      "screen_ink": true,
+      "sticky_note": true,
+      "app_usage": true,
+      "script_runner": true,
+      "translator": true,
+      "media_proc": true,
+      "window_pin": true,
+      "password_vault": true
+    },
+    "settings": {}
+  },
+  "clipboard": {
+    "enabled": true,
+    "max_history_items": 100,
+    "capture_images": true
+  }
+}

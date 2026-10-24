@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use app_core::{CoreError, CoreResult, WindowBackend, WindowSpec};
-use os_hal::{ExternalWindowInfo, WindowController};
+use os_hal::ExternalWindowInfo;
 use serde_json::Value;
 use tauri::{
     menu::{Menu, MenuItem},
@@ -20,7 +20,6 @@ use crate::{DesktopHost, IpcRequest, IpcResponse};
 const ACTION_CLIPBOARD: &str = "clipboard:toggle_popup";
 const ACTION_STICKY: &str = "sticky_note:create";
 const ACTION_PIN_FOREGROUND: &str = "window_pin:toggle_foreground";
-const ACTION_PIN_PICKER: &str = "window_pin:pick_cursor";
 
 fn to_core_error(error: impl std::fmt::Display) -> CoreError {
     CoreError::Internal(anyhow::anyhow!(error.to_string()))
@@ -129,15 +128,45 @@ impl WindowBackend for TauriWindowBackend {
 
 /// Single typed IPC entry point used by every WebView.
 #[tauri::command]
-fn ipc(host: State<'_, Arc<DesktopHost>>, request: IpcRequest) -> IpcResponse {
-    host.invoke_ipc(&request.cmd, request.args)
+fn ipc(app: AppHandle, host: State<'_, Arc<DesktopHost>>, request: IpcRequest) -> IpcResponse {
+    let module_id = request
+        .args
+        .get("module_id")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    let previous = module_id
+        .as_deref()
+        .map(|id| host.kernel().registry().is_enabled(id));
+    let response = host.invoke_ipc(&request.cmd, request.args);
+    if response.ok && request.cmd == "kernel_set_module_enabled" {
+        if let Err(error) = register_global_shortcuts(&app) {
+            if let (Some(id), Some(enabled)) = (module_id.as_deref(), previous) {
+                let _ = host.kernel().set_module_enabled(id, enabled);
+            }
+            let _ = register_global_shortcuts(&app);
+            emit_update(&app);
+            return IpcResponse::err(format!("更新系统快捷键失败，已尝试还原模块状态：{}", error));
+        }
+        let _ = update_tray_menu(&app);
+        if module_id.as_deref() == Some("window_pin")
+            && !host.kernel().registry().is_enabled("window_pin")
+        {
+            for (label, window) in app.webview_windows() {
+                if label.starts_with("pin-badge-") || label.starts_with("pin-mirror-") {
+                    let _ = window.destroy();
+                }
+            }
+        }
+        emit_update(&app);
+    }
+    response
 }
 
 fn emit_update(app: &AppHandle) {
     let _ = app.emit("kernel://updated", Value::Null);
 }
 
-fn trigger_action(app: &AppHandle, action_id: &'static str) {
+fn trigger_action(app: &AppHandle, action_id: &str) {
     if let Some(host) = app.try_state::<Arc<DesktopHost>>() {
         if let Err(error) = host.kernel().trigger_action(action_id) {
             tracing::error!(action_id, %error, "Global shortcut action failed");
@@ -147,20 +176,18 @@ fn trigger_action(app: &AppHandle, action_id: &'static str) {
 }
 
 fn register_global_shortcuts(app: &AppHandle) -> anyhow::Result<()> {
-    let shortcuts = [
-        ("CommandOrControl+Shift+V", ACTION_CLIPBOARD),
-        ("CommandOrControl+Shift+N", ACTION_STICKY),
-        ("CommandOrControl+Shift+P", ACTION_PIN_FOREGROUND),
-        ("CommandOrControl+Alt+P", ACTION_PIN_PICKER),
-    ];
-
-    for (accelerator, action_id) in shortcuts {
-        app.global_shortcut()
-            .on_shortcut(accelerator, move |app, _shortcut, event| {
+    app.global_shortcut().unregister_all()?;
+    let host = app.state::<Arc<DesktopHost>>();
+    for shortcut in host.kernel().context().shortcut_registry.list_all() {
+        let action_id = shortcut.spec.action_id;
+        app.global_shortcut().on_shortcut(
+            shortcut.physical_accelerator.as_str(),
+            move |app, _, event| {
                 if event.state == ShortcutState::Pressed {
-                    trigger_action(app, action_id);
+                    trigger_action(app, &action_id);
                 }
-            })?;
+            },
+        )?;
     }
     Ok(())
 }
@@ -210,7 +237,9 @@ fn start_window_pin_guard_and_badges(app: &AppHandle) {
             // 若用户切换了前台应用，并且前台不是被置顶的应用，则执行保持置顶动作
             if current_fg_pid != last_foreground_pid && current_fg_pid > 0 {
                 last_foreground_pid = current_fg_pid;
-                let is_pinned_fg = pinned_entries.iter().any(|p| p.info.process_id == current_fg_pid);
+                let is_pinned_fg = pinned_entries
+                    .iter()
+                    .any(|p| p.info.process_id == current_fg_pid);
                 if !is_pinned_fg {
                     host.window_pin.raise_all_pinned_windows();
                 }
@@ -219,7 +248,11 @@ fn start_window_pin_guard_and_badges(app: &AppHandle) {
             // 收集需显示的图钉角标位置
             let mut badges = Vec::new();
             for pinned in pinned_entries {
-                match host.os_hal.get_window_info(pinned.info.handle) {
+                match host
+                    .os_hal
+                    .window_controller
+                    .get_window_info(pinned.info.handle)
+                {
                     Ok(info) => badges.push(info),
                     Err(_) => {
                         // 目标外部物理窗口已被用户在外部关闭，自动从置顶列表中解钉并清理
@@ -253,7 +286,8 @@ fn reconcile_pin_badges(app: &AppHandle, badges: Vec<ExternalWindowInfo>) {
         let badge_y = (info.y + 4).max(0);
 
         if let Some(window) = app.get_webview_window(&label) {
-            let _ = window.set_position(tauri::LogicalPosition::new(badge_x as f64, badge_y as f64));
+            let _ =
+                window.set_position(tauri::LogicalPosition::new(badge_x as f64, badge_y as f64));
             continue;
         }
 
@@ -294,71 +328,109 @@ fn start_clipboard_listener(app: &AppHandle) {
     };
     let app_handle = app.clone();
     std::thread::spawn(move || {
-        let Ok(mut clipboard) = arboard::Clipboard::new() else {
-            tracing::error!("无法初始化系统剪贴板监听器 (arboard)");
-            return;
-        };
-        let mut last_text = clipboard.get_text().ok();
+        let mut clipboard: Option<arboard::Clipboard> = None;
+        let mut last_text: Option<String> = None;
         let mut last_image_hash: Option<String> = None;
-
         loop {
             std::thread::sleep(std::time::Duration::from_millis(250));
-
-            // 通道一：优先检查系统剪贴板文本变更
-            match clipboard.get_text() {
-                Ok(text) if !text.trim().is_empty() && Some(&text) != last_text.as_ref() => {
-                    let ctx = host.kernel().context();
-                    if let Ok(Some(_)) = host.clipboard.capture_text(ctx, &text, None) {
-                        emit_update(&app_handle);
-                    }
-                    last_text = Some(text);
+            let result = host.kernel().registry().with_enabled("clipboard", || {
+                if !host.kernel().context().config.read().clipboard.enabled {
+                    clipboard = None;
+                    return Ok(());
+                }
+                if clipboard.is_none() {
+                    let mut opened = arboard::Clipboard::new().map_err(to_core_error)?;
+                    last_text = opened.get_text().ok();
                     last_image_hash = None;
-                    continue;
+                    clipboard = Some(opened);
+                    return Ok(());
                 }
-                Ok(text) => {
-                    last_text = Some(text);
-                }
-                Err(_) => {
-                    // 若读取文本失败，可能是剪贴板当前为图片，进入通道二检查图片变更
-                    if let Ok(image) = clipboard.get_image() {
-                        let img_hash = mod_clipboard::ClipboardModule::compute_hash(
-                            "image",
-                            &image.bytes,
-                        );
-                        if Some(&img_hash) != last_image_hash.as_ref() {
-                            let ctx = host.kernel().context();
-                            if let Ok(Some(_)) = host.clipboard.capture_image_rgba(
-                                ctx,
-                                image.width as u32,
-                                image.height as u32,
-                                &image.bytes,
-                                None,
-                            ) {
-                                emit_update(&app_handle);
+                let clipboard = clipboard.as_mut().expect("initialized above");
+                // 通道一：优先检查系统剪贴板文本变更
+                match clipboard.get_text() {
+                    Ok(text) if !text.trim().is_empty() && Some(&text) != last_text.as_ref() => {
+                        let ctx = host.kernel().context();
+                        if let Ok(Some(_)) = host.clipboard.capture_text(ctx, &text, None) {
+                            emit_update(&app_handle);
+                        }
+                        last_text = Some(text);
+                        last_image_hash = None;
+                        return Ok(());
+                    }
+                    Ok(text) => {
+                        last_text = Some(text);
+                    }
+                    Err(_) => {
+                        // 若读取文本失败，可能是剪贴板当前为图片，进入通道二检查图片变更
+                        if let Ok(image) = clipboard.get_image() {
+                            let img_hash =
+                                mod_clipboard::ClipboardModule::compute_hash("image", &image.bytes);
+                            if Some(&img_hash) != last_image_hash.as_ref() {
+                                let ctx = host.kernel().context();
+                                if let Ok(Some(_)) = host.clipboard.capture_image_rgba(
+                                    ctx,
+                                    image.width as u32,
+                                    image.height as u32,
+                                    &image.bytes,
+                                    None,
+                                ) {
+                                    emit_update(&app_handle);
+                                }
+                                last_image_hash = Some(img_hash);
+                                last_text = None;
                             }
-                            last_image_hash = Some(img_hash);
-                            last_text = None;
                         }
                     }
                 }
+                Ok(())
+            });
+            if result.is_err() {
+                clipboard = None;
+                last_text = None;
+                last_image_hash = None;
             }
         }
     });
 }
 
-fn setup_tray(app: &AppHandle) -> Result<(), tauri::Error> {
+fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error> {
+    let host = app.state::<Arc<DesktopHost>>();
     let dashboard = MenuItem::with_id(app, "tray_dashboard", "打开主控台", true, None::<&str>)?;
     let clipboard = MenuItem::with_id(
         app,
         "tray_clipboard",
         "剪贴板历史 (⇧⌘V)",
-        true,
+        host.kernel().registry().is_enabled("clipboard"),
         None::<&str>,
     )?;
-    let sticky = MenuItem::with_id(app, "tray_sticky", "新建置顶便笺 (⇧⌘N)", true, None::<&str>)?;
-    let pin = MenuItem::with_id(app, "tray_pin", "置顶当前窗口 (⇧⌘P)", true, None::<&str>)?;
+    let sticky = MenuItem::with_id(
+        app,
+        "tray_sticky",
+        "新建置顶便笺 (⇧⌘N)",
+        host.kernel().registry().is_enabled("sticky_note"),
+        None::<&str>,
+    )?;
+    let pin = MenuItem::with_id(
+        app,
+        "tray_pin",
+        "置顶当前窗口 (⇧⌘P)",
+        host.kernel().registry().is_enabled("window_pin")
+            && host.os_hal.window_controller.supports_external_topmost(),
+        None::<&str>,
+    )?;
     let quit = MenuItem::with_id(app, "tray_quit", "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&dashboard, &clipboard, &sticky, &pin, &quit])?;
+    Menu::with_items(app, &[&dashboard, &clipboard, &sticky, &pin, &quit])
+}
+
+fn update_tray_menu(app: &AppHandle) -> Result<(), tauri::Error> {
+    if let Some(tray) = app.tray_by_id("main-tray") {
+        tray.set_menu(Some(build_tray_menu(app)?))?;
+    }
+    Ok(())
+}
+
+fn setup_tray(app: &AppHandle) -> Result<(), tauri::Error> {
+    let menu = build_tray_menu(app)?;
 
     TrayIconBuilder::with_id("main-tray")
         .icon(tauri::image::Image::from_bytes(include_bytes!(
@@ -392,168 +464,10 @@ fn setup_tray(app: &AppHandle) -> Result<(), tauri::Error> {
     Ok(())
 }
 
-/// Exercises real Tauri windows and native capabilities without synthesizing keyboard input.
-/// This is intentionally separate from headless unit tests: every window checked here is a real
-/// WebView created by the running desktop application.
-fn run_ui_smoke_checks(app: AppHandle, keep_open: bool) {
-    std::thread::spawn(move || {
-        let mut failures = Vec::new();
-        macro_rules! check {
-            ($condition:expr, $name:expr) => {
-                if $condition {
-                    println!("[UI SMOKE] PASS: {}", $name);
-                } else {
-                    eprintln!("[UI SMOKE] FAIL: {}", $name);
-                    failures.push($name);
-                }
-            };
-        }
-
-        std::thread::sleep(std::time::Duration::from_millis(600));
-        let host = app.state::<Arc<DesktopHost>>().inner().clone();
-        check!(true, "Tauri tray and global shortcuts registered");
-
-        let dashboard = host.invoke_ipc(
-            "kernel_open_dashboard",
-            serde_json::json!({ "route": "/overview" }),
-        );
-        std::thread::sleep(std::time::Duration::from_millis(250));
-        check!(
-            dashboard.ok && app.get_webview_window("dashboard").is_some(),
-            "real dashboard WebView opens"
-        );
-
-        let clipboard_result = (|| -> bool {
-            let Ok(mut clipboard) = arboard::Clipboard::new() else {
-                return false;
-            };
-            let previous = clipboard.get_text().ok();
-            let marker = format!("AIO_TAURI_UI_SMOKE_{}", std::process::id());
-            if clipboard.set_text(marker.clone()).is_err() {
-                return false;
-            }
-            let roundtrip = clipboard.get_text().ok().as_deref() == Some(marker.as_str());
-            std::thread::sleep(std::time::Duration::from_millis(550));
-            let history = host.invoke_ipc(
-                "clipboard_list_items",
-                serde_json::json!({ "keyword": marker, "limit": 10 }),
-            );
-            let captured = history
-                .data
-                .and_then(|value| value.as_array().cloned())
-                .map(|items| !items.is_empty())
-                .unwrap_or(false);
-            if let Some(previous) = previous {
-                let _ = clipboard.set_text(previous);
-            }
-            roundtrip && captured
-        })();
-        check!(
-            clipboard_result,
-            "system clipboard roundtrip and background history listener"
-        );
-
-        host.invoke_ipc(
-            "kernel_trigger_shortcut",
-            serde_json::json!({ "action_id": ACTION_CLIPBOARD }),
-        );
-        std::thread::sleep(std::time::Duration::from_millis(250));
-        check!(
-            app.get_webview_window("clipboard-popup").is_some(),
-            "clipboard shortcut creates a real transient WebView"
-        );
-        host.invoke_ipc(
-            "kernel_trigger_shortcut",
-            serde_json::json!({ "action_id": ACTION_CLIPBOARD }),
-        );
-        std::thread::sleep(std::time::Duration::from_millis(150));
-        check!(
-            app.get_webview_window("clipboard-popup").is_none(),
-            "clipboard popup is destroyed instead of hidden"
-        );
-
-        let created = host.invoke_ipc(
-            "sticky_create_note",
-            serde_json::json!({
-                "title": "Tauri UI Smoke Note",
-                "content_md": "Real **Tauri** window: $E = mc^2$",
-                "theme_color": "sky"
-            }),
-        );
-        let note_id = created
-            .data
-            .as_ref()
-            .and_then(|data| data["id"].as_str())
-            .unwrap_or("")
-            .to_string();
-        std::thread::sleep(std::time::Duration::from_millis(250));
-        check!(
-            !note_id.is_empty()
-                && app
-                    .get_webview_window(&format!("sticky-note-{}", note_id))
-                    .is_some(),
-            "sticky note creates an independent pinned WebView"
-        );
-        host.invoke_ipc("sticky_close_note", serde_json::json!({ "id": note_id }));
-        std::thread::sleep(std::time::Duration::from_millis(150));
-        check!(
-            app.get_webview_window(&format!("sticky-note-{}", note_id))
-                .is_none(),
-            "closing a sticky note destroys its WebView"
-        );
-
-        let candidates = host.invoke_ipc("winpin_list_candidates", serde_json::json!({}));
-        let first_handle = candidates
-            .data
-            .as_ref()
-            .and_then(|data| data["candidates"].as_array())
-            .and_then(|windows| windows.first())
-            .and_then(|window| window["handle"].as_u64());
-        check!(
-            first_handle.is_some(),
-            "native external windows are enumerated"
-        );
-        if let Some(handle) = first_handle {
-            let pinned = host.invoke_ipc(
-                "winpin_toggle_handle",
-                serde_json::json!({ "handle": handle }),
-            );
-            check!(pinned.ok, "external window enters pinned state");
-            std::thread::sleep(std::time::Duration::from_millis(900));
-            #[cfg(target_os = "macos")]
-            check!(
-                app.get_webview_window(&format!("pin-badge-{}", handle))
-                    .is_some(),
-                "macOS pinned badge is a real Tauri WebView"
-            );
-            let snapshot = host.invoke_ipc(
-                "winpin_get_snapshot",
-                serde_json::json!({ "handle": handle }),
-            );
-            check!(snapshot.ok, "real external window capture succeeds");
-            host.invoke_ipc("winpin_unpin", serde_json::json!({ "handle": handle }));
-        }
-
-        println!(
-            "[UI SMOKE] NOTE: synthetic Cmd+V is intentionally not injected (Accessibility-independent test)"
-        );
-        if failures.is_empty() {
-            println!("UI_SMOKE_RESULT: PASS");
-        } else {
-            eprintln!("UI_SMOKE_RESULT: FAIL ({} checks)", failures.len());
-        }
-
-        if keep_open && failures.is_empty() {
-            host.invoke_ipc(
-                "kernel_open_dashboard",
-                serde_json::json!({ "route": "/overview" }),
-            );
-        } else {
-            let _ = host.kernel().shutdown();
-            app.exit(if failures.is_empty() { 0 } else { 1 });
-        }
-    });
-}
+#[path = "../tests/support/gui_test.rs"]
+mod gui_test;
+#[path = "../tests/support/ui_smoke.rs"]
+mod ui_smoke;
 
 /// Starts the real cross-platform Tauri desktop application.
 pub fn run() {
@@ -563,21 +477,34 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .invoke_handler(tauri::generate_handler![ipc])
         .setup(move |app| {
-            let app_data_dir = app.path().app_data_dir()?;
+            // 人工 GUI 回归可使用独立的数据目录，避免改动日常使用记录。
+            let app_data_dir = if let Some(path) = gui_test::data_dir() {
+                path
+            } else if ui_smoke_test {
+                std::env::temp_dir().join(format!("all-in-one-ui-smoke-{}", std::process::id()))
+            } else {
+                app.path().app_data_dir()?
+            };
             let backend = Arc::new(TauriWindowBackend::new(app.handle().clone()));
             let host = Arc::new(DesktopHost::bootstrap_with_window_backend(
                 app_data_dir,
                 false,
                 backend,
             )?);
-            host.seed_demo_data_if_empty()?;
             app.manage(host);
 
             register_global_shortcuts(app.handle())?;
             setup_tray(app.handle())?;
             start_clipboard_listener(app.handle());
             #[cfg(target_os = "macos")]
-            start_window_pin_guard_and_badges(app.handle());
+            if app
+                .state::<Arc<DesktopHost>>()
+                .os_hal
+                .window_controller
+                .supports_external_topmost()
+            {
+                start_window_pin_guard_and_badges(app.handle());
+            }
 
             if !ui_smoke_test && !std::env::args().any(|arg| arg == "--silent") {
                 let host = app.state::<Arc<DesktopHost>>();
@@ -587,7 +514,7 @@ pub fn run() {
                     .open_window(WindowSpec::dashboard("/overview"))?;
             }
             if ui_smoke_test {
-                run_ui_smoke_checks(app.handle().clone(), keep_open);
+                ui_smoke::run_ui_smoke_checks(app.handle().clone(), keep_open);
             }
             Ok(())
         })

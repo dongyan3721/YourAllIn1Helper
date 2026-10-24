@@ -355,16 +355,12 @@ impl WindowPoolManager {
     /// Immediately destroys a WebView window and removes it from the active pool,
     /// freeing the underlying WebView2 / WKWebView memory.
     pub fn destroy_window(&self, label: &str) -> CoreResult<bool> {
-        let removed = self.active_windows.write().remove(label);
-        // 无论该窗口是否在 active_windows 注册表中（例如原生直接创建的图钉角标），
-        // 均委托底层 backend 尝试销毁对应的实际 Webview 实体窗口
-        let backend_res = self.backend.destroy_window(label);
-        if removed.is_some() || backend_res.is_ok() {
-            info!(label = %label, "Destroyed WebView window and reclaimed memory");
-            Ok(true)
-        } else {
-            Ok(false)
-        }
+        // 先提交原生销毁；失败时保留注册记录，让模块开关能够返回错误并重试清理。
+        // 原生直接创建的角标也需提交销毁，即使没有注册到窗口池。
+        self.backend.destroy_window(label)?;
+        self.active_windows.write().remove(label);
+        info!(label = %label, "Destroyed WebView window and reclaimed memory");
+        Ok(true)
     }
 
     /// Handles window blur (focus lost) events: automatically destroys `Transient { destroy_on_blur: true }`

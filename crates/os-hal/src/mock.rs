@@ -225,6 +225,14 @@ impl OcrProvider for MockOsHal {
 }
 
 impl WindowController for MockOsHal {
+    fn supports_external_topmost(&self) -> bool {
+        true
+    }
+    fn activate_external_window(&self, handle: WindowHandleId) -> HalResult<()> {
+        self.get_window_info(handle)?;
+        self.set_foreground_handle(handle);
+        Ok(())
+    }
     fn get_foreground_window(&self) -> HalResult<ExternalWindowInfo> {
         let handle = self.foreground_handle.load(Ordering::SeqCst);
         self.get_window_info(handle)
@@ -316,6 +324,9 @@ impl ActiveAppWatcher for MockOsHal {
 }
 
 impl InputSimulator for MockOsHal {
+    fn paste_trigger_count(&self) -> u64 {
+        MockOsHal::paste_trigger_count(self)
+    }
     fn send_paste_shortcut(&self) -> HalResult<()> {
         self.paste_count.fetch_add(1, Ordering::SeqCst);
         Ok(())

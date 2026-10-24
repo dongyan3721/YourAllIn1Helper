@@ -2,7 +2,7 @@
 
 use crate::types::{
     ActiveAppSnapshot, BiometricResult, CapturedFrame, DisplayMonitorInfo, ExternalWindowInfo,
-    HalResult, OcrRecognitionResult, SelectionTextResult, WindowHandleId,
+    HalError, HalResult, OcrRecognitionResult, SelectionTextResult, WindowHandleId,
 };
 use app_core::{DetectedRegionRect, SelectionBox};
 use std::sync::Arc;
@@ -37,6 +37,16 @@ pub trait OcrProvider: Send + Sync + 'static {
 
 /// 4. External window manipulation & topmost controller (`mod-window-pin`, `mod-screen-ink`).
 pub trait WindowController: Send + Sync + 'static {
+    /// Whether this adapter can keep another application's original window topmost.
+    fn supports_external_topmost(&self) -> bool {
+        false
+    }
+    fn activate_external_window(&self, _handle: WindowHandleId) -> HalResult<()> {
+        Err(HalError::Unsupported("external_window_activation"))
+    }
+    fn capture_window_data_url(&self, _handle: WindowHandleId) -> HalResult<String> {
+        Err(HalError::Unsupported("external_window_capture"))
+    }
     /// Returns metadata for the currently active foreground window.
     fn get_foreground_window(&self) -> HalResult<ExternalWindowInfo>;
     /// Resolves the top-level external window located at physical screen coordinates `(x, y)`.
@@ -78,6 +88,9 @@ pub trait ActiveAppWatcher: Send + Sync + 'static {
 
 /// 8. Synthetic input simulator (`mod-clipboard` quick paste, `mod-screenshot` scroll capture).
 pub trait InputSimulator: Send + Sync + 'static {
+    fn paste_trigger_count(&self) -> u64 {
+        0
+    }
     /// Sends a synthetic `Ctrl+V` (Windows/Linux) or `Cmd+V` (macOS) keystroke to the active window.
     fn send_paste_shortcut(&self) -> HalResult<()>;
     /// Sends a synthetic `Ctrl+C` (Windows/Linux) or `Cmd+C` (macOS) keystroke.
@@ -97,4 +110,31 @@ pub struct OsHalBundle {
     pub biometric_auth: Arc<dyn BiometricAuthenticator>,
     pub active_app_watcher: Arc<dyn ActiveAppWatcher>,
     pub input_simulator: Arc<dyn InputSimulator>,
+}
+
+impl OsHalBundle {
+    /// The composition root supplies adapters; features receive only the capabilities they need.
+    pub fn from_adapter<T>(adapter: T) -> Self
+    where
+        T: ScreenCapturer
+            + RegionDetector
+            + OcrProvider
+            + WindowController
+            + SelectionExtractor
+            + BiometricAuthenticator
+            + ActiveAppWatcher
+            + InputSimulator,
+    {
+        let adapter = Arc::new(adapter);
+        Self {
+            screen_capturer: adapter.clone(),
+            region_detector: adapter.clone(),
+            ocr_provider: adapter.clone(),
+            window_controller: adapter.clone(),
+            selection_extractor: adapter.clone(),
+            biometric_auth: adapter.clone(),
+            active_app_watcher: adapter.clone(),
+            input_simulator: adapter,
+        }
+    }
 }

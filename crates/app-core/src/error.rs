@@ -47,6 +47,9 @@ pub enum CoreError {
     #[error("Module '{0}' not found in ModuleRegistry")]
     ModuleNotFound(String),
 
+    #[error("Module '{0}' is disabled")]
+    ModuleDisabled(String),
+
     #[error("Module '{module_id}' lifecycle hook '{hook}' failed: {reason}")]
     ModuleLifecycle {
         module_id: String,

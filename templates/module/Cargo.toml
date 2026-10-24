@@ -1,0 +1,16 @@
+[package]
+name = "mod-example"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# The template can be checked on its own, before it is copied into crates/.
+[workspace]
+
+[dependencies]
+app-core = { path = "../../crates/app-core" }
+os-hal = { path = "../../crates/os-hal" }
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3"
