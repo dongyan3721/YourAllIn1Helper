@@ -1,14 +1,5 @@
 //! Deterministic in-memory mock OS HAL implementation for unit and integration testing.
 
-use std::{
-    collections::HashMap,
-    sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering},
-        Arc,
-    },
-};
-use app_core::{DetectedRegionRect, RegionHierarchyLevel, SelectionBox};
-use parking_lot::RwLock;
 use crate::{
     traits::{
         ActiveAppWatcher, BiometricAuthenticator, InputSimulator, OcrProvider, OsHalBundle,
@@ -18,6 +9,15 @@ use crate::{
         ActiveAppSnapshot, BiometricResult, CapturedFrame, DisplayMonitorInfo, ExternalWindowInfo,
         HalError, HalResult, OcrBackendKind, OcrLineResult, OcrRecognitionResult, SelectionSource,
         SelectionTextResult, WindowHandleId,
+    },
+};
+use app_core::{DetectedRegionRect, RegionHierarchyLevel, SelectionBox};
+use parking_lot::RwLock;
+use std::{
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        Arc,
     },
 };
 

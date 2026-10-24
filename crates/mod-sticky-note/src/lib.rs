@@ -199,8 +199,9 @@ impl StickyNoteModule {
             Ok(())
         })?;
 
-        self.get_note(ctx, note_id)?
-            .ok_or_else(|| CoreError::Internal(anyhow::anyhow!("Sticky note '{}' disappeared", note_id)))
+        self.get_note(ctx, note_id)?.ok_or_else(|| {
+            CoreError::Internal(anyhow::anyhow!("Sticky note '{}' disappeared", note_id))
+        })
     }
 
     /// Updates window geometry, opacity, and topmost pin state (`sticky_update_window_state` IPC).
@@ -275,9 +276,9 @@ impl StickyNoteModule {
             Ok(())
         })?;
 
-        let record = self
-            .get_note(ctx, note_id)?
-            .ok_or_else(|| CoreError::Internal(anyhow::anyhow!("Sticky note '{}' not found", note_id)))?;
+        let record = self.get_note(ctx, note_id)?.ok_or_else(|| {
+            CoreError::Internal(anyhow::anyhow!("Sticky note '{}' not found", note_id))
+        })?;
         self.spawn_note_window(ctx, &record)?;
         Ok(record)
     }

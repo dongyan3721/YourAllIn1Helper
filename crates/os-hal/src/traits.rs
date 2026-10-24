@@ -1,11 +1,11 @@
 //! Core bridge traits defining the OS Hardware Abstraction Layer (`os-hal`).
 
-use std::sync::Arc;
-use app_core::{DetectedRegionRect, SelectionBox};
 use crate::types::{
     ActiveAppSnapshot, BiometricResult, CapturedFrame, DisplayMonitorInfo, ExternalWindowInfo,
     HalResult, OcrRecognitionResult, SelectionTextResult, WindowHandleId,
 };
+use app_core::{DetectedRegionRect, SelectionBox};
+use std::sync::Arc;
 
 /// 1. Screen & window frame capture adapter (`mod-screenshot`, `mod-screen-ink`).
 pub trait ScreenCapturer: Send + Sync + 'static {

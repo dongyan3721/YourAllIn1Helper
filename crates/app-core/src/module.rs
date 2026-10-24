@@ -1,9 +1,6 @@
 //! Plugin architecture contract (`AppModule` Trait), `ModuleContext` dependency injection container,
 //! and `ModuleRegistry` lifecycle orchestrator for all 10 feature modules.
 
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
-use serde::{Deserialize, Serialize};
-use tracing::{error, info};
 use crate::{
     env_probe::EnvProbeService,
     error::{CoreError, CoreResult},
@@ -12,6 +9,9 @@ use crate::{
     storage::{DbPool, ModuleMigration, SharedConfig},
     window_manager::WindowPoolManager,
 };
+use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use tracing::{error, info};
 
 /// Shared runtime context injected into every `AppModule` hook.
 #[derive(Clone)]
@@ -140,7 +140,11 @@ impl ModuleRegistry {
                     hook: "on_init",
                     reason: err.to_string(),
                 })?;
-            info!(module_id = module.id(), module_name = module.name(), "Initialized module");
+            info!(
+                module_id = module.id(),
+                module_name = module.name(),
+                "Initialized module"
+            );
         }
         Ok(())
     }

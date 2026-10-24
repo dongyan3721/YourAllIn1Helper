@@ -3,10 +3,10 @@
 //! Normalizes platform-independent logical modifier expressions (`PrimaryMod`,
 //! `SecondaryMod`, `MetaMod`) into Windows and macOS physical key combinations.
 
-use std::collections::HashMap;
+use crate::error::{CoreError, CoreResult};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use crate::error::{CoreError, CoreResult};
+use std::collections::HashMap;
 
 /// Target operating system used for hotkey normalization.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -157,10 +157,7 @@ impl ShortcutNormalizer {
                     if main_key.is_some() {
                         return Err(CoreError::InvalidShortcut {
                             hotkey: logical_hotkey.to_string(),
-                            reason: format!(
-                                "Multiple non-modifier keys found ('{}')",
-                                raw_token
-                            ),
+                            reason: format!("Multiple non-modifier keys found ('{}')", raw_token),
                         });
                     }
                     main_key = Some(Self::canonicalize_main_key(&upper)?);
@@ -354,8 +351,7 @@ impl ShortcutRegistry {
 
     /// Lists all registered shortcuts sorted by `action_id`.
     pub fn list_all(&self) -> Vec<RegisteredShortcut> {
-        let mut list: Vec<RegisteredShortcut> =
-            self.by_action.read().values().cloned().collect();
+        let mut list: Vec<RegisteredShortcut> = self.by_action.read().values().cloned().collect();
         list.sort_by(|a, b| a.spec.action_id.cmp(&b.spec.action_id));
         list
     }

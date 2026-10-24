@@ -10,12 +10,12 @@
 //!   automatically restores every pinned window to non-topmost (`HWND_NOTOPMOST`) inside
 //!   `on_shutdown`, ensuring external apps are never stranded topmost when the daemon exits.
 
-use std::{collections::HashMap, sync::Arc};
 use app_core::{AppModule, CoreError, CoreResult, ModuleContext, ShortcutSpec};
 use chrono::Utc;
 use os_hal::{ExternalWindowInfo, MockOsHal, WindowController, WindowHandleId};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, sync::Arc};
 use tracing::{info, warn};
 
 /// Metadata for an external window currently pinned topmost by `mod-window-pin`.
@@ -149,7 +149,10 @@ impl WindowPinModule {
         let handles: Vec<WindowHandleId> = self.pinned_windows.read().keys().copied().collect();
         let mut restored = 0;
         for handle in handles {
-            match self.window_controller.set_external_window_topmost(handle, false) {
+            match self
+                .window_controller
+                .set_external_window_topmost(handle, false)
+            {
                 Ok(()) => {
                     self.pinned_windows.write().remove(&handle);
                     restored += 1;
@@ -193,7 +196,11 @@ impl AppModule for WindowPinModule {
         if action_id == "window_pin:toggle_foreground" {
             self.toggle_foreground_window()?;
         } else if action_id == "window_pin:pick_cursor" {
-            if ctx.window_pool.get_active_window("window-pin-picker").is_some() {
+            if ctx
+                .window_pool
+                .get_active_window("window-pin-picker")
+                .is_some()
+            {
                 ctx.window_pool.destroy_window("window-pin-picker")?;
             } else {
                 ctx.window_pool

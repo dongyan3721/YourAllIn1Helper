@@ -13,6 +13,7 @@
 # Rust & Cargo Build Artifacts
 /target/
 /.cargo/
+/src-tauri/gen/
 
 # Packaged Application Bundles & Releases
 /dist/

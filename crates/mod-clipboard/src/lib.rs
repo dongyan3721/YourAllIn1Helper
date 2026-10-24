@@ -10,7 +10,6 @@
 //!   simulated `Ctrl+C` (Translator) and secret password copies (Password Vault) are ignored.
 //! - **Quick Paste**: Restores item content and invokes `os_hal::InputSimulator::send_paste_shortcut()`.
 
-use std::sync::Arc;
 use app_core::{
     AppModule, CoreError, CoreResult, ModuleContext, ModuleMigration, ShortcutSpec, SystemEvent,
     WindowSpec,
@@ -20,6 +19,7 @@ use os_hal::{InputSimulator, MockOsHal};
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::sync::Arc;
 use tracing::info;
 
 /// Type of clipboard entry stored in `clipboard_items`.
@@ -338,9 +338,9 @@ impl ClipboardModule {
         id: i64,
         _as_plain_text: bool,
     ) -> CoreResult<ClipboardRecord> {
-        let record = self
-            .get_item_by_id(ctx, id)?
-            .ok_or_else(|| CoreError::Internal(anyhow::anyhow!("Clipboard item {} not found", id)))?;
+        let record = self.get_item_by_id(ctx, id)?.ok_or_else(|| {
+            CoreError::Internal(anyhow::anyhow!("Clipboard item {} not found", id))
+        })?;
 
         // Destroy the transient popup window before simulating Ctrl+V / Cmd+V
         let _ = ctx.window_pool.destroy_window("clipboard-popup");
@@ -452,7 +452,11 @@ impl AppModule for ClipboardModule {
 
     fn on_shortcut(&self, action_id: &str, ctx: &ModuleContext) -> CoreResult<()> {
         if action_id == "clipboard:toggle_popup" {
-            if ctx.window_pool.get_active_window("clipboard-popup").is_some() {
+            if ctx
+                .window_pool
+                .get_active_window("clipboard-popup")
+                .is_some()
+            {
                 ctx.window_pool.destroy_window("clipboard-popup")?;
             } else {
                 ctx.window_pool

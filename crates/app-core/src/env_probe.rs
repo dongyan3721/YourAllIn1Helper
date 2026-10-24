@@ -4,15 +4,15 @@
 //! (`ffmpeg`, `ffprobe`, `node`, `python3`, `cscript`, `powershell`, `osascript`, `zsh`)
 //! from user-configured custom paths or the system `PATH` environment variable.
 
+use crate::error::{CoreError, CoreResult};
+use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     env,
     path::{Path, PathBuf},
     process::Command,
 };
-use parking_lot::RwLock;
-use serde::{Deserialize, Serialize};
-use crate::error::{CoreError, CoreResult};
 
 /// Supported external runtimes and multimedia tools probed from the host OS.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -74,8 +74,12 @@ impl ExternalToolKind {
                     "Install `ffmpeg` via your system package manager or configure a custom path."
                 }
             }
-            Self::Node => "Install Node.js (`winget install OpenJS.NodeJS.LTS` or `brew install node`).",
-            Self::Python3 => "Install Python 3 (`winget install Python.Python.3.12` or `brew install python`).",
+            Self::Node => {
+                "Install Node.js (`winget install OpenJS.NodeJS.LTS` or `brew install node`)."
+            }
+            Self::Python3 => {
+                "Install Python 3 (`winget install Python.Python.3.12` or `brew install python`)."
+            }
             Self::Cscript => "Built into Windows (`C:\\Windows\\System32\\cscript.exe`).",
             Self::PowerShell => "Built into Windows (`powershell.exe` / `pwsh.exe`).",
             Self::Osascript => "Built into macOS (`/usr/bin/osascript`).",

@@ -21,8 +21,8 @@ pub mod shortcut;
 pub mod storage;
 pub mod window_manager;
 
-use std::{path::PathBuf, sync::Arc};
 use parking_lot::RwLock;
+use std::{path::PathBuf, sync::Arc};
 use tracing::{info, warn};
 
 pub use env_probe::{EnvProbeService, ExternalToolKind, ToolProbeResult};
@@ -33,7 +33,9 @@ pub use screenshot_region::{
     infer_visual_edge_box_rgba, resolve_smart_region_at_point, DetectedRegionRect,
     RegionHierarchyLevel, ResizeHandle, SelectionBox,
 };
-pub use shortcut::{RegisteredShortcut, ShortcutNormalizer, ShortcutRegistry, ShortcutSpec, TargetOs};
+pub use shortcut::{
+    RegisteredShortcut, ShortcutNormalizer, ShortcutRegistry, ShortcutSpec, TargetOs,
+};
 pub use storage::{
     AppConfig, AppliedMigrationRecord, ClipboardConfig, ConfigMigrationPipeline,
     CustomOnnxModelConfig, CustomToolPathsConfig, DbPool, GeneralConfig, ModuleMigration,
@@ -177,10 +179,7 @@ impl AppKernelBuilder {
         })
     }
 
-    fn sync_env_probe_overrides(
-        env_probe: &EnvProbeService,
-        paths: &CustomToolPathsConfig,
-    ) {
+    fn sync_env_probe_overrides(env_probe: &EnvProbeService, paths: &CustomToolPathsConfig) {
         env_probe.set_custom_override(ExternalToolKind::Ffmpeg, paths.ffmpeg_path.clone());
         env_probe.set_custom_override(ExternalToolKind::Ffprobe, paths.ffprobe_path.clone());
         env_probe.set_custom_override(ExternalToolKind::Node, paths.node_path.clone());
@@ -213,8 +212,11 @@ impl AppKernel {
             .shortcut_registry
             .get_by_action(action_id)
             .ok_or_else(|| CoreError::ShortcutActionNotFound(action_id.to_string()))?;
-        self.registry
-            .dispatch_shortcut_action(&reg.spec.module_id, &reg.spec.action_id, &self.context)
+        self.registry.dispatch_shortcut_action(
+            &reg.spec.module_id,
+            &reg.spec.action_id,
+            &self.context,
+        )
     }
 
     /// Triggers a shortcut by its physical or logical key combination (e.g., `"F1"`, `"Ctrl+Shift+V"`).
@@ -259,8 +261,8 @@ impl AppKernel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use serde_json::{json, Value};
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     struct MockScreenshotModule {
         capture_triggers: Arc<AtomicUsize>,
@@ -291,8 +293,18 @@ mod tests {
 
         fn default_shortcuts(&self) -> Vec<ShortcutSpec> {
             vec![
-                ShortcutSpec::new("screenshot", "screenshot:capture", "F1", "启动区域截图(支持手动框选与智能框推导)"),
-                ShortcutSpec::new("screenshot", "screenshot:ocr", "PrimaryMod+Shift+O", "截图并立即 OCR"),
+                ShortcutSpec::new(
+                    "screenshot",
+                    "screenshot:capture",
+                    "F1",
+                    "启动区域截图(支持手动框选与智能框推导)",
+                ),
+                ShortcutSpec::new(
+                    "screenshot",
+                    "screenshot:ocr",
+                    "PrimaryMod+Shift+O",
+                    "截图并立即 OCR",
+                ),
             ]
         }
 

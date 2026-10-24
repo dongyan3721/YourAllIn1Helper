@@ -57,7 +57,9 @@ pub enum CoreError {
     #[error("Window operation failed for label '{label}': {reason}")]
     WindowLifecycle { label: String, reason: String },
 
-    #[error("External tool '{tool}' is not available in system PATH or custom configuration: {hint}")]
+    #[error(
+        "External tool '{tool}' is not available in system PATH or custom configuration: {hint}"
+    )]
     ExternalToolUnavailable { tool: String, hint: String },
 
     #[error("Internal kernel error: {0}")]

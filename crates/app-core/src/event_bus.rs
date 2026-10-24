@@ -4,11 +4,11 @@
 //! active window watcher, idle timer) and modules (e.g., translator, password vault,
 //! screenshot, clipboard) to communicate without tight coupling.
 
+use serde::{Deserialize, Serialize};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
-use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 
 pub use crate::screenshot_region::{
@@ -36,16 +36,10 @@ pub enum CaptureMode {
 pub enum SystemEvent {
     /// Instructs `mod-clipboard` to temporarily ignore clipboard mutations.
     /// Emitted by `mod-translator` (simulated Ctrl+C fallback) and `mod-password-vault` (secret copy).
-    SuppressClipboardCapture {
-        suppressed: bool,
-        reason: String,
-    },
+    SuppressClipboardCapture { suppressed: bool, reason: String },
 
     /// Emitted by `mod-clipboard` when a new item is persisted in the LRU-100 table.
-    ClipboardUpdated {
-        item_id: i64,
-        item_type: String,
-    },
+    ClipboardUpdated { item_id: i64, item_type: String },
 
     /// Emitted when a global mouse drag selection ends (subscribed by `mod-translator`).
     MouseSelectionEnded {
@@ -63,10 +57,7 @@ pub enum SystemEvent {
     },
 
     /// Emitted when system idle/AFK or screen lock state changes (subscribed by `mod-app-usage` and `mod-password-vault`).
-    SystemIdleStateChanged {
-        is_idle: bool,
-        idle_seconds: u64,
-    },
+    SystemIdleStateChanged { is_idle: bool, idle_seconds: u64 },
 
     /// Emitted when screenshot overlay is requested (`mod-screenshot`).
     ScreenCaptureRequested {
@@ -75,9 +66,7 @@ pub enum SystemEvent {
     },
 
     /// Emitted by `mod-password-vault` when the vault is locked or unlocked.
-    VaultLockStateChanged {
-        locked: bool,
-    },
+    VaultLockStateChanged { locked: bool },
 
     /// Emitted when `AppConfig` is updated and hot-reloaded.
     ConfigReloaded,

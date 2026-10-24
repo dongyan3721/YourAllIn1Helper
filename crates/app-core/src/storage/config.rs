@@ -1,18 +1,18 @@
 //! Versioned application configuration (`config.json`) and forward/backward-compatible
 //! `ConfigMigrationPipeline` ensuring seamless upgrades across releases.
 
+use crate::error::{CoreError, CoreResult};
+use chrono::Utc;
+use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 use std::{
     collections::HashMap,
     fs,
     path::{Path, PathBuf},
     sync::Arc,
 };
-use chrono::Utc;
-use parking_lot::RwLock;
-use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
 use tracing::info;
-use crate::error::{CoreError, CoreResult};
 
 /// Current schema version of `config.json`.
 pub const CURRENT_CONFIG_VERSION: u32 = 2;
@@ -279,9 +279,7 @@ impl ConfigMigrationPipeline {
                             .entry("clipboard")
                             .or_insert_with(|| Value::Object(Map::new()));
                         if let Some(clip_obj) = clip_entry.as_object_mut() {
-                            clip_obj
-                                .entry("max_history_items")
-                                .or_insert(legacy_max);
+                            clip_obj.entry("max_history_items").or_insert(legacy_max);
                         }
                     }
 

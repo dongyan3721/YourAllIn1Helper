@@ -1,7 +1,21 @@
-//! Native OS platform adapter dispatching to macOS (`osascript` / Quartz / Vision / Touch ID)
-//! and Windows (`Win32` / `UIAutomation` / `Windows Hello`) implementations.
+//! Native cross-platform OS adapter.
+//!
+//! Production uses `xcap` for window/screen information and `enigo` for synthetic input.
+//! `NativeOsHal::mock_only()` keeps deterministic tests without changing production wiring.
 
-use std::process::Command;
+use std::{
+    process::Command,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
+
+use app_core::{DetectedRegionRect, RegionHierarchyLevel, SelectionBox};
+use enigo::{Axis, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
+use xcap::{Monitor, Window};
+
 use crate::{
     mock::MockOsHal,
     traits::{
@@ -10,26 +24,63 @@ use crate::{
     },
     types::{
         ActiveAppSnapshot, BiometricResult, CapturedFrame, DisplayMonitorInfo, ExternalWindowInfo,
-        HalResult, OcrRecognitionResult, SelectionTextResult, WindowHandleId,
+        HalError, HalResult, OcrRecognitionResult, SelectionTextResult, WindowHandleId,
     },
 };
-use app_core::{DetectedRegionRect, SelectionBox};
 
-/// Production OS HAL adapter that uses native macOS / Windows facilities with safe fallback.
-#[derive(Clone, Default)]
+fn native_error(error: impl std::fmt::Display) -> HalError {
+    HalError::NativeCallFailed(error.to_string())
+}
+
+/// Production OS HAL adapter with an explicit deterministic mock mode for tests.
+#[derive(Clone)]
 pub struct NativeOsHal {
     fallback: MockOsHal,
+    native_enabled: bool,
+    paste_triggers: Arc<AtomicUsize>,
+}
+
+impl Default for NativeOsHal {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl NativeOsHal {
     pub fn new() -> Self {
         Self {
             fallback: MockOsHal::new(),
+            native_enabled: true,
+            paste_triggers: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
+    /// Uses only deterministic mock windows and input, intended for unit/smoke tests.
+    pub fn mock_only() -> Self {
+        Self {
+            fallback: MockOsHal::new(),
+            native_enabled: false,
+            paste_triggers: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
+    pub fn is_mock_only(&self) -> bool {
+        !self.native_enabled
+    }
+
+    pub fn mock(&self) -> &MockOsHal {
+        &self.fallback
+    }
+
+    pub fn paste_trigger_count(&self) -> usize {
+        if self.native_enabled {
+            self.paste_triggers.load(Ordering::SeqCst)
+        } else {
+            self.fallback.paste_trigger_count() as usize
         }
     }
 
     pub fn into_bundle(self) -> OsHalBundle {
-        use std::sync::Arc;
         let arc = Arc::new(self);
         OsHalBundle {
             screen_capturer: Arc::clone(&arc) as Arc<dyn ScreenCapturer>,
@@ -42,29 +93,257 @@ impl NativeOsHal {
             input_simulator: arc as Arc<dyn InputSimulator>,
         }
     }
+
+    fn native_windows(&self) -> HalResult<Vec<ExternalWindowInfo>> {
+        let own_pid = std::process::id();
+        let windows = Window::all().map_err(native_error)?;
+        let mut result = Vec::new();
+        for window in windows {
+            let pid = window.pid().unwrap_or(0);
+            if pid == own_pid || window.is_minimized().unwrap_or(false) {
+                continue;
+            }
+            let width = window.width().unwrap_or(0);
+            let height = window.height().unwrap_or(0);
+            if width < 24 || height < 24 {
+                continue;
+            }
+            let process_name = window
+                .app_name()
+                .unwrap_or_else(|_| "Unknown App".to_string());
+            let title = window.title().unwrap_or_default();
+            result.push(ExternalWindowInfo {
+                handle: window.id().unwrap_or(0) as u64,
+                title: if title.is_empty() {
+                    process_name.clone()
+                } else {
+                    title
+                },
+                process_name,
+                process_id: pid,
+                x: window.x().unwrap_or(0),
+                y: window.y().unwrap_or(0),
+                width,
+                height,
+                is_topmost: false,
+            });
+        }
+        Ok(result)
+    }
+
+    fn find_native_window(&self, handle: WindowHandleId) -> HalResult<ExternalWindowInfo> {
+        self.native_windows()?
+            .into_iter()
+            .find(|window| window.handle == handle)
+            .ok_or_else(|| HalError::NotFound(format!("External window {}", handle)))
+    }
+
+    fn activate_native_window(&self, handle: WindowHandleId) -> HalResult<()> {
+        let info = self.find_native_window(handle)?;
+        #[cfg(target_os = "macos")]
+        {
+            // LaunchServices activation does not require Apple Events / Automation permission.
+            let status = Command::new("/usr/bin/open")
+                .args(["-a", &info.process_name])
+                .status()
+                .map_err(native_error)?;
+            if !status.success() {
+                return Err(HalError::NativeCallFailed(format!(
+                    "Unable to activate application '{}'",
+                    info.process_name
+                )));
+            }
+            return Ok(());
+        }
+        #[cfg(target_os = "windows")]
+        {
+            use windows::Win32::{Foundation::HWND, UI::WindowsAndMessaging::SetForegroundWindow};
+            unsafe {
+                SetForegroundWindow(HWND(info.handle as *mut std::ffi::c_void))
+                    .map_err(native_error)?;
+            }
+            return Ok(());
+        }
+        #[allow(unreachable_code)]
+        Err(HalError::Unsupported("external_window_activation"))
+    }
+
+    /// Activates a real external window (used by the Tauri pinned-mirror view).
+    pub fn activate_external_window(&self, handle: WindowHandleId) -> HalResult<()> {
+        if !self.native_enabled {
+            return self.fallback.set_external_window_topmost(handle, true);
+        }
+        self.activate_native_window(handle)
+    }
+
+    /// Captures and JPEG-encodes a real external window for the Tauri pinned-mirror view.
+    pub fn capture_window_data_url(&self, handle: WindowHandleId) -> HalResult<String> {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+
+        if !self.native_enabled {
+            return Err(HalError::Unsupported("mock_window_capture"));
+        }
+        let windows = Window::all().map_err(native_error)?;
+        let window = windows
+            .into_iter()
+            .find(|window| window.id().map(|id| id as u64 == handle).unwrap_or(false))
+            .ok_or_else(|| HalError::NotFound(format!("External window {}", handle)))?;
+        let image = window.capture_image().map_err(native_error)?;
+        let dynamic = image::DynamicImage::ImageRgba8(image);
+        let resized = if dynamic.width() > 960 {
+            dynamic.resize(960, u32::MAX, image::imageops::FilterType::Triangle)
+        } else {
+            dynamic
+        };
+        let mut encoded = Vec::new();
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut encoded, 72)
+            .encode_image(&resized)
+            .map_err(native_error)?;
+        Ok(format!(
+            "data:image/jpeg;base64,{}",
+            STANDARD.encode(encoded)
+        ))
+    }
+
+    fn send_modified_key(&self, key_char: char) -> HalResult<()> {
+        let mut enigo = Enigo::new(&Settings::default()).map_err(native_error)?;
+        #[cfg(target_os = "macos")]
+        let modifier = Key::Meta;
+        #[cfg(not(target_os = "macos"))]
+        let modifier = Key::Control;
+        enigo
+            .key(modifier, Direction::Press)
+            .map_err(native_error)?;
+        enigo
+            .key(Key::Unicode(key_char), Direction::Click)
+            .map_err(native_error)?;
+        enigo
+            .key(modifier, Direction::Release)
+            .map_err(native_error)?;
+        Ok(())
+    }
 }
 
 impl ScreenCapturer for NativeOsHal {
     fn list_monitors(&self) -> HalResult<Vec<DisplayMonitorInfo>> {
-        self.fallback.list_monitors()
+        if !self.native_enabled {
+            return self.fallback.list_monitors();
+        }
+        let monitors = Monitor::all().map_err(native_error)?;
+        Ok(monitors
+            .into_iter()
+            .map(|monitor| DisplayMonitorInfo {
+                id: monitor.id().unwrap_or(0),
+                name: monitor
+                    .friendly_name()
+                    .or_else(|_| monitor.name())
+                    .unwrap_or_else(|_| "Monitor".to_string()),
+                x: monitor.x().unwrap_or(0),
+                y: monitor.y().unwrap_or(0),
+                width: monitor.width().unwrap_or(0),
+                height: monitor.height().unwrap_or(0),
+                scale_factor: monitor.scale_factor().unwrap_or(1.0) as f64,
+                is_primary: monitor.is_primary().unwrap_or(false),
+            })
+            .collect())
     }
 
     fn capture_monitor(&self, monitor_id: Option<u32>) -> HalResult<CapturedFrame> {
-        self.fallback.capture_monitor(monitor_id)
+        if !self.native_enabled {
+            return self.fallback.capture_monitor(monitor_id);
+        }
+        let monitors = Monitor::all().map_err(native_error)?;
+        let monitor = match monitor_id {
+            Some(id) => monitors
+                .into_iter()
+                .find(|m| m.id().map(|value| value == id).unwrap_or(false)),
+            None => monitors
+                .into_iter()
+                .find(|m| m.is_primary().unwrap_or(false)),
+        }
+        .or_else(|| Monitor::all().ok()?.into_iter().next())
+        .ok_or_else(|| HalError::NotFound("No available monitor".to_string()))?;
+        let image = monitor.capture_image().map_err(native_error)?;
+        Ok(CapturedFrame {
+            width: image.width(),
+            height: image.height(),
+            scale_factor_milli: (monitor.scale_factor().unwrap_or(1.0) * 1000.0) as u32,
+            rgba_bytes: image.into_raw(),
+        })
     }
 
     fn capture_region(&self, bounds: SelectionBox) -> HalResult<CapturedFrame> {
-        self.fallback.capture_region(bounds)
+        if !self.native_enabled {
+            return self.fallback.capture_region(bounds);
+        }
+        let monitor = Monitor::from_point(bounds.x, bounds.y).map_err(native_error)?;
+        let image = monitor
+            .capture_region(
+                bounds.x.max(0) as u32,
+                bounds.y.max(0) as u32,
+                bounds.width,
+                bounds.height,
+            )
+            .map_err(native_error)?;
+        Ok(CapturedFrame {
+            width: image.width(),
+            height: image.height(),
+            scale_factor_milli: (monitor.scale_factor().unwrap_or(1.0) * 1000.0) as u32,
+            rgba_bytes: image.into_raw(),
+        })
     }
 }
 
 impl RegionDetector for NativeOsHal {
     fn detect_hierarchical_regions(&self) -> HalResult<Vec<DetectedRegionRect>> {
-        self.fallback.detect_hierarchical_regions()
+        if !self.native_enabled {
+            return self.fallback.detect_hierarchical_regions();
+        }
+        let mut regions = Vec::new();
+        for (index, monitor) in self.list_monitors()?.into_iter().enumerate() {
+            regions.push(DetectedRegionRect {
+                region_id: index as u32 + 1,
+                parent_id: None,
+                level: RegionHierarchyLevel::Monitor,
+                x: monitor.x,
+                y: monitor.y,
+                width: monitor.width,
+                height: monitor.height,
+                label: Some(monitor.name),
+            });
+        }
+        for (index, window) in self.native_windows()?.into_iter().enumerate() {
+            regions.push(DetectedRegionRect {
+                region_id: 10_000 + index as u32,
+                parent_id: Some(1),
+                level: RegionHierarchyLevel::TopLevelWindow,
+                x: window.x,
+                y: window.y,
+                width: window.width,
+                height: window.height,
+                label: Some(format!("{} — {}", window.process_name, window.title)),
+            });
+        }
+        Ok(regions)
     }
 
     fn query_ui_element_at_point(&self, x: i32, y: i32) -> HalResult<Option<DetectedRegionRect>> {
-        self.fallback.query_ui_element_at_point(x, y)
+        if !self.native_enabled {
+            return self.fallback.query_ui_element_at_point(x, y);
+        }
+        Ok(self
+            .get_window_at_point(x, y)
+            .ok()
+            .map(|window| DetectedRegionRect {
+                region_id: window.handle as u32,
+                parent_id: None,
+                level: RegionHierarchyLevel::TopLevelWindow,
+                x: window.x,
+                y: window.y,
+                width: window.width,
+                height: window.height,
+                label: Some(window.title),
+            }))
     }
 }
 
@@ -80,51 +359,93 @@ impl OcrProvider for NativeOsHal {
 
 impl WindowController for NativeOsHal {
     fn get_foreground_window(&self) -> HalResult<ExternalWindowInfo> {
-        #[cfg(target_os = "macos")]
-        {
-            if let Ok(output) = Command::new("/usr/bin/osascript")
-                .args([
-                    "-e",
-                    "tell application \"System Events\" to get {name, unix id} of first application process whose frontmost is true",
-                ])
-                .output()
-            {
-                if output.status.success() {
-                    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    let mut parts = text.split(',').map(str::trim);
-                    let proc_name = parts.next().unwrap_or("macOS App").to_string();
-                    let pid: u32 = parts.next().and_then(|s| s.parse().ok()).unwrap_or(1000);
-                    return Ok(ExternalWindowInfo {
-                        handle: pid as u64,
-                        title: proc_name.clone(),
-                        process_name: proc_name,
-                        process_id: pid,
-                        x: 0,
-                        y: 0,
-                        width: 1280,
-                        height: 800,
-                        is_topmost: false,
-                    });
-                }
-            }
+        if !self.native_enabled {
+            return self.fallback.get_foreground_window();
         }
-        self.fallback.get_foreground_window()
+        let windows = Window::all().map_err(native_error)?;
+        let own_pid = std::process::id();
+        if let Some(window) = windows.iter().find(|window| {
+            window.is_focused().unwrap_or(false) && window.pid().unwrap_or(0) != own_pid
+        }) {
+            let handle = window.id().map_err(native_error)? as u64;
+            return self.find_native_window(handle);
+        }
+        self.native_windows()?
+            .into_iter()
+            .next()
+            .ok_or_else(|| HalError::NotFound("No foreground external window".to_string()))
     }
 
     fn get_window_at_point(&self, x: i32, y: i32) -> HalResult<ExternalWindowInfo> {
-        self.fallback.get_window_at_point(x, y)
+        if !self.native_enabled {
+            return self.fallback.get_window_at_point(x, y);
+        }
+        self.native_windows()?
+            .into_iter()
+            .find(|window| {
+                x >= window.x
+                    && x < window.x + window.width as i32
+                    && y >= window.y
+                    && y < window.y + window.height as i32
+            })
+            .ok_or_else(|| HalError::NotFound(format!("No window at ({}, {})", x, y)))
     }
 
     fn set_external_window_topmost(&self, handle: WindowHandleId, topmost: bool) -> HalResult<()> {
-        self.fallback.set_external_window_topmost(handle, topmost)
+        if !self.native_enabled {
+            return self.fallback.set_external_window_topmost(handle, topmost);
+        }
+        #[cfg(target_os = "windows")]
+        {
+            use windows::Win32::{
+                Foundation::HWND,
+                UI::WindowsAndMessaging::{
+                    SetWindowPos, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE,
+                    SWP_NOSIZE,
+                },
+            };
+            unsafe {
+                SetWindowPos(
+                    HWND(handle as *mut std::ffi::c_void),
+                    if topmost {
+                        HWND_TOPMOST
+                    } else {
+                        HWND_NOTOPMOST
+                    },
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                )
+                .map_err(native_error)?;
+            }
+            return Ok(());
+        }
+        #[cfg(target_os = "macos")]
+        {
+            // macOS has no supported API to change another process' CGWindow level.
+            // The Tauri host renders the pinned live mirror. Pinning itself must not require
+            // Accessibility permission; only explicit activation does.
+            let _ = topmost;
+            return Ok(());
+        }
+        #[allow(unreachable_code)]
+        Err(HalError::Unsupported("external_window_topmost"))
     }
 
     fn get_window_info(&self, handle: WindowHandleId) -> HalResult<ExternalWindowInfo> {
-        self.fallback.get_window_info(handle)
+        if !self.native_enabled {
+            return self.fallback.get_window_info(handle);
+        }
+        self.find_native_window(handle)
     }
 
     fn list_external_windows(&self) -> HalResult<Vec<ExternalWindowInfo>> {
-        self.fallback.list_external_windows()
+        if !self.native_enabled {
+            return self.fallback.list_external_windows();
+        }
+        self.native_windows()
     }
 }
 
@@ -167,15 +488,32 @@ impl ActiveAppWatcher for NativeOsHal {
 
 impl InputSimulator for NativeOsHal {
     fn send_paste_shortcut(&self) -> HalResult<()> {
-        self.fallback.send_paste_shortcut()
+        if !self.native_enabled {
+            return self.fallback.send_paste_shortcut();
+        }
+        // Give the previous application time to regain focus after the transient popup closes.
+        std::thread::sleep(Duration::from_millis(140));
+        self.send_modified_key('v')?;
+        self.paste_triggers.fetch_add(1, Ordering::SeqCst);
+        Ok(())
     }
 
     fn send_copy_shortcut(&self) -> HalResult<()> {
-        self.fallback.send_copy_shortcut()
+        if !self.native_enabled {
+            return self.fallback.send_copy_shortcut();
+        }
+        self.send_modified_key('c')
     }
 
     fn scroll_wheel_at(&self, x: i32, y: i32, delta_y: i32) -> HalResult<()> {
-        self.fallback.scroll_wheel_at(x, y, delta_y)
+        if !self.native_enabled {
+            return self.fallback.scroll_wheel_at(x, y, delta_y);
+        }
+        let mut enigo = Enigo::new(&Settings::default()).map_err(native_error)?;
+        enigo
+            .move_mouse(x, y, Coordinate::Abs)
+            .map_err(native_error)?;
+        enigo.scroll(delta_y, Axis::Vertical).map_err(native_error)
     }
 }
 

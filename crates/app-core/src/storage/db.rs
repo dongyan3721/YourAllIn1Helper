@@ -1,18 +1,18 @@
 //! Local SQLite storage engine with WAL mode, automatic pre-upgrade backup,
 //! and atomic incremental schema migration across core and feature modules.
 
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use crate::error::{CoreError, CoreResult};
 use chrono::Utc;
 use parking_lot::{Mutex, MutexGuard};
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use tracing::{info, warn};
-use crate::error::{CoreError, CoreResult};
 
 /// Incremental SQL migration step declared by either `app-core` or an `AppModule`.
 #[derive(Debug, Clone)]
@@ -154,7 +154,7 @@ impl DbPool {
     /// If any migration is pending on a disk-backed database that already contains user data,
     /// automatically creates a timestamped backup in `<db_dir>/backups/app.db.pre_migrate.<ts>.bak`
     /// before executing the migrations inside atomic transactions.
-    pub fn run_migrations(&self, migrations: &[ModuleMigration]) -> CoreResult< usize > {
+    pub fn run_migrations(&self, migrations: &[ModuleMigration]) -> CoreResult<usize> {
         let mut sorted: Vec<ModuleMigration> = migrations.to_vec();
         // Ensure deterministic order: `core` first, then alphabetical by `module_id`, then ascending `version`.
         sorted.sort_by(|a, b| {
@@ -192,11 +192,12 @@ impl DbPool {
 
         for migration in pending {
             let tx = conn.transaction()?;
-            tx.execute_batch(migration.sql).map_err(|e| CoreError::Migration {
-                version: migration.version,
-                module_id: migration.module_id.to_string(),
-                reason: e.to_string(),
-            })?;
+            tx.execute_batch(migration.sql)
+                .map_err(|e| CoreError::Migration {
+                    version: migration.version,
+                    module_id: migration.module_id.to_string(),
+                    reason: e.to_string(),
+                })?;
 
             let now_ts = Utc::now().timestamp();
             let checksum = migration.checksum_hex();

@@ -1,11 +1,12 @@
 // All-in-One Desktop Toolbox Frontend Controller (`src-ui/app.js`)
-// Supports both Native Multi-Window WKWebView mode (`?mode=native&window=...`)
+// Supports both Tauri multi-window mode (`?mode=native&window=...`)
 // and Unified Desktop Stage mode.
 
 const urlParams = new URLSearchParams(window.location.search);
 const isNativeWindowMode = urlParams.get("mode") === "native";
 const nativeWindowType = urlParams.get("window") || ""; // "dashboard" | "clipboard-popup" | "sticky-note"
 const nativeStickyId = urlParams.get("id") || "";
+const nativeWindowHandle = Number(urlParams.get("handle") || 0);
 
 const state = {
   status: null,
@@ -22,12 +23,19 @@ const state = {
 
 async function invokeIpc(cmd, args = {}, silentLog = false) {
   const start = performance.now();
-  const res = await fetch("/api/ipc", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ cmd, args }),
-  });
-  const payload = await res.json();
+  let payload;
+  if (window.__TAURI__?.core?.invoke) {
+    payload = await window.__TAURI__.core.invoke("ipc", {
+      request: { cmd, args },
+    });
+  } else {
+    const res = await fetch("/api/ipc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cmd, args }),
+    });
+    payload = await res.json();
+  }
   const elapsed = (performance.now() - start).toFixed(1);
   if (!silentLog) {
     appendIpcLog(cmd, payload.ok, elapsed, payload.error);
@@ -336,7 +344,7 @@ function renderDashboardContent() {
 
   document.getElementById("overview-stats").innerHTML = `
     <div class="stat-box">
-      <div class="label">活跃原生窗口 (WKWebView)</div>
+      <div class="label">活跃原生窗口 (Tauri WebView)</div>
       <div class="val">${s.active_window_count}</div>
     </div>
     <div class="stat-box">
@@ -619,8 +627,101 @@ async function toggleWindowPinByHandle(handle) {
   await refreshAll();
 }
 
+// Real Tauri pinned-window mirror (macOS) and crosshair picker views.
+function initPinMirrorView() {
+  document.body.innerHTML = `
+    <div style="position:fixed;inset:0;background:#0f172a;overflow:hidden;border:2px solid #fb7185;border-radius:8px;box-sizing:border-box">
+      <img id="pin-mirror-image" alt="Pinned window preview" style="width:100%;height:100%;object-fit:fill;display:block;cursor:pointer" />
+      <div style="position:absolute;top:8px;right:8px;display:flex;gap:6px">
+        <button id="pin-mirror-activate" style="border:0;border-radius:6px;padding:6px 10px;background:#2563eb;color:white;cursor:pointer">激活原窗口</button>
+        <button id="pin-mirror-unpin" style="border:0;border-radius:6px;padding:6px 10px;background:#e11d48;color:white;cursor:pointer">取消置顶</button>
+      </div>
+      <div id="pin-mirror-error" style="position:absolute;left:12px;bottom:12px;color:white;background:#0f172acc;padding:6px 9px;border-radius:6px;font:12px sans-serif"></div>
+    </div>`;
+  document.body.style.margin = "0";
+  document.body.style.background = "transparent";
+  const image = document.getElementById("pin-mirror-image");
+  const error = document.getElementById("pin-mirror-error");
+  const activate = async () => {
+    await invokeIpc("winpin_activate", { handle: nativeWindowHandle }, true).catch(() => {});
+  };
+  image.addEventListener("click", activate);
+  document.getElementById("pin-mirror-activate").addEventListener("click", activate);
+  document.getElementById("pin-mirror-unpin").addEventListener("click", async () => {
+    await invokeIpc("winpin_unpin", { handle: nativeWindowHandle }, true);
+    window.__TAURI__?.window?.getCurrentWindow?.()?.destroy?.();
+  });
+  const refresh = async () => {
+    try {
+      const result = await invokeIpc("winpin_get_snapshot", { handle: nativeWindowHandle }, true);
+      if (result?.data_url) {
+        image.src = result.data_url;
+        error.textContent = "";
+      }
+    } catch (err) {
+      error.textContent = "窗口捕获需要“屏幕录制”权限";
+    }
+  };
+  refresh();
+  setInterval(refresh, 700);
+}
+
+async function initWindowPinPickerView() {
+  document.body.innerHTML = `
+    <div id="pin-picker-root" style="position:fixed;inset:0;background:#02061738;cursor:crosshair;font-family:sans-serif">
+      <div style="position:absolute;top:20px;left:50%;transform:translateX(-50%);background:#0f172aef;color:white;border:1px solid #38bdf8;border-radius:22px;padding:12px 20px;font-size:13px;white-space:nowrap">
+        🎯 点击一个窗口将其置顶；右键或 ESC 取消
+      </div>
+      <div id="pin-picker-windows"></div>
+    </div>`;
+  document.body.style.margin = "0";
+  document.body.style.background = "transparent";
+  const cancel = async () => {
+    await invokeIpc("kernel_destroy_window", { label: "window-pin-picker" }, true).catch(() => {});
+  };
+  document.getElementById("pin-picker-root").addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    cancel();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") cancel();
+  });
+
+  const data = await invokeIpc("winpin_list_candidates", {}, true);
+  const scaleX = window.innerWidth / (window.screen.width || window.innerWidth);
+  const scaleY = window.innerHeight / (window.screen.height || window.innerHeight);
+  const container = document.getElementById("pin-picker-windows");
+  container.innerHTML = (data?.candidates || []).map((w) => {
+    const left = Math.max(0, w.x * scaleX);
+    const top = Math.max(0, w.y * scaleY);
+    const width = Math.max(30, w.width * scaleX);
+    const height = Math.max(30, w.height * scaleY);
+    const centerX = w.x + Math.floor(w.width / 2);
+    const centerY = w.y + Math.floor(w.height / 2);
+    return `<button data-x="${centerX}" data-y="${centerY}" style="position:absolute;left:${left}px;top:${top}px;width:${width}px;height:${height}px;background:#fb718522;border:2px solid #fb7185;color:white;border-radius:5px;padding:6px;text-align:left;cursor:crosshair;overflow:hidden">
+      <span style="background:#be123cdd;border-radius:4px;padding:4px 7px;font-size:12px">📌 ${escapeHtml(w.process_name)} — ${escapeHtml(w.title)}</span>
+    </button>`;
+  }).join("");
+  container.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await invokeIpc("winpin_pick_at_cursor", {
+        x: Number(button.dataset.x),
+        y: Number(button.dataset.y),
+      }, true);
+    });
+  });
+}
+
 // Bind DOM Listeners
 window.addEventListener("DOMContentLoaded", async () => {
+  if (nativeWindowType === "pin-mirror") {
+    initPinMirrorView();
+    return;
+  }
+  if (nativeWindowType === "window-pin-picker") {
+    await initWindowPinPickerView();
+    return;
+  }
   document.getElementById("btn-hk-clipboard").addEventListener("click", () =>
     triggerShortcutAction("clipboard:toggle_popup")
   );
@@ -731,7 +832,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("btn-dash-new-note").addEventListener("click", async () => {
     await invokeIpc("sticky_create_note", {
       title: "新建置顶便笺",
-      content_md: "支持 **Markdown** 与行内公式 $\\alpha + \\beta = \\gamma$\n\n该便笺运行在独立的原生 macOS 置顶窗口中！",
+      content_md: "支持 **Markdown** 与行内公式 $\\alpha + \\beta = \\gamma$\n\n该便笺运行在独立的 Tauri 跨平台置顶窗口中！",
       theme_color: "sky",
     });
     await refreshAll();

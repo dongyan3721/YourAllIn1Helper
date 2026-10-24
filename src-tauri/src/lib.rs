@@ -5,26 +5,29 @@
 //! 2. **Module 04 (`mod-sticky-note`)**: Pinned desktop Markdown + LaTeX rich-text sticky notes.
 //! 3. **Module 09 (`mod-window-pin`)**: DeskPins-style external window topmost controller.
 //!
-//! Exposes a unified JSON IPC command dispatcher (`DesktopHost::invoke_ipc`) and a lightweight
-//! local HTTP/IPC server (`127.0.0.1:<port>`) serving `src-ui` so the multi-window desktop UI
-//! can be operated in a native macOS `WKWebView` shell or browser with zero external runtime bloat.
+//! Exposes a unified JSON IPC command dispatcher (`DesktopHost::invoke_ipc`). Production uses
+//! the real Tauri 2.x shell in `tauri_app.rs`; no Swift host or local HTTP server is started.
 
+use app_core::{
+    AppKernel, AppKernelBuilder, CoreError, CoreResult, ExternalToolKind, HeadlessWindowBackend,
+    TargetOs, WindowBackend, WindowSpec,
+};
+use mod_clipboard::ClipboardModule;
+use mod_sticky_note::{StickyNoteModule, StickyNoteWindowStateUpdate};
+use mod_window_pin::WindowPinModule;
+use os_hal::{ExternalWindowInfo, NativeOsHal};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::{
     io::{Read, Write},
     net::{TcpListener, TcpStream},
     path::{Path, PathBuf},
     sync::Arc,
 };
-use app_core::{
-    AppKernel, AppKernelBuilder, CoreResult, ExternalToolKind, TargetOs, WindowSpec,
-};
-use mod_clipboard::ClipboardModule;
-use mod_sticky_note::{StickyNoteModule, StickyNoteWindowStateUpdate};
-use mod_window_pin::WindowPinModule;
-use os_hal::{ExternalWindowInfo, MockOsHal};
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
 use tracing::error;
+
+mod tauri_app;
+pub use tauri_app::run;
 
 /// Request payload sent to `POST /api/ipc` or `DesktopHost::invoke_ipc`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,6 +43,14 @@ pub struct IpcResponse {
     pub ok: bool,
     pub data: Option<Value>,
     pub error: Option<String>,
+}
+
+fn write_text_to_system_clipboard(text: &str) -> CoreResult<()> {
+    let mut clipboard =
+        arboard::Clipboard::new().map_err(|error| CoreError::Internal(anyhow::anyhow!(error)))?;
+    clipboard
+        .set_text(text.to_string())
+        .map_err(|error| CoreError::Internal(anyhow::anyhow!(error)))
 }
 
 impl IpcResponse {
@@ -66,26 +77,55 @@ pub struct DesktopHost {
     clipboard: Arc<ClipboardModule>,
     sticky_note: Arc<StickyNoteModule>,
     window_pin: Arc<WindowPinModule>,
-    os_hal: MockOsHal,
+    os_hal: NativeOsHal,
 }
 
 impl DesktopHost {
     /// Bootstraps the `AppKernel` and mounts Modules 02 (`mod-clipboard`), 04 (`mod-sticky-note`),
     /// and 09 (`mod-window-pin`).
     pub fn bootstrap(app_data_dir: impl Into<PathBuf>, in_memory_db: bool) -> CoreResult<Self> {
-        let os_hal = MockOsHal::new();
-        // Add a third realistic external window for rich DeskPins testing
-        os_hal.upsert_window(ExternalWindowInfo {
-            handle: 1003,
-            title: "Safari — Tauri 2.x Architecture Docs".to_string(),
-            process_name: "Safari".to_string(),
-            process_id: 4203,
-            x: 340,
-            y: 120,
-            width: 1120,
-            height: 740,
-            is_topmost: false,
-        });
+        Self::bootstrap_with_hal(
+            app_data_dir,
+            in_memory_db,
+            Arc::new(HeadlessWindowBackend),
+            NativeOsHal::mock_only(),
+        )
+    }
+
+    /// Bootstraps with native OS capabilities and a real window backend (Tauri in production).
+    pub fn bootstrap_with_window_backend(
+        app_data_dir: impl Into<PathBuf>,
+        in_memory_db: bool,
+        window_backend: Arc<dyn WindowBackend>,
+    ) -> CoreResult<Self> {
+        Self::bootstrap_with_hal(
+            app_data_dir,
+            in_memory_db,
+            window_backend,
+            NativeOsHal::new(),
+        )
+    }
+
+    fn bootstrap_with_hal(
+        app_data_dir: impl Into<PathBuf>,
+        in_memory_db: bool,
+        window_backend: Arc<dyn WindowBackend>,
+        os_hal: NativeOsHal,
+    ) -> CoreResult<Self> {
+        if os_hal.is_mock_only() {
+            // Add a third deterministic external window for DeskPins integration tests.
+            os_hal.mock().upsert_window(ExternalWindowInfo {
+                handle: 1003,
+                title: "Safari — Tauri 2.x Architecture Docs".to_string(),
+                process_name: "Safari".to_string(),
+                process_id: 4203,
+                x: 340,
+                y: 120,
+                width: 1120,
+                height: 740,
+                is_topmost: false,
+            });
+        }
 
         let hal_bundle = os_hal.clone().into_bundle();
 
@@ -96,7 +136,10 @@ impl DesktopHost {
         let kernel = AppKernelBuilder::new(app_data_dir)
             .with_in_memory_db(in_memory_db)
             .with_target_os(TargetOs::current())
-            .register_module(ClipboardModule::new(Arc::clone(&hal_bundle.input_simulator)))?
+            .with_window_backend(window_backend)
+            .register_module(ClipboardModule::new(Arc::clone(
+                &hal_bundle.input_simulator,
+            )))?
             .register_module(sticky_mod.clone())?
             .register_module(winpin_mod.clone())?
             .bootstrap()?;
@@ -257,10 +300,7 @@ impl DesktopHost {
                     .get("max_history_items")
                     .and_then(Value::as_u64)
                     .unwrap_or(100) as usize;
-                let enabled = args
-                    .get("enabled")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(true);
+                let enabled = args.get("enabled").and_then(Value::as_bool).unwrap_or(true);
                 self.kernel.update_config(|cfg| {
                     cfg.clipboard.max_history_items = max_items.clamp(1, 500);
                     cfg.clipboard.enabled = enabled;
@@ -304,22 +344,11 @@ impl DesktopHost {
                 let record = self.clipboard.paste_item(ctx, id, as_plain);
                 if let Ok(ref rec) = record {
                     if let Some(ref text) = rec.content_text {
-                        #[cfg(target_os = "macos")]
-                        {
-                            use std::process::{Command, Stdio};
-                            if let Ok(mut child) = Command::new("/usr/bin/pbcopy")
-                                .stdin(Stdio::piped())
-                                .spawn()
-                            {
-                                if let Some(mut stdin) = child.stdin.take() {
-                                    let _ = stdin.write_all(text.as_bytes());
-                                }
-                                let _ = child.wait();
-                            }
-                        }
+                        write_text_to_system_clipboard(text)?;
                     }
                 }
-                ctx.event_bus.set_clipboard_suppression(false, "quick_paste_done");
+                ctx.event_bus
+                    .set_clipboard_suppression(false, "quick_paste_done");
                 let record = record?;
                 Ok(json!({
                     "pasted_record": record,
@@ -491,7 +520,9 @@ impl DesktopHost {
                     serde_json::from_value(raw_windows).unwrap_or_default();
                 let fg_handle = args.get("foreground_handle").and_then(Value::as_u64);
                 if !parsed.is_empty() {
-                    self.os_hal.replace_external_windows(parsed, fg_handle);
+                    self.os_hal
+                        .mock()
+                        .replace_external_windows(parsed, fg_handle);
                 }
                 let candidates = self.window_pin.list_candidate_windows()?;
                 let fg = self.window_pin.current_foreground_window().ok();
@@ -519,7 +550,7 @@ impl DesktopHost {
 
             "winpin_set_foreground" => {
                 let handle = args.get("handle").and_then(Value::as_u64).unwrap_or(1001);
-                self.os_hal.set_foreground_handle(handle);
+                self.os_hal.mock().set_foreground_handle(handle);
                 let fg = self.window_pin.current_foreground_window()?;
                 Ok(serde_json::to_value(fg)?)
             }
@@ -555,6 +586,23 @@ impl DesktopHost {
                     "pinned": self.window_pin.list_pinned_windows(),
                     "active_window_count": ctx.window_pool.active_window_count(),
                 }))
+            }
+
+            "winpin_get_snapshot" => {
+                let handle = args.get("handle").and_then(Value::as_u64).unwrap_or(0);
+                let data_url = self
+                    .os_hal
+                    .capture_window_data_url(handle)
+                    .map_err(|error| CoreError::Internal(anyhow::anyhow!(error)))?;
+                Ok(json!({ "handle": handle, "data_url": data_url }))
+            }
+
+            "winpin_activate" => {
+                let handle = args.get("handle").and_then(Value::as_u64).unwrap_or(0);
+                self.os_hal
+                    .activate_external_window(handle)
+                    .map_err(|error| CoreError::Internal(anyhow::anyhow!(error)))?;
+                Ok(json!({ "handle": handle, "activated": true }))
             }
 
             "winpin_unpin" => {
@@ -663,7 +711,12 @@ fn handle_http_connection(
             Err(err) => IpcResponse::err(format!("Invalid IPC JSON request: {}", err)),
         };
         let json_bytes = serde_json::to_vec(&resp).unwrap_or_else(|_| b"{}".to_vec());
-        return write_http_response(&mut stream, "200 OK", "application/json; charset=utf-8", &json_bytes);
+        return write_http_response(
+            &mut stream,
+            "200 OK",
+            "application/json; charset=utf-8",
+            &json_bytes,
+        );
     }
 
     // Serve static files from `src-ui/`
@@ -772,7 +825,10 @@ mod tests {
         // 5. Pin external window via crosshair coordinates (250, 200) and verify shutdown auto-restore
         let pick_resp = host.invoke_ipc("winpin_pick_at_cursor", json!({ "x": 250, "y": 200 }));
         assert!(pick_resp.ok);
-        assert_eq!(pick_resp.data.unwrap()["pinned"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            pick_resp.data.unwrap()["pinned"].as_array().unwrap().len(),
+            1
+        );
 
         let shut_resp = host.invoke_ipc("kernel_shutdown", json!({}));
         assert!(shut_resp.ok);

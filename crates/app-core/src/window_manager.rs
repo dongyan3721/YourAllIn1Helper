@@ -8,20 +8,18 @@
 //!   (e.g., Snipaste pinned image `pin-img-{id}` or `sticky-note-{id}`), and immediately
 //!   destroyed when closed.
 
-use std::{collections::HashMap, sync::Arc};
+use crate::error::{CoreError, CoreResult};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, sync::Arc};
 use tracing::info;
-use crate::error::{CoreError, CoreResult};
 
 /// Memory-saving lifecycle tier for a WebView window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WindowLifecyclePolicy {
     /// Transient window: destroyed (`destroy()`) immediately on close or focus loss.
-    Transient {
-        destroy_on_blur: bool,
-    },
+    Transient { destroy_on_blur: bool },
     /// Pinned resident window: stays alive while pinned on screen, destroyed on close.
     PinnedResident,
 }
@@ -347,7 +345,9 @@ impl WindowPoolManager {
             always_on_top: spec.always_on_top,
             spec: spec.clone(),
         };
-        self.active_windows.write().insert(spec.label.clone(), entry);
+        self.active_windows
+            .write()
+            .insert(spec.label.clone(), entry);
         info!(label = %spec.label, route = %spec.route, "Opened on-demand WebView window");
         Ok(())
     }
