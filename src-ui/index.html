@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>All-in-One Desktop Toolbox — 微内核桌面交互测试台</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <!-- 顶部系统托盘与全局快捷键模拟栏 -->
+  <header class="tray-bar">
+    <div class="tray-brand">
+      <span class="tray-logo">🛠️</span>
+      <div>
+        <div class="tray-title">All-in-One Desktop Daemon</div>
+        <div class="tray-subtitle" id="os-badge">macOS Microkernel Host</div>
+      </div>
+    </div>
+
+    <div class="webview-meter" id="webview-meter">
+      <span class="dot" id="webview-dot"></span>
+      <span id="webview-count-label">Active WebViews: 0 (Level 0 静默常驻)</span>
+    </div>
+
+    <div class="shortcut-bar">
+      <button class="hk-btn" id="btn-hk-clipboard" title="触发快捷键 PrimaryMod+Shift+V">
+        <kbd>⌘+⇧+V</kbd> 剪贴板弹窗
+      </button>
+      <button class="hk-btn" id="btn-hk-sticky" title="触发快捷键 PrimaryMod+Shift+N">
+        <kbd>⌘+⇧+N</kbd> 新建便笺
+      </button>
+      <button class="hk-btn" id="btn-hk-winpin-fg" title="触发快捷键 PrimaryMod+Shift+P">
+        <kbd>⌘+⇧+P</kbd> 置顶活动窗口
+      </button>
+      <button class="hk-btn" id="btn-hk-winpin-pick" title="触发快捷键 PrimaryMod+SecondaryMod+P">
+        <kbd>⌘+⌥+P</kbd> 准星拾取置顶
+      </button>
+      <button class="hk-btn primary" id="btn-open-dashboard">
+        🎛️ 打开主控台 (Dashboard)
+      </button>
+      <button class="hk-btn danger" id="btn-shutdown" title="执行 on_shutdown：销毁所有 WebView 并自动还原被置顶的外部窗口">
+        ⏹ 退出清理测试
+      </button>
+    </div>
+  </header>
+
+  <!-- 桌面主舞台：外部窗口层 + 按需唤醒的 Tauri WebView 窗口层 -->
+  <main class="desktop-stage" id="desktop-stage">
+    <!-- 准星拾取模式全屏提示横幅 (当 window-pin-picker 窗口激活时显示) -->
+    <div class="picker-banner hidden" id="picker-banner">
+      🎯 <strong>准星拾取器已唤醒 (`window-pin-picker` 瞬态窗口)</strong>：请点击下方任意外部窗口将其置顶/取消置顶（拾取后自动销毁本透明层），或按 <button class="mini-btn" id="btn-cancel-picker">取消 (Blur 销毁)</button>
+    </div>
+
+    <!-- 左侧桌面状态概览浮层（代表系统托盘旁的状态观察器，不计入业务 WebView） -->
+    <aside class="desktop-hud">
+      <div class="hud-card">
+        <div class="hud-header">
+          <span>🪟 活跃 WebView 实例池 (`WindowPoolManager`)</span>
+          <span class="badge" id="hud-win-count">0</span>
+        </div>
+        <div id="hud-window-list" class="hud-list"></div>
+      </div>
+
+      <div class="hud-card">
+        <div class="hud-header">
+          <span>📌 DeskPins 外部窗口桌面环境</span>
+          <span class="badge" id="hud-pin-count">0 已置顶</span>
+        </div>
+        <div class="hud-hint">点击下方模拟外部窗口可切换【当前活动窗口】；在准星模式下点击可直接拾取坐标 `(x, y)` 置顶。</div>
+        <div id="external-windows-stage" class="ext-stage"></div>
+      </div>
+
+      <div class="hud-card">
+        <div class="hud-header">
+          <span>⚡ 最近 IPC 调用日志</span>
+          <button class="mini-btn" id="btn-clear-log">清空</button>
+        </div>
+        <div id="ipc-log" class="ipc-log"></div>
+      </div>
+    </aside>
+
+    <!-- 右侧/浮动：按需唤醒的真实业务 WebView 窗口容器 -->
+    <section class="webview-layer" id="webview-layer">
+      <!-- 1. 主控台瞬态窗口 (`dashboard`) -->
+      <div class="wv-window dashboard-win hidden" id="win-dashboard">
+        <div class="wv-titlebar">
+          <div class="wv-title">
+            <span class="wv-tag transient">Level 1 Transient</span>
+            <strong>All-in-One Toolbox 主控台 (`dashboard`)</strong>
+          </div>
+          <div class="wv-actions">
+            <button class="wv-close" id="btn-close-dashboard" title="关闭并立即销毁 dashboard WebView">✕ 销毁窗口</button>
+          </div>
+        </div>
+
+        <div class="dash-layout">
+          <nav class="dash-nav">
+            <button class="nav-item active" data-tab="overview">📊 内核与窗口池</button>
+            <button class="nav-item" data-tab="clipboard">📋 02. 剪切板管理</button>
+            <button class="nav-item" data-tab="sticky">📝 04. 置顶便笺</button>
+            <button class="nav-item" data-tab="winpin">📌 09. 窗口置顶</button>
+          </nav>
+
+          <div class="dash-content">
+            <!-- Tab 1: Overview -->
+            <div class="tab-pane active" id="tab-overview">
+              <h3>微内核状态与零运行时环境探测 (`EnvProbeService`)</h3>
+              <div class="stat-grid" id="overview-stats"></div>
+              <h4>已注册跨平台全局快捷键 (`ShortcutRegistry`)</h4>
+              <table class="data-table" id="shortcuts-table">
+                <thead>
+                  <tr>
+                    <th>模块</th>
+                    <th>Action ID</th>
+                    <th>逻辑热键</th>
+                    <th>当前系统物理按键</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+              <h4>系统 PATH 外部工具探测结果</h4>
+              <div id="env-probe-list" class="probe-grid"></div>
+            </div>
+
+            <!-- Tab 2: Clipboard -->
+            <div class="tab-pane" id="tab-clipboard">
+              <div class="pane-toolbar">
+                <h3>02. 剪切板管理器 (`mod-clipboard` — SHA-256 去重 + LRU 自动淘汰)</h3>
+                <div class="inline-controls">
+                  <label class="toggle-label">
+                    <input type="checkbox" id="chk-suppress-clip" />
+                    <span>🛡 防污染屏蔽 (`SuppressClipboard`)</span>
+                  </label>
+                  <label class="inline-input">
+                    LRU 上限:
+                    <input type="number" id="inp-lru-max" min="1" max="500" value="100" style="width:68px" />
+                    <button class="mini-btn" id="btn-save-lru">应用</button>
+                  </label>
+                </div>
+              </div>
+
+              <div class="capture-bar">
+                <input type="text" id="inp-clip-text" placeholder="输入要模拟复制的文本内容（重复复制相同内容会自动去重置顶）..." />
+                <select id="sel-clip-app">
+                  <option value="Visual Studio Code">来源: VS Code</option>
+                  <option value="Terminal">来源: Terminal</option>
+                  <option value="Safari">来源: Safari</option>
+                  <option value="Notes">来源: Notes</option>
+                </select>
+                <button class="primary-btn" id="btn-capture-clip">➕ 写入剪贴板历史</button>
+                <button class="secondary-btn" id="btn-clear-unpinned">🧹 清空未固定</button>
+              </div>
+
+              <div class="search-bar">
+                <input type="text" id="inp-clip-search" placeholder="🔍 搜索剪贴板内容或来源应用..." />
+              </div>
+
+              <div id="dash-clip-list" class="clip-list"></div>
+            </div>
+
+            <!-- Tab 3: Sticky Notes -->
+            <div class="tab-pane" id="tab-sticky">
+              <div class="pane-toolbar">
+                <h3>04. 桌面置顶富文本便笺 (`mod-sticky-note` — Markdown + LaTeX)</h3>
+                <button class="primary-btn" id="btn-dash-new-note">➕ 新建桌面便笺</button>
+              </div>
+              <p class="pane-desc">
+                每个打开的便笺对应一个独立的 <code>sticky-note-{id}</code> (Level 2 驻留窗口)；点击便笺右上角「关闭」后标记为 <code>is_open = 0</code> 并立即销毁对应 WebView 释放内存。
+              </p>
+              <div id="dash-notes-list" class="notes-table-wrap"></div>
+            </div>
+
+            <!-- Tab 4: Window Pin -->
+            <div class="tab-pane" id="tab-winpin">
+              <div class="pane-toolbar">
+                <h3>09. 任意窗口置顶工具 (`mod-window-pin` — 类 DeskPins)</h3>
+                <div class="inline-controls">
+                  <button class="primary-btn" id="btn-dash-pin-fg">📌 切换当前活动窗口置顶</button>
+                  <button class="secondary-btn" id="btn-dash-restore-pins">🔄 一键还原全部置顶窗口</button>
+                </div>
+              </div>
+              <div id="dash-winpin-list"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. 剪贴板跟随弹窗 (`clipboard-popup` — Level 1 Transient, destroy_on_blur: true) -->
+      <div class="wv-window clip-popup-win hidden" id="win-clipboard-popup">
+        <div class="wv-titlebar">
+          <div class="wv-title">
+            <span class="wv-tag transient">Transient (Blur 即毁)</span>
+            <strong>📋 Ditto 剪贴板快贴 (`clipboard-popup`)</strong>
+          </div>
+          <div class="wv-actions">
+            <button class="mini-btn" id="btn-blur-clip-popup" title="模拟失去焦点 on_window_blur，自动销毁弹窗">模拟失焦</button>
+            <button class="wv-close" id="btn-close-clip-popup">✕</button>
+          </div>
+        </div>
+        <div class="popup-body">
+          <input type="text" id="inp-popup-search" class="popup-search" placeholder="筛选剪贴板记录 (支持回车直接粘贴首项)..." />
+          <div id="popup-clip-items" class="popup-clip-items"></div>
+          <div class="popup-footer">
+            <span id="popup-paste-stat">累计模拟粘贴 (Cmd+V): 0 次</span>
+            <span>点击「粘贴上屏」后自动销毁弹窗</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. 动态桌面置顶便笺窗口容器 (`sticky-note-{id}` — Level 2 PinnedResident) -->
+      <div id="sticky-windows-container" class="sticky-windows-container"></div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
