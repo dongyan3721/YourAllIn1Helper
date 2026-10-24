@@ -21,6 +21,7 @@ app-core = { path = "../crates/app-core" }
 os-hal = { path = "../crates/os-hal" }
 mod-clipboard = { path = "../crates/mod-clipboard" }
 mod-screen-ink = { path = "../crates/mod-screen-ink" }
+mod-media-proc = { path = "../crates/mod-media-proc" }
 mod-sticky-note = { path = "../crates/mod-sticky-note" }
 mod-window-pin = { path = "../crates/mod-window-pin" }
 mod-script-runner = { path = "../crates/mod-script-runner" }

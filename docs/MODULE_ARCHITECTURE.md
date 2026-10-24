@@ -1,6 +1,6 @@
 # 功能积木接入约定
 
-本次改造沿用 PROJECT_PLAN.md 的微内核和 OS HAL 分层。十个功能槽位统一列在 `crates/app-core/src/catalog.rs`；当前实际挂载 02、04、06、09，其余六项显示「待开发」，不创建空壳模块冒充已实现能力。
+本次改造沿用 PROJECT_PLAN.md 的微内核和 OS HAL 分层。十个功能槽位统一列在 `crates/app-core/src/catalog.rs`；当前实际挂载 02、03、04、06、08、09，其余四项显示「待开发」，不创建空壳模块冒充已实现能力。
 
 ## 职责与目录
 

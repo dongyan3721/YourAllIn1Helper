@@ -14,6 +14,7 @@ use app_core::{
     TargetOs, WindowBackend, WindowSpec,
 };
 use mod_clipboard::ClipboardModule;
+use mod_media_proc::MediaProcModule;
 use mod_screen_ink::ScreenInkModule;
 use mod_script_runner::env::ScriptEnvironment;
 use mod_script_runner::events::ScriptEventSink;
@@ -80,6 +81,7 @@ pub struct DesktopHost {
     window_pin: Arc<WindowPinModule>,
     script_runner: Arc<ScriptRunnerModule>,
     screen_ink: Arc<ScreenInkModule>,
+    media_proc: Arc<MediaProcModule>,
     os_hal: OsHalBundle,
     mock_hal: Option<MockOsHal>,
 }
@@ -190,6 +192,7 @@ impl DesktopHost {
             window_pin,
             script_runner,
             screen_ink,
+            media_proc,
         } = modules::mount(builder, &os_hal, script_environment, script_events)?;
         Ok(Self {
             kernel: builder.bootstrap()?,
@@ -198,6 +201,7 @@ impl DesktopHost {
             window_pin,
             script_runner,
             screen_ink,
+            media_proc,
             os_hal,
             mock_hal,
         })

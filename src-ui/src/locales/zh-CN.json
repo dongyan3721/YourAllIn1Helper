@@ -13,7 +13,8 @@
     "scripts": "06. 脚本",
     "sticky": "04. 便笺库",
     "winpin": "09. 窗口置顶",
-    "screen_ink": "03. 屏幕注释"
+    "screen_ink": "03. 屏幕注释",
+    "media": "08. 媒体处理"
   },
   "theme": {
     "selectAccentTooltip": "选择系统强调色",
@@ -367,6 +368,128 @@
       "featComposite": "单帧屏幕与墨迹合成",
       "descComposite": "按需通过 ScreenCapturer 抓取真实物理屏幕单帧并叠加 Alpha 墨迹，落盘及写入剪贴板",
       "compositeReal": "真实 OS 截屏合成"
+    }
+  },
+  "media": {
+    "title": "基础多媒体处理",
+    "subtitle": "纯 Rust 图片编解码与本机 FFmpeg 音视频队列；输出永不覆盖原文件",
+    "actions": {
+      "refresh": "刷新",
+      "dismiss": "关闭提示",
+      "save": "保存设置",
+      "saving": "保存中…",
+      "chooseDirectory": "选择目录",
+      "addFiles": "添加文件",
+      "clear": "清空",
+      "remove": "移除",
+      "inspect": "查看信息",
+      "inspecting": "提交中…",
+      "submitBatch": "提交 {count} 个任务",
+      "submitting": "正在提交…",
+      "cancel": "取消",
+      "cancelling": "取消中…"
+    },
+    "environment": {
+      "title": "运行环境",
+      "description": "只探测已安装的 FFmpeg / FFprobe，不会自动安装或打包运行时",
+      "ready": "音视频就绪",
+      "unavailable": "仅图片可用",
+      "detected": "已检测到",
+      "missing": "未检测到",
+      "installHint": "请安装运行时或在设置中指定可执行文件路径",
+      "avDisabled": "音视频功能需要 FFmpeg 和 FFprobe；图片转换不受影响。"
+    },
+    "output": {
+      "title": "输出与队列",
+      "description": "留空则保存到每个源文件所在目录；重名时自动追加序号",
+      "directory": "输出目录",
+      "defaultDirectory": "与源文件相同",
+      "maxConcurrent": "最大并发（1–4）",
+      "saved": "媒体设置已保存"
+    },
+    "files": {
+      "title": "待处理文件",
+      "selected": "已选择 {count} 个文件",
+      "emptyTitle": "选择或拖入本地媒体文件",
+      "dropHint": "支持批量图片、音频和视频；可逐个查看媒体信息"
+    },
+    "options": {
+      "title": "处理参数",
+      "description": "同一批文件使用相同操作和参数",
+      "mode": "处理类型",
+      "imageMode": "图片转换",
+      "avMode": "音视频处理",
+      "auto": "自动"
+    },
+    "image": {
+      "format": "目标格式",
+      "quality": "JPEG 质量：{value}",
+      "losslessNote": "WebP 使用真实无损编码器，不伪造质量参数。",
+      "width": "目标宽度",
+      "height": "目标高度",
+      "preserveAspect": "保持宽高比（取消时需同时填写宽高）"
+    },
+    "av": {
+      "operation": "操作",
+      "outputFormat": "目标格式",
+      "startSeconds": "开始时间（秒）",
+      "endSeconds": "结束时间（秒）",
+      "endPlaceholder": "必须大于开始时间",
+      "volume": "音量倍率（0–4）",
+      "precise": "精准裁剪（重新编码；关闭则流复制快速裁剪）"
+    },
+    "operations": {
+      "convert": "格式转换",
+      "trim": "时间裁剪",
+      "extractAudio": "提取音频",
+      "adjustVolume": "音量调整",
+      "imageConvert": "图片转换",
+      "inspect": "媒体信息",
+      "generic": "媒体任务"
+    },
+    "jobs": {
+      "title": "任务队列",
+      "description": "进度来自 FFmpeg progress pipe；取消和关闭模块都会终止子进程",
+      "count": "{count} 项",
+      "empty": "暂无任务",
+      "submitted": "已提交 {succeeded} 个任务，失败 {failed} 个",
+      "progress": "任务进度",
+      "error": "失败原因：{message}",
+      "output": "输出：",
+      "updated": "更新于 {time}"
+    },
+    "status": {
+      "queued": "排队中",
+      "running": "处理中",
+      "completed": "已完成",
+      "failed": "失败",
+      "cancelled": "已取消"
+    },
+    "inspect": {
+      "started": "媒体信息探测已提交",
+      "showJson": "查看完整 JSON",
+      "format": "格式：{value}",
+      "duration": "时长：{seconds} 秒",
+      "size": "大小：{value} MiB",
+      "video": "视频：{codec} · {width}×{height}",
+      "audio": "音频：{codec} · {channels} 声道"
+    },
+    "errors": {
+      "pickFiles": "选择文件失败：{message}",
+      "pickDirectory": "选择目录失败：{message}",
+      "environment": "环境探测失败：{message}",
+      "loadConfig": "读取媒体设置失败：{message}",
+      "saveConfig": "保存媒体设置失败：{message}",
+      "loadJobs": "读取任务队列失败：{message}",
+      "submit": "提交任务失败：{message}",
+      "inspect": "媒体信息探测失败：{message}",
+      "cancel": "取消任务失败：{message}",
+      "unknown": "未知错误",
+      "invalidConcurrency": "并发数必须是 1–4 的整数",
+      "invalidDimensions": "图片宽高必须是正整数；不保持比例时两者都需填写",
+      "invalidQuality": "JPEG 质量必须在 1–100 之间",
+      "invalidTrimRange": "请填写有效的开始和结束时间，且结束时间必须更晚",
+      "invalidVolume": "音量倍率必须在 0–4 之间"
     }
   }
 }

@@ -57,6 +57,7 @@ dependencies = [
  "base64 0.22.1",
  "image",
  "mod-clipboard",
+ "mod-media-proc",
  "mod-screen-ink",
  "mod-script-runner",
  "mod-sticky-note",
@@ -2899,6 +2900,23 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tracing",
+]
+
+[[package]]
+name = "mod-media-proc"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "app-core",
+ "chrono",
+ "image",
+ "parking_lot",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
