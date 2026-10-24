@@ -1,7 +1,7 @@
 <template>
   <div
     class="pin-badge-container"
-    :title="`📌 已置顶此窗口 · 点击取消置顶`"
+    :title="t('winpin.badge.tooltip')"
     @click="unpinWindow"
   >
     <div class="pin-badge-disc">
@@ -14,6 +14,7 @@
 <script setup lang="ts">
 import { invokeIpc } from '../api/ipc';
 import Icons from './Icons.vue';
+import { t } from '../utils/i18n';
 
 // 解析当前图钉角标对应的目标窗口 handle
 const handle = Number(new URLSearchParams(window.location.search).get('handle') || 0);

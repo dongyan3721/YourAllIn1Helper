@@ -158,6 +158,10 @@ fn ipc(app: AppHandle, host: State<'_, Arc<DesktopHost>>, request: IpcRequest) -
             }
         }
         emit_update(&app);
+    } else if response.ok && request.cmd == "kernel_update_general_config" {
+        // 当用户切换多语言时，同步刷新系统托盘菜单多语言文案并通知各窗口
+        let _ = update_tray_menu(&app);
+        emit_update(&app);
     }
     response
 }
@@ -395,30 +399,65 @@ fn start_clipboard_listener(app: &AppHandle) {
 
 fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error> {
     let host = app.state::<Arc<DesktopHost>>();
-    let dashboard = MenuItem::with_id(app, "tray_dashboard", "打开主控台", true, None::<&str>)?;
+    let lang = host
+        .kernel()
+        .context()
+        .config
+        .read()
+        .general
+        .language
+        .to_ascii_lowercase();
+
+    let (lbl_dash, lbl_clip, lbl_sticky, lbl_pin, lbl_quit) = if lang.starts_with("en") {
+        (
+            "Open Dashboard",
+            "Clipboard History (⇧⌘V)",
+            "New Sticky Note (⇧⌘N)",
+            "Pin Active Window (⇧⌘P)",
+            "Quit",
+        )
+    } else if lang.starts_with("ja") || lang.starts_with("jp") {
+        (
+            "ダッシュボードを開く",
+            "クリップボード履歴 (⇧⌘V)",
+            "新規付箋ノート (⇧⌘N)",
+            "アクティブウィンドウを固定 (⇧⌘P)",
+            "終了",
+        )
+    } else {
+        (
+            "打开主控台",
+            "剪贴板历史 (⇧⌘V)",
+            "新建置顶便笺 (⇧⌘N)",
+            "置顶当前窗口 (⇧⌘P)",
+            "退出",
+        )
+    };
+
+    let dashboard = MenuItem::with_id(app, "tray_dashboard", lbl_dash, true, None::<&str>)?;
     let clipboard = MenuItem::with_id(
         app,
         "tray_clipboard",
-        "剪贴板历史 (⇧⌘V)",
+        lbl_clip,
         host.kernel().registry().is_enabled("clipboard"),
         None::<&str>,
     )?;
     let sticky = MenuItem::with_id(
         app,
         "tray_sticky",
-        "新建置顶便笺 (⇧⌘N)",
+        lbl_sticky,
         host.kernel().registry().is_enabled("sticky_note"),
         None::<&str>,
     )?;
     let pin = MenuItem::with_id(
         app,
         "tray_pin",
-        "置顶当前窗口 (⇧⌘P)",
+        lbl_pin,
         host.kernel().registry().is_enabled("window_pin")
             && host.os_hal.window_controller.supports_external_topmost(),
         None::<&str>,
     )?;
-    let quit = MenuItem::with_id(app, "tray_quit", "退出", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "tray_quit", lbl_quit, true, None::<&str>)?;
     Menu::with_items(app, &[&dashboard, &clipboard, &sticky, &pin, &quit])
 }
 

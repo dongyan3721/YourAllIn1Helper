@@ -159,3 +159,31 @@ fn v2_config_migration_preserves_existing_settings_and_unknown_fields() {
     assert!(!cfg.clipboard.enabled);
     assert_eq!(cfg.unknown_fields["custom_future_setting"]["keep"], true);
 }
+
+#[test]
+fn general_config_language_update_persists_across_restarts() {
+    let dir = tempfile::tempdir().unwrap();
+    let host = DesktopHost::bootstrap(dir.path(), false).unwrap();
+
+    // 默认语言应为 zh-CN
+    let initial_status = call(&host, "kernel_get_status", json!({}));
+    assert_eq!(initial_status["config"]["general"]["language"], "zh-CN");
+
+    // 切换语言为 en-US 并验证回包与磁盘持久化
+    let updated_cfg = call(
+        &host,
+        "kernel_update_general_config",
+        json!({ "language": "en-US", "theme": "dark" }),
+    );
+    assert_eq!(updated_cfg["general"]["language"], "en-US");
+    assert_eq!(updated_cfg["general"]["theme"], "dark");
+    host.kernel().shutdown().unwrap();
+    drop(host);
+
+    // 重新启动宿主，确认语言与主题配置从 config.json 恢复
+    let rebooted = DesktopHost::bootstrap(dir.path(), false).unwrap();
+    let reboot_status = call(&rebooted, "kernel_get_status", json!({}));
+    assert_eq!(reboot_status["config"]["general"]["language"], "en-US");
+    assert_eq!(reboot_status["config"]["general"]["theme"], "dark");
+    rebooted.kernel().shutdown().unwrap();
+}

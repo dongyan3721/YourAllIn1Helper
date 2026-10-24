@@ -29,11 +29,14 @@ import WindowPinPicker from './components/WindowPinPicker.vue';
 import PinMirror from './components/PinMirror.vue';
 import PinBadge from './components/PinBadge.vue';
 import { initTheme } from './utils/theme';
+import { initI18n } from './utils/i18n';
 
-// 全局初始化 macOS 主题（白蓝色调、主题色与明暗跟随）
+// 全局初始化 macOS 主题（白蓝色调、主题色与明暗跟随）与多语言国际化监听器
 initTheme();
+initI18n();
 onMounted(() => {
   initTheme();
+  initI18n();
 });
 
 // 解析原生 Tauri 多窗口参数

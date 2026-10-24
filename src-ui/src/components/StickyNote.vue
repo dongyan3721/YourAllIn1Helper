@@ -10,7 +10,7 @@
         <input
           v-model="note.title"
           class="title-input"
-          placeholder="未命名便笺..."
+          :placeholder="t('sticky.window.untitledPlaceholder')"
           @blur="saveContentDebounced"
         />
       </div>
@@ -22,10 +22,10 @@
           class="tool-btn"
           :class="{ active: viewMode === 'preview' }"
           @click="toggleViewMode"
-          :title="viewMode === 'edit' ? '切换为预览渲染' : '切换为编辑模式'"
+          :title="viewMode === 'edit' ? t('sticky.window.switchPreviewTooltip') : t('sticky.window.switchEditTooltip')"
         >
           <Icons :name="viewMode === 'edit' ? 'text' : 'check'" size="12" />
-          <span>{{ viewMode === 'edit' ? '预览' : '编辑' }}</span>
+          <span>{{ viewMode === 'edit' ? t('sticky.window.previewBtn') : t('sticky.window.editBtn') }}</span>
         </button>
 
         <!-- 置顶开关 -->
@@ -33,14 +33,14 @@
           class="tool-btn"
           :class="{ active: note.is_pinned }"
           @click="togglePin"
-          title="置顶最前 (Always on Top)"
+          :title="t('sticky.window.pinTooltip')"
         >
           <Icons :name="note.is_pinned ? 'pin-fill' : 'pin'" size="12" />
         </button>
 
         <!-- 调色盘弹出切换 -->
         <div class="palette-dropdown-wrap">
-          <button class="tool-btn" @click="showPalette = !showPalette" title="便笺主题色">
+          <button class="tool-btn" @click="showPalette = !showPalette" :title="t('sticky.window.paletteTooltip')">
             <Icons name="palette" size="12" />
           </button>
           <div v-if="showPalette" class="palette-popover">
@@ -49,19 +49,19 @@
               :key="color.key"
               class="palette-dot"
               :style="{ background: color.color }"
-              :title="color.label"
+              :title="t(`sticky.window.themes.${color.key}`)"
               @click="setTheme(color.key)"
             ></button>
           </div>
         </div>
 
         <!-- 导出 Markdown -->
-        <button class="tool-btn" @click="exportMarkdownFile" title="导出为 .md 文件">
+        <button class="tool-btn" @click="exportMarkdownFile" :title="t('sticky.window.exportMdTooltip')">
           <Icons name="download" size="12" />
         </button>
 
         <!-- 关闭并销毁原生窗口 -->
-        <button class="tool-btn close-btn" @click="closeNoteWindow" title="关闭便笺 (归还内存)">
+        <button class="tool-btn close-btn" @click="closeNoteWindow" :title="t('sticky.window.closeTooltip')">
           <Icons name="close" size="12" />
         </button>
       </div>
@@ -75,7 +75,7 @@
         ref="editorRef"
         v-model="note.content_md"
         class="sticky-textarea"
-        placeholder="输入 Markdown 内容或 LaTeX 公式 ($E=mc^2$)..."
+        :placeholder="t('sticky.window.editorPlaceholder')"
         @input="saveContentDebounced"
       ></textarea>
 
@@ -91,7 +91,7 @@
     <!-- 便笺底栏：透明度滑块与存盘状态 -->
     <footer class="sticky-footer">
       <div class="opacity-slider-wrap">
-        <span class="opacity-label">透明度 {{ Math.round(note.opacity * 100) }}%</span>
+        <span class="opacity-label">{{ t('sticky.window.opacityLabel', { percent: Math.round(note.opacity * 100) }) }}</span>
         <input
           type="range"
           min="35"
@@ -103,8 +103,8 @@
       </div>
 
       <div class="save-status">
-        <span v-if="saving">正在存盘...</span>
-        <span v-else-if="lastSavedTime">已保存 {{ lastSavedTime }}</span>
+        <span v-if="saving">{{ t('sticky.window.saving') }}</span>
+        <span v-else-if="lastSavedTime">{{ t('sticky.window.savedAt', { time: lastSavedTime }) }}</span>
       </div>
     </footer>
   </div>
@@ -117,6 +117,7 @@ import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import { invokeIpc, type StickyNoteRecord } from '../api/ipc';
 import Icons from './Icons.vue';
+import { t } from '../utils/i18n';
 
 const props = defineProps<{
   noteId?: string;
@@ -151,12 +152,12 @@ const editorRef = ref<HTMLTextAreaElement | null>(null);
 
 /** 主题色彩列表 */
 const themeOptions = [
-  { key: 'neutral', label: '冷淡中性灰', color: '#2c2c2e' },
-  { key: 'amber', label: '琥珀暗暖', color: '#451a03' },
-  { key: 'sky', label: '深海幽蓝', color: '#082f49' },
-  { key: 'emerald', label: '青苔雅绿', color: '#064e3b' },
-  { key: 'rose', label: '暗夜玫瑰', color: '#4c0519' },
-  { key: 'violet', label: '暮光深紫', color: '#2e1065' },
+  { key: 'neutral', color: '#2c2c2e' },
+  { key: 'amber', color: '#451a03' },
+  { key: 'sky', color: '#082f49' },
+  { key: 'emerald', color: '#064e3b' },
+  { key: 'rose', color: '#4c0519' },
+  { key: 'violet', color: '#2e1065' },
 ];
 
 /**
@@ -165,7 +166,7 @@ const themeOptions = [
 const renderedHtml = computed(() => {
   let content = note.value.content_md || '';
   if (!content.trim()) {
-    return '<p style="color:#6e6e73;font-style:italic">暂无内容，点击上方「编辑」开始记录...</p>';
+    return `<p style="color:#6e6e73;font-style:italic">${t('sticky.window.emptyRenderedHint')}</p>`;
   }
 
   // 1. 优先渲染块级数学公式 $$...$$
@@ -284,7 +285,7 @@ async function exportMarkdownFile() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${note.value.title || '便笺'}_${note.value.id.slice(0, 8)}.md`;
+    link.download = `${note.value.title || t('sticky.exportFilePrefix')}_${note.value.id.slice(0, 8)}.md`;
     link.click();
     URL.revokeObjectURL(url);
   } catch (err) {
@@ -305,7 +306,6 @@ async function closeNoteWindow() {
 function handleContentClick(e: MouseEvent) {
   const target = e.target as HTMLElement;
   if (target && target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'checkbox') {
-    // 待办点击切换
     saveContentDebounced();
   }
 }

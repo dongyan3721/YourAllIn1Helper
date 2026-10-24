@@ -1,13 +1,13 @@
 <template>
   <div class="macos-window clipboard-popup-container" @keydown="handleKeyNavigation" tabindex="0">
-    <!-- 顶部标题栏 -->
+    <!-- 顶部标题栏（展示产品矢量 Logo 与多语言标题） -->
     <header class="macos-titlebar">
       <div class="macos-title">
-        <Icons name="clipboard" size="14" />
-        <span>剪贴板历史</span>
-        <span class="macos-badge-pill active">{{ items.length }} 条</span>
+        <ProductLogo :size="16" />
+        <span>{{ t('clipboard.popup.title') }}</span>
+        <span class="macos-badge-pill active">{{ t('clipboard.popup.countBadge', { count: items.length }) }}</span>
       </div>
-      <button class="icon-button" @click="closePopup" title="关闭 (Esc)">
+      <button class="icon-button" @click="closePopup" :title="t('clipboard.popup.closeTooltip')">
         <Icons name="close" size="12" />
       </button>
     </header>
@@ -21,7 +21,7 @@
           v-model="searchQuery"
           type="text"
           class="macos-search-input"
-          placeholder="搜索剪贴板 (上下键选择，回车直接粘贴)..."
+          :placeholder="t('clipboard.popup.searchPlaceholder')"
           @keydown.enter.prevent="pasteCurrentOrFirst"
         />
       </div>
@@ -30,7 +30,7 @@
     <!-- 剪贴板条目列表 -->
     <div class="clip-scroll-list">
       <div v-if="filteredItems.length === 0" class="empty-hint">
-        <span>无匹配历史记录 (按 ⌘+C 复制后自动捕获)</span>
+        <span>{{ t('clipboard.popup.emptyHint') }}</span>
       </div>
 
       <div
@@ -54,18 +54,18 @@
               <img
                 v-if="item.thumb_base64"
                 :src="item.thumb_base64"
-                alt="剪贴板图片缩略图"
+                :alt="t('clipboard.popup.imageAlt')"
                 class="thumb-img"
               />
-              <span class="image-label">图片素材</span>
+              <span class="image-label">{{ t('clipboard.popup.imageLabel') }}</span>
             </div>
           </template>
 
           <!-- 元数据：应用来源与时间 -->
           <div class="card-meta">
-            <span class="app-tag">{{ item.source_app_name || '系统剪贴板' }}</span>
+            <span class="app-tag">{{ item.source_app_name || t('clipboard.defaultSource') }}</span>
             <span class="time-tag">{{ formatTime(item.updated_at) }}</span>
-            <span v-if="item.is_pinned" class="pinned-tag">已固定</span>
+            <span v-if="item.is_pinned" class="pinned-tag">{{ t('clipboard.popup.pinnedBadge') }}</span>
           </div>
         </div>
 
@@ -75,16 +75,16 @@
             class="action-btn"
             :class="{ active: item.is_pinned }"
             @click.stop="togglePin(item.id)"
-            :title="item.is_pinned ? '取消固定' : '固定此项'"
+            :title="item.is_pinned ? t('clipboard.popup.unpinItemTooltip') : t('clipboard.popup.pinItemTooltip')"
           >
             <Icons :name="item.is_pinned ? 'pin-fill' : 'pin'" size="13" />
           </button>
           <button
             class="action-btn paste-btn"
             @click.stop="pasteItem(item.id)"
-            title="写入系统剪贴板并直接粘贴上屏"
+            :title="t('clipboard.popup.pasteTooltip')"
           >
-            粘贴
+            {{ t('clipboard.pasteBtn') }}
           </button>
         </div>
       </div>
@@ -92,8 +92,8 @@
 
     <!-- 底部极简状态提示栏 -->
     <footer class="popup-footer">
-      <span>↑↓ 选择 · ↵ 粘贴 · Esc 销毁</span>
-      <span>Ditto 极简架构 (失焦即销毁)</span>
+      <span>{{ t('clipboard.popup.footerKeys') }}</span>
+      <span>{{ t('clipboard.popup.footerArch') }}</span>
     </footer>
   </div>
 </template>
@@ -102,6 +102,8 @@
 import { ref, computed, onMounted, nextTick } from 'vue';
 import { invokeIpc, type ClipboardRecord } from '../api/ipc';
 import Icons from './Icons.vue';
+import ProductLogo from './ProductLogo.vue';
+import { t } from '../utils/i18n';
 
 /** 响应式剪贴板数据列表 */
 const items = ref<ClipboardRecord[]>([]);
@@ -203,8 +205,8 @@ function formatTime(timestampMs: number): string {
   const d = new Date(timestampMs);
   const now = new Date();
   const diffSec = Math.floor((now.getTime() - d.getTime()) / 1000);
-  if (diffSec < 60) return '刚刚';
-  if (diffSec < 3600) return `${Math.floor(diffSec / 60)} 分钟前`;
+  if (diffSec < 60) return t('clipboard.popup.justNow');
+  if (diffSec < 3600) return t('clipboard.popup.minutesAgo', { minutes: Math.floor(diffSec / 60) });
   const hours = d.getHours().toString().padStart(2, '0');
   const minutes = d.getMinutes().toString().padStart(2, '0');
   return `${hours}:${minutes}`;

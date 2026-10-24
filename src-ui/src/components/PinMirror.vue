@@ -3,21 +3,21 @@
     <img
       v-if="snapshotUrl"
       :src="snapshotUrl"
-      alt="外部窗口实时镜像"
+      :alt="t('winpin.mirror.alt')"
       class="mirror-viewport"
       @click="activateOriginalWindow"
     />
     <div v-else class="loading-state">
-      <span>正在抓取实时窗口镜像...</span>
+      <span>{{ t('winpin.mirror.loading') }}</span>
     </div>
 
     <!-- 悬浮微型快捷栏 -->
     <div class="mirror-overlay-bar">
-      <button class="glass-pill-btn" @click="activateOriginalWindow" title="调出原程序窗口">
-        <span>激活原窗口</span>
+      <button class="glass-pill-btn" @click="activateOriginalWindow" :title="t('winpin.mirror.activateTooltip')">
+        <span>{{ t('winpin.mirror.activateBtn') }}</span>
       </button>
-      <button class="glass-pill-btn danger" @click="unpinWindow" title="取消置顶并关闭镜像">
-        <span>取消置顶</span>
+      <button class="glass-pill-btn danger" @click="unpinWindow" :title="t('winpin.mirror.unpinTooltip')">
+        <span>{{ t('winpin.mirror.unpinBtn') }}</span>
       </button>
     </div>
   </div>
@@ -26,6 +26,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
 import { invokeIpc } from '../api/ipc';
+import { t } from '../utils/i18n';
 
 const handle = Number(new URLSearchParams(window.location.search).get('handle') || 0);
 const snapshotUrl = ref('');

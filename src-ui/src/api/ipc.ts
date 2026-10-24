@@ -99,6 +99,12 @@ export interface KernelStatus {
     display_label: string;
   }>;
   config: {
+    general?: {
+      launch_at_login: boolean;
+      show_tray_icon: boolean;
+      language: string;
+      theme: string;
+    };
     clipboard: {
       enabled: boolean;
       max_history_items: number;

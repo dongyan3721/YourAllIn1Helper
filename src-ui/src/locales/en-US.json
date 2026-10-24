@@ -1,0 +1,203 @@
+{
+  "app": {
+    "name": "All-in-One Toolbox",
+    "subtitle": "Pocket Efficiency Suite",
+    "nativeWindowCount": "{count} Native Windows",
+    "quit": "Quit",
+    "quitTooltip": "Quit and restore all pinned windows",
+    "languageSwitchTooltip": "Switch UI language (synced to config.json)"
+  },
+  "tabs": {
+    "overview": "Overview",
+    "clipboard": "02. Clipboard",
+    "sticky": "04. Sticky Notes",
+    "winpin": "09. Window Pin"
+  },
+  "theme": {
+    "selectAccentTooltip": "Select system accent color",
+    "accentPrefix": "Accent: {name}",
+    "modeLightTooltip": "Light mode (Default)",
+    "modeDarkTooltip": "Dark mode",
+    "modeSystemTooltip": "Follow system appearance",
+    "colors": {
+      "blue": "Classic Blue",
+      "purple": "Royal Purple",
+      "pink": "Vibrant Pink",
+      "orange": "Warm Orange",
+      "green": "Mint Green",
+      "graphite": "Graphite Gray"
+    }
+  },
+  "overview": {
+    "metrics": {
+      "memoryLabel": "Resident Memory Tier",
+      "memoryVal": "Level 0 (Silent Daemon)",
+      "memorySub": "0 WebViews when all windows closed (<25MB)",
+      "clipboardLabel": "Clipboard History Capacity",
+      "clipboardSub": "SHA-256 deduplication & LRU eviction",
+      "pinnedLabel": "Pinned External Windows",
+      "pinnedVal": "{count} Pinned",
+      "pinnedSub": "Auto-restored on daemon shutdown",
+      "pasteLabel": "Synthetic Paste Count",
+      "pasteVal": "{count} Times",
+      "pasteSub": "enigo simulated Cmd+V / Ctrl+V"
+    },
+    "shortcuts": {
+      "title": "Global System Shortcuts",
+      "desc": "Platform-agnostic logical hotkeys normalized automatically",
+      "colModule": "Module",
+      "colAction": "Action ID",
+      "colHotkey": "Physical Shortcut",
+      "colOperation": "Action",
+      "testTrigger": "Test Trigger"
+    },
+    "envProbe": {
+      "title": "System PATH Runtime Detector (EnvProbeService)",
+      "desc": "Zero-bundled-runtime architecture: probes system interpreters on demand",
+      "notDetectedInPath": "Not found in system PATH",
+      "ready": "Ready",
+      "missing": "Not Found"
+    }
+  },
+  "moduleManager": {
+    "title": "Feature Modules",
+    "desc": "Toggles take effect and persist immediately; disabling preserves existing data",
+    "colNumber": "No.",
+    "colFeature": "Feature",
+    "colStatus": "Status",
+    "colSwitch": "Toggle",
+    "switchAria": "Toggle {name}",
+    "statusEnabled": "Enabled",
+    "statusDisabled": "Disabled",
+    "statusPendingDev": "Planned",
+    "statusUnsupportedWinPin": "External window persistent topmost is unsupported on this OS",
+    "btnPendingDev": "Planned",
+    "btnProcessing": "Working…",
+    "btnDisable": "Disable",
+    "btnEnable": "Enable",
+    "names": {
+      "screenshot": "Enhanced Screenshot & Pin",
+      "clipboard": "Clipboard Manager",
+      "screen_ink": "Desktop Screen Ink",
+      "sticky_note": "Pinned Sticky Notes",
+      "app_usage": "App Usage Tracker",
+      "script_runner": "Custom Script Runner",
+      "translator": "Global Selection Translator",
+      "media_proc": "Media Processor",
+      "window_pin": "External Window Pin",
+      "password_vault": "Biometric Password Vault"
+    }
+  },
+  "clipboard": {
+    "searchPlaceholder": "Search clipboard history or source app...",
+    "clearUnpinned": "Clear Unpinned",
+    "openPopupBtn": "Open Clipboard Popup (⇧⌘V)",
+    "colType": "Type",
+    "colPreview": "Content Preview",
+    "colSource": "Source App",
+    "colUpdated": "Updated At",
+    "colOperation": "Actions",
+    "emptyTable": "No clipboard history records yet",
+    "typeImage": "Image",
+    "typeText": "Text",
+    "defaultSource": "System Clipboard",
+    "pinTooltip": "Pin",
+    "unpinTooltip": "Unpin",
+    "pasteBtn": "Paste",
+    "popup": {
+      "title": "Clipboard History",
+      "countBadge": "{count} Items",
+      "closeTooltip": "Close (Esc)",
+      "searchPlaceholder": "Search clipboard (↑↓ to select, Enter to paste)...",
+      "emptyHint": "No matching history (Press ⌘+C to capture automatically)",
+      "imageAlt": "Clipboard image thumbnail",
+      "imageLabel": "Image Asset",
+      "pinnedBadge": "Pinned",
+      "pinItemTooltip": "Pin item",
+      "unpinItemTooltip": "Unpin item",
+      "pasteTooltip": "Write to system clipboard and paste immediately",
+      "footerKeys": "↑↓ Select · ↵ Paste · Esc Destroy",
+      "footerArch": "Ditto Transient Popup (Destroys on blur)",
+      "justNow": "Just now",
+      "minutesAgo": "{minutes}m ago"
+    }
+  },
+  "sticky": {
+    "toolbarDesc": "Each open note runs in an independent topmost native window; closing marks is_open = 0 and immediately destroys the WebView.",
+    "newNoteBtn": "New Sticky Note (⇧⌘N)",
+    "defaultNewTitle": "New Sticky Note",
+    "defaultNewContent": "Supports **Markdown** & LaTeX math: $E=mc^2$\n\n$$\\int_a^b f(x)dx$$",
+    "colTitle": "Title",
+    "colTheme": "Theme & Opacity",
+    "colStatus": "Desktop Window State",
+    "colUpdated": "Last Modified",
+    "colOperation": "Actions",
+    "emptyTable": "No sticky notes yet. Click top-right to create one.",
+    "untitled": "Untitled Note",
+    "statusOpen": "Active on Desktop",
+    "statusArchived": "Archived & Closed",
+    "openWinBtn": "Open Window",
+    "closeWinBtn": "Close Window",
+    "exportTooltip": "Export as Markdown",
+    "exportFilePrefix": "StickyNote",
+    "window": {
+      "untitledPlaceholder": "Untitled Note...",
+      "switchPreviewTooltip": "Switch to rendered preview",
+      "switchEditTooltip": "Switch to Markdown editor",
+      "previewBtn": "Preview",
+      "editBtn": "Edit",
+      "pinTooltip": "Always on Top",
+      "paletteTooltip": "Note theme color",
+      "exportMdTooltip": "Export as .md file",
+      "closeTooltip": "Close note (reclaim WebView memory)",
+      "editorPlaceholder": "Type Markdown or LaTeX math ($E=mc^2$)...",
+      "emptyRenderedHint": "Empty note. Click 'Edit' above to start writing...",
+      "opacityLabel": "Opacity {percent}%",
+      "saving": "Saving...",
+      "savedAt": "Saved {time}",
+      "themes": {
+        "neutral": "Neutral Slate",
+        "amber": "Warm Amber",
+        "sky": "Deep Ocean Blue",
+        "emerald": "Moss Emerald",
+        "rose": "Midnight Rose",
+        "violet": "Twilight Violet"
+      }
+    }
+  },
+  "winpin": {
+    "unsupportedNotice": "Persistent topmost for third-party native windows is unsupported on this OS. Window enumeration and activation remain available.",
+    "searchPlaceholder": "Filter live system windows...",
+    "refreshBtn": "Refresh",
+    "refreshTooltip": "Rescan live system windows",
+    "restoreAllBtn": "Restore All Pinned",
+    "pinForegroundBtn": "Pin Active Window (⇧⌘P)",
+    "pickerBtn": "Crosshair Picker (⌥⌘P)",
+    "colId": "Window ID",
+    "colApp": "Application",
+    "colTitle": "Window Title",
+    "colGeometry": "Bounds",
+    "colStatus": "Topmost State",
+    "colOperation": "Actions",
+    "emptyTable": "No matching external windows detected",
+    "statusTopmost": "Pinned Topmost",
+    "statusNormal": "Normal Layer",
+    "unpinBtn": "Unpin",
+    "pinBtn": "Pin",
+    "activateBtn": "Activate",
+    "picker": {
+      "hudHint": "Crosshair Picker: Hover over any target window and click to pin · Press ESC or right-click to cancel"
+    },
+    "badge": {
+      "tooltip": "📌 Window pinned topmost · Click to unpin"
+    },
+    "mirror": {
+      "alt": "External window live mirror",
+      "loading": "Capturing live window mirror...",
+      "activateBtn": "Focus Window",
+      "activateTooltip": "Bring original application window to front",
+      "unpinBtn": "Unpin",
+      "unpinTooltip": "Unpin window and close mirror"
+    }
+  }
+}

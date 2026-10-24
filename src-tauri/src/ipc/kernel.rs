@@ -95,6 +95,39 @@ impl DesktopHost {
                 Ok(serde_json::to_value(ctx.config.read().clone())?)
             }
 
+            "kernel_update_general_config" => {
+                let language = args
+                    .get("language")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_owned);
+                let theme = args
+                    .get("theme")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_owned);
+                let launch_at_login = args.get("launch_at_login").and_then(Value::as_bool);
+                let show_tray_icon = args.get("show_tray_icon").and_then(Value::as_bool);
+
+                self.kernel.update_config(|cfg| {
+                    if let Some(lang) = language {
+                        cfg.general.language = lang;
+                    }
+                    if let Some(th) = theme {
+                        cfg.general.theme = th;
+                    }
+                    if let Some(launch) = launch_at_login {
+                        cfg.general.launch_at_login = launch;
+                    }
+                    if let Some(tray) = show_tray_icon {
+                        cfg.general.show_tray_icon = tray;
+                    }
+                })?;
+                Ok(serde_json::to_value(ctx.config.read().clone())?)
+            }
+
             "kernel_shutdown" => {
                 self.kernel.shutdown()?;
                 Ok(json!({

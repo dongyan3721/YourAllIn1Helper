@@ -1,12 +1,12 @@
 <template>
   <div class="macos-window dashboard-frame">
-    <!-- 顶部原生标题栏 -->
+    <!-- 顶部原生标题栏（含哆啦A梦百宝袋旋翼高保真 SVG Logo、多语言切换与主题控制器） -->
     <header class="macos-titlebar">
       <div class="macos-title">
-        <Icons name="dashboard" size="14" />
-        <span>All-in-One Toolbox</span>
+        <ProductLogo :size="20" />
+        <span class="brand-title-text">{{ t('app.name') }}</span>
         <span class="macos-badge-pill" :class="{ active: status?.active_window_count }">
-          {{ status?.active_window_count || 0 }} 个原生窗口
+          {{ t('app.nativeWindowCount', { count: status?.active_window_count || 0 }) }}
         </span>
       </div>
 
@@ -20,13 +20,31 @@
           @click="currentTab = tab.id"
         >
           <Icons :name="tab.icon" size="13" />
-          <span>{{ tab.name }}</span>
+          <span>{{ t(tab.labelKey) }}</span>
         </button>
       </nav>
 
       <div class="title-right">
+        <!-- 国际化多语言切换分段器 (简体中文 / English / 日本語) -->
+        <nav
+          class="macos-segmented locale-segmented"
+          :title="t('app.languageSwitchTooltip')"
+          aria-label="Language Switcher"
+        >
+          <button
+            v-for="loc in LOCALE_OPTIONS"
+            :key="loc.code"
+            class="macos-segment-item locale-btn"
+            :class="{ active: currentLocale === loc.code }"
+            @click="onSwitchLocale(loc.code)"
+            :title="loc.nativeName"
+          >
+            <span>{{ loc.shortLabel }}</span>
+          </button>
+        </nav>
+
         <!-- 强调色选择色环组 -->
-        <div class="theme-accent-group" title="选择 macOS 系统强调色">
+        <div class="theme-accent-group" :title="t('theme.selectAccentTooltip')">
           <button
             v-for="color in ACCENT_PALETTE"
             :key="color.id"
@@ -34,7 +52,7 @@
             :class="{ active: currentAccent === color.id }"
             :style="{ backgroundColor: isDarkActive ? color.darkHex : color.lightHex }"
             @click="setAccentColor(color.id)"
-            :title="`强调色：${color.name}`"
+            :title="t('theme.accentPrefix', { name: t(`theme.colors.${color.id}`) })"
           />
         </div>
 
@@ -44,7 +62,7 @@
             class="macos-segment-item icon-only"
             :class="{ active: currentThemeMode === 'light' }"
             @click="setThemeMode('light')"
-            title="浅色白蓝色调 (默认)"
+            :title="t('theme.modeLightTooltip')"
           >
             <Icons name="sun" size="12" />
           </button>
@@ -52,7 +70,7 @@
             class="macos-segment-item icon-only"
             :class="{ active: currentThemeMode === 'dark' }"
             @click="setThemeMode('dark')"
-            title="深色背景模式"
+            :title="t('theme.modeDarkTooltip')"
           >
             <Icons name="moon" size="12" />
           </button>
@@ -60,15 +78,15 @@
             class="macos-segment-item icon-only"
             :class="{ active: currentThemeMode === 'system' }"
             @click="setThemeMode('system')"
-            title="跟随系统自动开关灯"
+            :title="t('theme.modeSystemTooltip')"
           >
             <Icons name="desktop" size="12" />
           </button>
         </nav>
 
-        <button class="macos-button danger" @click="shutdownDaemon" title="退出并清理所有置顶窗口">
+        <button class="macos-button danger" @click="shutdownDaemon" :title="t('app.quitTooltip')">
           <Icons name="power" size="12" />
-          <span>退出</span>
+          <span>{{ t('app.quit') }}</span>
         </button>
       </div>
     </header>
@@ -79,24 +97,24 @@
       <section v-if="currentTab === 'overview'" class="tab-pane">
         <div class="metrics-grid">
           <div class="metric-card">
-            <span class="metric-label">常驻内存级别</span>
-            <span class="metric-val">Level 0 (静默守护)</span>
-            <span class="metric-sub">关闭所有窗口时 0 WebView 驻留 (&lt;25MB)</span>
+            <span class="metric-label">{{ t('overview.metrics.memoryLabel') }}</span>
+            <span class="metric-val">{{ t('overview.metrics.memoryVal') }}</span>
+            <span class="metric-sub">{{ t('overview.metrics.memorySub') }}</span>
           </div>
           <div class="metric-card">
-            <span class="metric-label">剪贴板历史容量</span>
+            <span class="metric-label">{{ t('overview.metrics.clipboardLabel') }}</span>
             <span class="metric-val">{{ clipItems.length }} / {{ status?.config?.clipboard?.max_history_items || 100 }}</span>
-            <span class="metric-sub">SHA-256 去重与 LRU 自动淘汰</span>
+            <span class="metric-sub">{{ t('overview.metrics.clipboardSub') }}</span>
           </div>
           <div class="metric-card">
-            <span class="metric-label">已置顶外部窗口</span>
-            <span class="metric-val">{{ pinnedWindows.length }} 个</span>
-            <span class="metric-sub">守护进程退出自动还原层级</span>
+            <span class="metric-label">{{ t('overview.metrics.pinnedLabel') }}</span>
+            <span class="metric-val">{{ t('overview.metrics.pinnedVal', { count: pinnedWindows.length }) }}</span>
+            <span class="metric-sub">{{ t('overview.metrics.pinnedSub') }}</span>
           </div>
           <div class="metric-card">
-            <span class="metric-label">物理粘贴触发次数</span>
-            <span class="metric-val">{{ status?.paste_trigger_count || 0 }} 次</span>
-            <span class="metric-sub">enigo 模拟 Cmd+V / Ctrl+V</span>
+            <span class="metric-label">{{ t('overview.metrics.pasteLabel') }}</span>
+            <span class="metric-val">{{ t('overview.metrics.pasteVal', { count: status?.paste_trigger_count || 0 }) }}</span>
+            <span class="metric-sub">{{ t('overview.metrics.pasteSub') }}</span>
           </div>
         </div>
 
@@ -105,17 +123,17 @@
         <!-- 全局快捷键注册表 -->
         <div class="section-card">
           <div class="card-header-bar">
-            <span class="card-title">系统全局快捷键</span>
-            <span class="card-desc">平台无关逻辑热键自动归一化</span>
+            <span class="card-title">{{ t('overview.shortcuts.title') }}</span>
+            <span class="card-desc">{{ t('overview.shortcuts.desc') }}</span>
           </div>
           <div class="table-container">
             <table class="macos-table">
               <thead>
                 <tr>
-                  <th>所属模块</th>
-                  <th>动作标识</th>
-                  <th>当前物理快捷键</th>
-                  <th>操作</th>
+                  <th>{{ t('overview.shortcuts.colModule') }}</th>
+                  <th>{{ t('overview.shortcuts.colAction') }}</th>
+                  <th>{{ t('overview.shortcuts.colHotkey') }}</th>
+                  <th>{{ t('overview.shortcuts.colOperation') }}</th>
                 </tr>
               </thead>
               <tbody>
@@ -125,7 +143,7 @@
                   <td><kbd class="hotkey-pill">{{ sc.display_label }}</kbd></td>
                   <td>
                     <button class="macos-button" @click="triggerShortcut(sc.spec.action_id)">
-                      测试触发
+                      {{ t('overview.shortcuts.testTrigger') }}
                     </button>
                   </td>
                 </tr>
@@ -137,17 +155,17 @@
         <!-- 外部运行环境探测 -->
         <div class="section-card">
           <div class="card-header-bar">
-            <span class="card-title">系统 PATH 运行时探测器 (EnvProbeService)</span>
-            <span class="card-desc">零捆绑架构：按需探测并调用系统既有解释器</span>
+            <span class="card-title">{{ t('overview.envProbe.title') }}</span>
+            <span class="card-desc">{{ t('overview.envProbe.desc') }}</span>
           </div>
           <div class="probe-list">
-            <div v-for="t in status?.env_tools || []" :key="t.tool" class="probe-item">
-              <div class="probe-status-dot" :class="{ ready: t.available }"></div>
+            <div v-for="toolItem in status?.env_tools || []" :key="toolItem.tool" class="probe-item">
+              <div class="probe-status-dot" :class="{ ready: toolItem.available }"></div>
               <div class="probe-info">
-                <span class="probe-name">{{ t.tool }}</span>
-                <span class="probe-path">{{ t.resolved_path || '未在系统 PATH 中探测到' }}</span>
+                <span class="probe-name">{{ toolItem.tool }}</span>
+                <span class="probe-path">{{ toolItem.resolved_path || t('overview.envProbe.notDetectedInPath') }}</span>
               </div>
-              <span class="probe-badge">{{ t.available ? '已就绪' : '未检测到' }}</span>
+              <span class="probe-badge">{{ toolItem.available ? t('overview.envProbe.ready') : t('overview.envProbe.missing') }}</span>
             </div>
           </div>
         </div>
@@ -162,18 +180,18 @@
               v-model="clipSearchKeyword"
               type="text"
               class="macos-search-input"
-              placeholder="搜索剪贴板记录或来源应用..."
+              :placeholder="t('clipboard.searchPlaceholder')"
             />
           </div>
 
           <div class="toolbar-actions">
             <button class="macos-button" @click="clearUnpinnedClip">
               <Icons name="trash" size="12" />
-              <span>清空未固定条目</span>
+              <span>{{ t('clipboard.clearUnpinned') }}</span>
             </button>
             <button class="macos-button primary" @click="openClipPopup">
               <Icons name="clipboard" size="12" />
-              <span>呼出剪贴板弹窗 (⇧⌘V)</span>
+              <span>{{ t('clipboard.openPopupBtn') }}</span>
             </button>
           </div>
         </div>
@@ -184,21 +202,21 @@
             <table class="macos-table">
               <thead>
                 <tr>
-                  <th style="width: 60px;">类型</th>
-                  <th>内容预览</th>
-                  <th>来源应用</th>
-                  <th>更新时间</th>
-                  <th style="width: 140px;">操作</th>
+                  <th style="width: 60px;">{{ t('clipboard.colType') }}</th>
+                  <th>{{ t('clipboard.colPreview') }}</th>
+                  <th>{{ t('clipboard.colSource') }}</th>
+                  <th>{{ t('clipboard.colUpdated') }}</th>
+                  <th style="width: 140px;">{{ t('clipboard.colOperation') }}</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if="filteredClipItems.length === 0">
-                  <td colspan="5" class="empty-cell">暂无剪贴板历史记录</td>
+                  <td colspan="5" class="empty-cell">{{ t('clipboard.emptyTable') }}</td>
                 </tr>
                 <tr v-for="item in filteredClipItems" :key="item.id">
                   <td>
                     <span class="type-pill" :class="item.item_type">
-                      {{ item.item_type === 'image' ? '图片' : '文本' }}
+                      {{ item.item_type === 'image' ? t('clipboard.typeImage') : t('clipboard.typeText') }}
                     </span>
                   </td>
                   <td>
@@ -209,7 +227,7 @@
                       <div class="table-text-cell">{{ item.content_text }}</div>
                     </template>
                   </td>
-                  <td>{{ item.source_app_name || '系统剪贴板' }}</td>
+                  <td>{{ item.source_app_name || t('clipboard.defaultSource') }}</td>
                   <td>{{ formatDateTime(item.updated_at) }}</td>
                   <td>
                     <div class="btn-group">
@@ -217,12 +235,12 @@
                         class="macos-button"
                         :class="{ active: item.is_pinned }"
                         @click="toggleClipPin(item.id)"
-                        :title="item.is_pinned ? '取消固定' : '固定'"
+                        :title="item.is_pinned ? t('clipboard.unpinTooltip') : t('clipboard.pinTooltip')"
                       >
                         <Icons :name="item.is_pinned ? 'pin-fill' : 'pin'" size="11" />
                       </button>
                       <button class="macos-button" @click="pasteClip(item.id)">
-                        粘贴
+                        {{ t('clipboard.pasteBtn') }}
                       </button>
                       <button class="macos-button danger" @click="deleteClip(item.id)">
                         <Icons name="trash" size="11" />
@@ -240,11 +258,11 @@
       <section v-else-if="currentTab === 'sticky'" class="tab-pane">
         <div class="pane-toolbar">
           <div class="card-desc">
-            每个打开的便笺对应一个独立的置顶原生窗口；关闭便笺后标记为 <code>is_open = 0</code> 并立即销毁释放内存。
+            {{ t('sticky.toolbarDesc') }}
           </div>
           <button class="macos-button primary" @click="createNewNote">
             <Icons name="sticky" size="12" />
-            <span>新建置顶便笺 (⇧⌘N)</span>
+            <span>{{ t('sticky.newNoteBtn') }}</span>
           </button>
         </div>
 
@@ -253,22 +271,22 @@
             <table class="macos-table">
               <thead>
                 <tr>
-                  <th>标题</th>
-                  <th>主题色与透明度</th>
-                  <th>桌面窗口状态</th>
-                  <th>最后修改</th>
-                  <th style="width: 200px;">操作</th>
+                  <th>{{ t('sticky.colTitle') }}</th>
+                  <th>{{ t('sticky.colTheme') }}</th>
+                  <th>{{ t('sticky.colStatus') }}</th>
+                  <th>{{ t('sticky.colUpdated') }}</th>
+                  <th style="width: 200px;">{{ t('sticky.colOperation') }}</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if="notes.length === 0">
-                  <td colspan="5" class="empty-cell">便笺库暂无记录，点击右上角新建</td>
+                  <td colspan="5" class="empty-cell">{{ t('sticky.emptyTable') }}</td>
                 </tr>
                 <tr v-for="n in notes" :key="n.id">
-                  <td><strong>{{ n.title || '未命名便笺' }}</strong></td>
+                  <td><strong>{{ n.title || t('sticky.untitled') }}</strong></td>
                   <td>
                     <span class="theme-tag" :class="`theme-${n.theme_color}`">
-                      {{ n.theme_color }}
+                      {{ t(`sticky.window.themes.${n.theme_color}`) !== `sticky.window.themes.${n.theme_color}` ? t(`sticky.window.themes.${n.theme_color}`) : n.theme_color }}
                     </span>
                     <span style="font-size: 11px; color: var(--macos-text-secondary); margin-left: 6px;">
                       {{ Math.round(n.opacity * 100) }}%
@@ -276,7 +294,7 @@
                   </td>
                   <td>
                     <span class="status-pill" :class="{ open: n.is_open }">
-                      {{ n.is_open ? '桌面运行中' : '已归档关闭' }}
+                      {{ n.is_open ? t('sticky.statusOpen') : t('sticky.statusArchived') }}
                     </span>
                   </td>
                   <td>{{ formatDateTime(n.updated_at) }}</td>
@@ -287,16 +305,16 @@
                         class="macos-button"
                         @click="openNote(n.id)"
                       >
-                        唤醒窗口
+                        {{ t('sticky.openWinBtn') }}
                       </button>
                       <button
                         v-else
                         class="macos-button"
                         @click="closeNote(n.id)"
                       >
-                        关闭窗口
+                        {{ t('sticky.closeWinBtn') }}
                       </button>
-                      <button class="macos-button" @click="exportNote(n.id)" title="导出为 Markdown">
+                      <button class="macos-button" @click="exportNote(n.id)" :title="t('sticky.exportTooltip')">
                         <Icons name="download" size="11" />
                       </button>
                       <button class="macos-button danger" @click="deleteNote(n.id)">
@@ -313,7 +331,9 @@
 
       <!-- Tab 4: 窗口置顶管理 (09 mod-window-pin) -->
       <section v-else-if="currentTab === 'winpin'" class="tab-pane">
-        <p v-if="!windowPinSupported" class="section-card" style="padding: 12px;">当前系统不支持将其他应用的原窗口持续置顶。窗口枚举和激活仍可使用。</p>
+        <p v-if="!windowPinSupported" class="section-card" style="padding: 12px;">
+          {{ t('winpin.unsupportedNotice') }}
+        </p>
         <div class="pane-toolbar">
           <div class="macos-search-box" style="max-width: 320px;">
             <Icons name="search" size="13" />
@@ -321,26 +341,26 @@
               v-model="winpinKeyword"
               type="text"
               class="macos-search-input"
-              placeholder="过滤当前系统真实窗口..."
+              :placeholder="t('winpin.searchPlaceholder')"
             />
           </div>
 
           <div class="toolbar-actions">
-            <button class="macos-button" @click="refreshDashboard" title="重新扫描系统真实窗口">
+            <button class="macos-button" @click="refreshDashboard" :title="t('winpin.refreshTooltip')">
               <Icons name="refresh" size="12" />
-              <span>刷新窗口</span>
+              <span>{{ t('winpin.refreshBtn') }}</span>
             </button>
             <button class="macos-button" @click="restoreAllPins">
               <Icons name="power" size="12" />
-              <span>一键还原全部置顶</span>
+              <span>{{ t('winpin.restoreAllBtn') }}</span>
             </button>
             <button class="macos-button primary" @click="toggleForegroundPin" :disabled="!windowPinSupported">
               <Icons name="pin" size="12" />
-              <span>置顶当前活动窗口 (⇧⌘P)</span>
+              <span>{{ t('winpin.pinForegroundBtn') }}</span>
             </button>
             <button class="macos-button" @click="openPinPicker" :disabled="!windowPinSupported">
               <Icons name="crosshair" size="12" />
-              <span>准星拾取 (⌥⌘P)</span>
+              <span>{{ t('winpin.pickerBtn') }}</span>
             </button>
           </div>
         </div>
@@ -350,17 +370,17 @@
             <table class="macos-table">
               <thead>
                 <tr>
-                  <th style="width: 80px;">窗口 ID</th>
-                  <th>应用程序</th>
-                  <th>窗口标题</th>
-                  <th>位置尺寸</th>
-                  <th>置顶状态</th>
-                  <th style="width: 170px;">操作</th>
+                  <th style="width: 80px;">{{ t('winpin.colId') }}</th>
+                  <th>{{ t('winpin.colApp') }}</th>
+                  <th>{{ t('winpin.colTitle') }}</th>
+                  <th>{{ t('winpin.colGeometry') }}</th>
+                  <th>{{ t('winpin.colStatus') }}</th>
+                  <th style="width: 170px;">{{ t('winpin.colOperation') }}</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if="filteredExternalWindows.length === 0">
-                  <td colspan="6" class="empty-cell">未检测到符合条件的外部窗口</td>
+                  <td colspan="6" class="empty-cell">{{ t('winpin.emptyTable') }}</td>
                 </tr>
                 <tr v-for="win in filteredExternalWindows" :key="win.handle">
                   <td><code>#{{ win.handle }}</code></td>
@@ -371,7 +391,7 @@
                   <td>{{ win.width }}×{{ win.height }} ({{ win.x }}, {{ win.y }})</td>
                   <td>
                     <span class="status-pill" :class="{ open: win.is_topmost }">
-                      {{ win.is_topmost ? '置顶最前中' : '普通层级' }}
+                      {{ win.is_topmost ? t('winpin.statusTopmost') : t('winpin.statusNormal') }}
                     </span>
                   </td>
                   <td>
@@ -382,10 +402,10 @@
                         @click="togglePinHandle(win.handle)"
                         :disabled="!windowPinSupported"
                       >
-                        {{ win.is_topmost ? '取消置顶' : '置顶' }}
+                        {{ win.is_topmost ? t('winpin.unpinBtn') : t('winpin.pinBtn') }}
                       </button>
                       <button class="macos-button" @click="activateWindow(win.handle)">
-                        激活
+                        {{ t('winpin.activateBtn') }}
                       </button>
                     </div>
                   </td>
@@ -410,6 +430,7 @@ import {
   type PinnedWindowEntry,
 } from '../api/ipc';
 import Icons from './Icons.vue';
+import ProductLogo from './ProductLogo.vue';
 import ModuleManager from './ModuleManager.vue';
 import {
   currentThemeMode,
@@ -419,13 +440,21 @@ import {
   setThemeMode,
   setAccentColor,
 } from '../utils/theme';
+import {
+  t,
+  currentLocale,
+  LOCALE_OPTIONS,
+  setLocale,
+  syncLocaleFromBackendConfig,
+  type SupportedLocale,
+} from '../utils/i18n';
 
-/** 选项卡配置列表 */
+/** 选项卡配置列表（绑定多语言字典键） */
 const tabs = [
-  { id: 'overview', name: '总览', icon: 'dashboard' },
-  { id: 'clipboard', module: 'clipboard', name: '02. 剪贴板', icon: 'clipboard' },
-  { id: 'sticky', module: 'sticky_note', name: '04. 便笺库', icon: 'sticky' },
-  { id: 'winpin', module: 'window_pin', name: '09. 窗口置顶', icon: 'pin' },
+  { id: 'overview', labelKey: 'tabs.overview', icon: 'dashboard' },
+  { id: 'clipboard', module: 'clipboard', labelKey: 'tabs.clipboard', icon: 'clipboard' },
+  { id: 'sticky', module: 'sticky_note', labelKey: 'tabs.sticky', icon: 'sticky' },
+  { id: 'winpin', module: 'window_pin', labelKey: 'tabs.winpin', icon: 'pin' },
 ];
 
 /** 当前选中的选项卡 ID */
@@ -438,9 +467,12 @@ const notes = ref<StickyNoteRecord[]>([]);
 const externalWindows = ref<ExternalWindowInfo[]>([]);
 const pinnedWindows = ref<PinnedWindowEntry[]>([]);
 
-const moduleEnabled = (id: string) => status.value?.module_catalog.some((module) => module.id === id && module.enabled) ?? false;
+const moduleEnabled = (id: string) =>
+  status.value?.module_catalog.some((module) => module.id === id && module.enabled) ?? false;
 const visibleTabs = computed(() => tabs.filter((tab) => !tab.module || moduleEnabled(tab.module)));
-const windowPinSupported = computed(() => status.value?.module_catalog.find((module) => module.id === 'window_pin')?.supported ?? false);
+const windowPinSupported = computed(
+  () => status.value?.module_catalog.find((module) => module.id === 'window_pin')?.supported ?? false
+);
 
 /** 过滤搜索词 */
 const clipSearchKeyword = ref('');
@@ -470,16 +502,30 @@ const filteredExternalWindows = computed(() => {
   });
 });
 
+/** 切换界面显示语言并持久化至 config.json */
+async function onSwitchLocale(code: SupportedLocale) {
+  await setLocale(code, true);
+}
+
 /** 刷新全部内核与模块数据 */
 async function refreshDashboard() {
   try {
     const s = await invokeIpc<KernelStatus>('kernel_get_status');
     status.value = s;
+    if (s.config?.general?.language) {
+      syncLocaleFromBackendConfig(s.config.general.language);
+    }
     if (!visibleTabs.value.some((tab) => tab.id === currentTab.value)) currentTab.value = 'overview';
     const [c, n, w] = await Promise.all([
-      moduleEnabled('clipboard') ? invokeIpc<ClipboardRecord[]>('clipboard_list_items', { limit: 100 }) : Promise.resolve([]),
-      moduleEnabled('sticky_note') ? invokeIpc<StickyNoteRecord[]>('sticky_list_notes', { only_open: false }) : Promise.resolve([]),
-      moduleEnabled('window_pin') ? invokeIpc<{ candidates: ExternalWindowInfo[]; pinned: PinnedWindowEntry[] }>('winpin_list_candidates') : Promise.resolve({ candidates: [], pinned: [] }),
+      moduleEnabled('clipboard')
+        ? invokeIpc<ClipboardRecord[]>('clipboard_list_items', { limit: 100 })
+        : Promise.resolve([]),
+      moduleEnabled('sticky_note')
+        ? invokeIpc<StickyNoteRecord[]>('sticky_list_notes', { only_open: false })
+        : Promise.resolve([]),
+      moduleEnabled('window_pin')
+        ? invokeIpc<{ candidates: ExternalWindowInfo[]; pinned: PinnedWindowEntry[] }>('winpin_list_candidates')
+        : Promise.resolve({ candidates: [], pinned: [] }),
     ]);
     clipItems.value = c;
     notes.value = n;
@@ -532,8 +578,8 @@ async function clearUnpinnedClip() {
 /** 新建便笺 */
 async function createNewNote() {
   await invokeIpc('sticky_create_note', {
-    title: '新建便笺',
-    content_md: '支持 **Markdown** 与 LaTeX 公式：$E=mc^2$\n\n$$\\int_a^b f(x)dx$$',
+    title: t('sticky.defaultNewTitle'),
+    content_md: t('sticky.defaultNewContent'),
     theme_color: 'neutral',
   });
   await refreshDashboard();
@@ -565,7 +611,7 @@ async function exportNote(id: string) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `便笺_${id.slice(0, 8)}.md`;
+    link.download = `${t('sticky.exportFilePrefix')}_${id.slice(0, 8)}.md`;
     link.click();
     URL.revokeObjectURL(url);
   } catch (err) {
@@ -622,7 +668,9 @@ onMounted(async () => {
   await refreshDashboard();
   refreshTimer = setInterval(refreshDashboard, 1000);
 });
-onUnmounted(() => { if (refreshTimer) clearInterval(refreshTimer); });
+onUnmounted(() => {
+  if (refreshTimer) clearInterval(refreshTimer);
+});
 </script>
 
 <style scoped>
@@ -633,10 +681,20 @@ onUnmounted(() => { if (refreshTimer) clearInterval(refreshTimer); });
   flex-direction: column;
 }
 
+.brand-title-text {
+  font-weight: 600;
+}
+
 .title-right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+}
+
+.locale-segmented .locale-btn {
+  padding: 4px 7px;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .theme-accent-group {
@@ -877,32 +935,31 @@ onUnmounted(() => { if (refreshTimer) clearInterval(refreshTimer); });
 
 .btn-group {
   display: flex;
-  gap: 4px;
-}
-
-.status-pill {
-  font-size: 11px;
-  padding: 2px 7px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--macos-text-tertiary);
-}
-
-.status-pill.open {
-  background: var(--macos-success-subtle);
-  color: var(--macos-success);
+  gap: 5px;
 }
 
 .theme-tag {
   font-size: 11px;
-  padding: 1px 6px;
-  border-radius: 3px;
+  padding: 2px 7px;
+  border-radius: 4px;
   background: rgba(255, 255, 255, 0.08);
+}
+
+.status-pill {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--macos-text-secondary);
+}
+
+.status-pill.open {
+  background: rgba(48, 209, 88, 0.16);
+  color: #30d158;
 }
 
 .pid-tag {
   font-size: 10px;
   color: var(--macos-text-tertiary);
-  margin-left: 4px;
 }
 </style>

@@ -3,7 +3,7 @@
     <!-- 顶部超轻量无干扰提示胶囊 -->
     <div class="picker-hud-pill">
       <Icons name="crosshair" size="13" />
-      <span>准星拾取：十字准星移至目标窗口并点击即可置顶 · 按 ESC 或右键取消</span>
+      <span>{{ t('winpin.picker.hudHint') }}</span>
     </div>
 
     <!-- 真实外部窗口感应热区层（默认完全透明无全屏蒙层，悬浮时高亮当前候选窗口） -->
@@ -27,6 +27,7 @@
 import { ref, onMounted } from 'vue';
 import { invokeIpc, type ExternalWindowInfo } from '../api/ipc';
 import Icons from './Icons.vue';
+import { t } from '../utils/i18n';
 
 /** 候选外部窗口列表 */
 const candidates = ref<ExternalWindowInfo[]>([]);

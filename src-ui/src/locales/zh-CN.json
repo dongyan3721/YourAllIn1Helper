@@ -1,0 +1,203 @@
+{
+  "app": {
+    "name": "All-in-One Toolbox",
+    "subtitle": "全能桌面效率百宝袋",
+    "nativeWindowCount": "{count} 个原生窗口",
+    "quit": "退出",
+    "quitTooltip": "退出并清理所有置顶窗口",
+    "languageSwitchTooltip": "切换界面显示语言 (自动同步至 config.json)"
+  },
+  "tabs": {
+    "overview": "总览",
+    "clipboard": "02. 剪贴板",
+    "sticky": "04. 便笺库",
+    "winpin": "09. 窗口置顶"
+  },
+  "theme": {
+    "selectAccentTooltip": "选择系统强调色",
+    "accentPrefix": "强调色：{name}",
+    "modeLightTooltip": "浅色白蓝色调 (默认)",
+    "modeDarkTooltip": "深色背景模式",
+    "modeSystemTooltip": "跟随系统自动开关灯",
+    "colors": {
+      "blue": "经典蓝",
+      "purple": "罗兰紫",
+      "pink": "亮粉红",
+      "orange": "暖夕橙",
+      "green": "薄荷绿",
+      "graphite": "石墨灰"
+    }
+  },
+  "overview": {
+    "metrics": {
+      "memoryLabel": "常驻内存级别",
+      "memoryVal": "Level 0 (静默守护)",
+      "memorySub": "关闭所有窗口时 0 WebView 驻留 (<25MB)",
+      "clipboardLabel": "剪贴板历史容量",
+      "clipboardSub": "SHA-256 去重与 LRU 自动淘汰",
+      "pinnedLabel": "已置顶外部窗口",
+      "pinnedVal": "{count} 个",
+      "pinnedSub": "守护进程退出自动还原层级",
+      "pasteLabel": "物理粘贴触发次数",
+      "pasteVal": "{count} 次",
+      "pasteSub": "enigo 模拟 Cmd+V / Ctrl+V"
+    },
+    "shortcuts": {
+      "title": "系统全局快捷键",
+      "desc": "平台无关逻辑热键自动归一化",
+      "colModule": "所属模块",
+      "colAction": "动作标识",
+      "colHotkey": "当前物理快捷键",
+      "colOperation": "操作",
+      "testTrigger": "测试触发"
+    },
+    "envProbe": {
+      "title": "系统 PATH 运行时探测器 (EnvProbeService)",
+      "desc": "零捆绑架构：按需探测并调用系统既有解释器",
+      "notDetectedInPath": "未在系统 PATH 中探测到",
+      "ready": "已就绪",
+      "missing": "未检测到"
+    }
+  },
+  "moduleManager": {
+    "title": "功能积木",
+    "desc": "开关即时生效并保存；关闭功能保留已有数据",
+    "colNumber": "序号",
+    "colFeature": "功能",
+    "colStatus": "状态",
+    "colSwitch": "开关",
+    "switchAria": "{name}开关",
+    "statusEnabled": "已开启",
+    "statusDisabled": "已关闭",
+    "statusPendingDev": "待开发",
+    "statusUnsupportedWinPin": "当前系统不支持外部窗口真正置顶",
+    "btnPendingDev": "待开发",
+    "btnProcessing": "处理中…",
+    "btnDisable": "关闭",
+    "btnEnable": "开启",
+    "names": {
+      "screenshot": "增强截图与贴图",
+      "clipboard": "剪贴板管理",
+      "screen_ink": "桌面屏幕注释",
+      "sticky_note": "桌面置顶便笺",
+      "app_usage": "应用使用时长统计",
+      "script_runner": "自定义脚本",
+      "translator": "全局划词翻译",
+      "media_proc": "基础多媒体处理",
+      "window_pin": "窗口置顶",
+      "password_vault": "生物识别密码本"
+    }
+  },
+  "clipboard": {
+    "searchPlaceholder": "搜索剪贴板记录或来源应用...",
+    "clearUnpinned": "清空未固定条目",
+    "openPopupBtn": "呼出剪贴板弹窗 (⇧⌘V)",
+    "colType": "类型",
+    "colPreview": "内容预览",
+    "colSource": "来源应用",
+    "colUpdated": "更新时间",
+    "colOperation": "操作",
+    "emptyTable": "暂无剪贴板历史记录",
+    "typeImage": "图片",
+    "typeText": "文本",
+    "defaultSource": "系统剪贴板",
+    "pinTooltip": "固定",
+    "unpinTooltip": "取消固定",
+    "pasteBtn": "粘贴",
+    "popup": {
+      "title": "剪贴板历史",
+      "countBadge": "{count} 条",
+      "closeTooltip": "关闭 (Esc)",
+      "searchPlaceholder": "搜索剪贴板 (上下键选择，回车直接粘贴)...",
+      "emptyHint": "无匹配历史记录 (按 ⌘+C 复制后自动捕获)",
+      "imageAlt": "剪贴板图片缩略图",
+      "imageLabel": "图片素材",
+      "pinnedBadge": "已固定",
+      "pinItemTooltip": "固定此项",
+      "unpinItemTooltip": "取消固定",
+      "pasteTooltip": "写入系统剪贴板并直接粘贴上屏",
+      "footerKeys": "↑↓ 选择 · ↵ 粘贴 · Esc 销毁",
+      "footerArch": "Ditto 极简架构 (失焦即销毁)",
+      "justNow": "刚刚",
+      "minutesAgo": "{minutes} 分钟前"
+    }
+  },
+  "sticky": {
+    "toolbarDesc": "每个打开的便笺对应一个独立的置顶原生窗口；关闭便笺后标记为 is_open = 0 并立即销毁释放内存。",
+    "newNoteBtn": "新建置顶便笺 (⇧⌘N)",
+    "defaultNewTitle": "新建便笺",
+    "defaultNewContent": "支持 **Markdown** 与 LaTeX 公式：$E=mc^2$\n\n$$\\int_a^b f(x)dx$$",
+    "colTitle": "标题",
+    "colTheme": "主题色与透明度",
+    "colStatus": "桌面窗口状态",
+    "colUpdated": "最后修改",
+    "colOperation": "操作",
+    "emptyTable": "便笺库暂无记录，点击右上角新建",
+    "untitled": "未命名便笺",
+    "statusOpen": "桌面运行中",
+    "statusArchived": "已归档关闭",
+    "openWinBtn": "唤醒窗口",
+    "closeWinBtn": "关闭窗口",
+    "exportTooltip": "导出为 Markdown",
+    "exportFilePrefix": "便笺",
+    "window": {
+      "untitledPlaceholder": "未命名便笺...",
+      "switchPreviewTooltip": "切换为预览渲染",
+      "switchEditTooltip": "切换为编辑模式",
+      "previewBtn": "预览",
+      "editBtn": "编辑",
+      "pinTooltip": "置顶最前 (Always on Top)",
+      "paletteTooltip": "便笺主题色",
+      "exportMdTooltip": "导出为 .md 文件",
+      "closeTooltip": "关闭便笺 (归还内存)",
+      "editorPlaceholder": "输入 Markdown 内容或 LaTeX 公式 ($E=mc^2$)...",
+      "emptyRenderedHint": "暂无内容，点击上方「编辑」开始记录...",
+      "opacityLabel": "透明度 {percent}%",
+      "saving": "正在存盘...",
+      "savedAt": "已保存 {time}",
+      "themes": {
+        "neutral": "冷淡中性灰",
+        "amber": "琥珀暗暖",
+        "sky": "深海幽蓝",
+        "emerald": "青苔雅绿",
+        "rose": "暗夜玫瑰",
+        "violet": "暮光深紫"
+      }
+    }
+  },
+  "winpin": {
+    "unsupportedNotice": "当前系统不支持将其他应用的原窗口持续置顶。窗口枚举和激活仍可使用。",
+    "searchPlaceholder": "过滤当前系统真实窗口...",
+    "refreshBtn": "刷新窗口",
+    "refreshTooltip": "重新扫描系统真实窗口",
+    "restoreAllBtn": "一键还原全部置顶",
+    "pinForegroundBtn": "置顶当前活动窗口 (⇧⌘P)",
+    "pickerBtn": "准星拾取 (⌥⌘P)",
+    "colId": "窗口 ID",
+    "colApp": "应用程序",
+    "colTitle": "窗口标题",
+    "colGeometry": "位置尺寸",
+    "colStatus": "置顶状态",
+    "colOperation": "操作",
+    "emptyTable": "未检测到符合条件的外部窗口",
+    "statusTopmost": "置顶最前中",
+    "statusNormal": "普通层级",
+    "unpinBtn": "取消置顶",
+    "pinBtn": "置顶",
+    "activateBtn": "激活",
+    "picker": {
+      "hudHint": "准星拾取：十字准星移至目标窗口并点击即可置顶 · 按 ESC 或右键取消"
+    },
+    "badge": {
+      "tooltip": "📌 已置顶此窗口 · 点击取消置顶"
+    },
+    "mirror": {
+      "alt": "外部窗口实时镜像",
+      "loading": "正在抓取实时窗口镜像...",
+      "activateBtn": "激活原窗口",
+      "activateTooltip": "调出原程序窗口",
+      "unpinBtn": "取消置顶",
+      "unpinTooltip": "取消置顶并关闭镜像"
+    }
+  }
+}

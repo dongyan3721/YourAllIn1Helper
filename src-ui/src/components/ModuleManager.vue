@@ -1,24 +1,44 @@
 <template>
   <div class="section-card">
     <div class="card-header-bar">
-      <span class="card-title">功能积木</span>
-      <span class="card-desc">开关即时生效并保存；关闭功能保留已有数据</span>
+      <span class="card-title">{{ t('moduleManager.title') }}</span>
+      <span class="card-desc">{{ t('moduleManager.desc') }}</span>
     </div>
     <p v-if="error" class="module-error" role="alert">{{ error }}</p>
     <div class="table-container">
       <table class="macos-table">
-        <thead><tr><th>序号</th><th>功能</th><th>状态</th><th>开关</th></tr></thead>
+        <thead>
+          <tr>
+            <th>{{ t('moduleManager.colNumber') }}</th>
+            <th>{{ t('moduleManager.colFeature') }}</th>
+            <th>{{ t('moduleManager.colStatus') }}</th>
+            <th>{{ t('moduleManager.colSwitch') }}</th>
+          </tr>
+        </thead>
         <tbody>
           <tr v-for="module in modules" :key="module.id">
             <td>{{ String(module.number).padStart(2, '0') }}</td>
-            <td>{{ module.name }}</td>
-            <td>{{ module.unavailable_reason || (module.enabled ? '已开启' : '已关闭') }}</td>
+            <td>{{ formatModuleName(module) }}</td>
+            <td>{{ formatModuleStatus(module) }}</td>
             <td>
-              <button class="macos-button" :class="{ primary: module.enabled }"
-                role="switch" :aria-checked="module.enabled" :aria-label="`${module.name}开关`"
+              <button
+                class="macos-button"
+                :class="{ primary: module.enabled }"
+                role="switch"
+                :aria-checked="module.enabled"
+                :aria-label="t('moduleManager.switchAria', { name: formatModuleName(module) })"
                 :disabled="!module.available || pending !== null"
-                @click="toggle(module)">
-                {{ !module.available ? '待开发' : pending === module.id ? '处理中…' : module.enabled ? '关闭' : '开启' }}
+                @click="toggle(module)"
+              >
+                {{
+                  !module.available
+                    ? t('moduleManager.btnPendingDev')
+                    : pending === module.id
+                    ? t('moduleManager.btnProcessing')
+                    : module.enabled
+                    ? t('moduleManager.btnDisable')
+                    : t('moduleManager.btnEnable')
+                }}
               </button>
             </td>
           </tr>
@@ -31,10 +51,34 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { invokeIpc, type ModuleStatus } from '../api/ipc';
+import { t } from '../utils/i18n';
+
 defineProps<{ modules: ModuleStatus[] }>();
 const emit = defineEmits<{ changed: [] }>();
 const pending = ref<string | null>(null);
 const error = ref('');
+
+/** 根据当前语言返回本地化模块名称 */
+function formatModuleName(module: ModuleStatus): string {
+  const key = `moduleManager.names.${module.id}`;
+  const translated = t(key);
+  return translated !== key ? translated : module.name;
+}
+
+/** 根据当前语言格式化模块运行/受限状态文案 */
+function formatModuleStatus(module: ModuleStatus): string {
+  if (!module.available) {
+    return t('moduleManager.statusPendingDev');
+  }
+  if (!module.supported) {
+    return t('moduleManager.statusUnsupportedWinPin');
+  }
+  if (module.unavailable_reason) {
+    return module.unavailable_reason;
+  }
+  return module.enabled ? t('moduleManager.statusEnabled') : t('moduleManager.statusDisabled');
+}
+
 async function toggle(module: ModuleStatus) {
   pending.value = module.id;
   error.value = '';

@@ -1,0 +1,203 @@
+{
+  "app": {
+    "name": "All-in-One Toolbox",
+    "subtitle": "四次元ポケット効率ツール",
+    "nativeWindowCount": "{count} 個のネイティブウィンドウ",
+    "quit": "終了",
+    "quitTooltip": "終了してすべての最前面固定を解除",
+    "languageSwitchTooltip": "表示言語を切り替え (config.json に自動同期)"
+  },
+  "tabs": {
+    "overview": "概要",
+    "clipboard": "02. クリップボード",
+    "sticky": "04. 付箋ノート",
+    "winpin": "09. 最前面固定"
+  },
+  "theme": {
+    "selectAccentTooltip": "アクセントカラーを選択",
+    "accentPrefix": "アクセント：{name}",
+    "modeLightTooltip": "ライトモード (デフォルト)",
+    "modeDarkTooltip": "ダークモード",
+    "modeSystemTooltip": "システム設定に合わせる",
+    "colors": {
+      "blue": "クラシックブルー",
+      "purple": "ロイヤルパープル",
+      "pink": "ビビッドピンク",
+      "orange": "ウォームオレンジ",
+      "green": "ミントグリーン",
+      "graphite": "グラファイトグレー"
+    }
+  },
+  "overview": {
+    "metrics": {
+      "memoryLabel": "常駐メモリレベル",
+      "memoryVal": "Level 0 (サイレント常駐)",
+      "memorySub": "全ウィンドウ閉鎖時は 0 WebView (<25MB)",
+      "clipboardLabel": "クリップボード履歴容量",
+      "clipboardSub": "SHA-256 重複排除と LRU 自動整理",
+      "pinnedLabel": "最前面固定中の外部ウィンドウ",
+      "pinnedVal": "{count} 個",
+      "pinnedSub": "終了時に自動で元の順序へ復元",
+      "pasteLabel": "貼り付けトリガー回数",
+      "pasteVal": "{count} 回",
+      "pasteSub": "enigo による Cmd+V / Ctrl+V 送信"
+    },
+    "shortcuts": {
+      "title": "グローバルショートカット",
+      "desc": "OS 非依存の論理ホットキーを自動正規化",
+      "colModule": "モジュール",
+      "colAction": "アクション ID",
+      "colHotkey": "物理ショートカット",
+      "colOperation": "操作",
+      "testTrigger": "テスト実行"
+    },
+    "envProbe": {
+      "title": "システム PATH ランタイム検出 (EnvProbeService)",
+      "desc": "ゼロバンドル設計：システムの既存インタープリタをオンデマンド検出",
+      "notDetectedInPath": "システム PATH 内に見つかりません",
+      "ready": "利用可能",
+      "missing": "未検出"
+    }
+  },
+  "moduleManager": {
+    "title": "機能モジュール",
+    "desc": "切り替えは即座に反映・保存されます（無効化しても既存データは保持されます）",
+    "colNumber": "番号",
+    "colFeature": "機能",
+    "colStatus": "状態",
+    "colSwitch": "スイッチ",
+    "switchAria": "{name}の切り替え",
+    "statusEnabled": "有効",
+    "statusDisabled": "無効",
+    "statusPendingDev": "開発予定",
+    "statusUnsupportedWinPin": "現在の OS では外部ウィンドウの常時最前面固定は未対応です",
+    "btnPendingDev": "開発予定",
+    "btnProcessing": "処理中…",
+    "btnDisable": "無効化",
+    "btnEnable": "有効化",
+    "names": {
+      "screenshot": "高機能スクリーンショット & ピン留め",
+      "clipboard": "クリップボード管理",
+      "screen_ink": "画面ペン注釈",
+      "sticky_note": "最前面付箋ノート",
+      "app_usage": "アプリ使用時間統計",
+      "script_runner": "カスタムスクリプト実行",
+      "translator": "選択テキスト翻訳",
+      "media_proc": "メディア変換・編集",
+      "window_pin": "ウィンドウ最前面固定",
+      "password_vault": "生体認証パスワード保管庫"
+    }
+  },
+  "clipboard": {
+    "searchPlaceholder": "履歴またはコピー元アプリを検索...",
+    "clearUnpinned": "未固定項目をクリア",
+    "openPopupBtn": "ポップアップを開く (⇧⌘V)",
+    "colType": "種類",
+    "colPreview": "内容プレビュー",
+    "colSource": "コピー元アプリ",
+    "colUpdated": "更新日時",
+    "colOperation": "操作",
+    "emptyTable": "クリップボード履歴はありません",
+    "typeImage": "画像",
+    "typeText": "テキスト",
+    "defaultSource": "システムクリップボード",
+    "pinTooltip": "固定",
+    "unpinTooltip": "固定解除",
+    "pasteBtn": "貼り付け",
+    "popup": {
+      "title": "クリップボード履歴",
+      "countBadge": "{count} 件",
+      "closeTooltip": "閉じる (Esc)",
+      "searchPlaceholder": "履歴を検索 (↑↓ で選択、Enter で貼り付け)...",
+      "emptyHint": "一致する履歴がありません (⌘+C で自動記録)",
+      "imageAlt": "クリップボード画像サムネイル",
+      "imageLabel": "画像データ",
+      "pinnedBadge": "固定済み",
+      "pinItemTooltip": "この項目を固定",
+      "unpinItemTooltip": "固定を解除",
+      "pasteTooltip": "クリップボードに書き込み直接貼り付け",
+      "footerKeys": "↑↓ 選択 · ↵ 貼り付け · Esc 破棄",
+      "footerArch": "Ditto 軽量構成 (フォーカス喪失で即破棄)",
+      "justNow": "たった今",
+      "minutesAgo": "{minutes} 分前"
+    }
+  },
+  "sticky": {
+    "toolbarDesc": "開いている各付箋は独立した最前面ネイティブウィンドウとして動作し、閉じると is_open = 0 となり WebView メモリを即座に解放します。",
+    "newNoteBtn": "新規付箋ノート (⇧⌘N)",
+    "defaultNewTitle": "新規付箋",
+    "defaultNewContent": "**Markdown** と LaTeX 数式に対応：$E=mc^2$\n\n$$\\int_a^b f(x)dx$$",
+    "colTitle": "タイトル",
+    "colTheme": "テーマ色と不透明度",
+    "colStatus": "ウィンドウ状態",
+    "colUpdated": "最終更新",
+    "colOperation": "操作",
+    "emptyTable": "付箋ノートがありません。右上から新規作成してください。",
+    "untitled": "無題の付箋",
+    "statusOpen": "デスクトップ表示中",
+    "statusArchived": "アーカイブ済み",
+    "openWinBtn": "ウィンドウを開く",
+    "closeWinBtn": "ウィンドウを閉じる",
+    "exportTooltip": "Markdown として書き出し",
+    "exportFilePrefix": "付箋",
+    "window": {
+      "untitledPlaceholder": "無題の付箋...",
+      "switchPreviewTooltip": "プレビュー表示に切り替え",
+      "switchEditTooltip": "編集モードに切り替え",
+      "previewBtn": "プレビュー",
+      "editBtn": "編集",
+      "pinTooltip": "常に最前面に表示 (Always on Top)",
+      "paletteTooltip": "付箋のテーマカラー",
+      "exportMdTooltip": ".md ファイルとして書き出し",
+      "closeTooltip": "付箋を閉じる (メモリ解放)",
+      "editorPlaceholder": "Markdown または LaTeX 数式 ($E=mc^2$) を入力...",
+      "emptyRenderedHint": "内容がありません。上の「編集」をクリックして入力を開始...",
+      "opacityLabel": "不透明度 {percent}%",
+      "saving": "保存中...",
+      "savedAt": "{time} に保存済み",
+      "themes": {
+        "neutral": "ニュートラルグレー",
+        "amber": "ウォームアンバー",
+        "sky": "ディープスカイ",
+        "emerald": "モスエメラルド",
+        "rose": "ミッドナイトローズ",
+        "violet": "トワイライトバイオレット"
+      }
+    }
+  },
+  "winpin": {
+    "unsupportedNotice": "現在の OS では他アプリのネイティブウィンドウを常時最前面に維持する機能はサポートされていません。ウィンドウ一覧の取得とアクティブ化は利用可能です。",
+    "searchPlaceholder": "システム上のウィンドウを絞り込み...",
+    "refreshBtn": "更新",
+    "refreshTooltip": "システムのウィンドウを再スキャン",
+    "restoreAllBtn": "すべて固定解除",
+    "pinForegroundBtn": "アクティブウィンドウを固定 (⇧⌘P)",
+    "pickerBtn": "照準ピッカー (⌥⌘P)",
+    "colId": "ウィンドウ ID",
+    "colApp": "アプリケーション",
+    "colTitle": "ウィンドウタイトル",
+    "colGeometry": "位置とサイズ",
+    "colStatus": "最前面状態",
+    "colOperation": "操作",
+    "emptyTable": "条件に一致する外部ウィンドウが見つかりません",
+    "statusTopmost": "最前面固定中",
+    "statusNormal": "通常レイヤー",
+    "unpinBtn": "固定解除",
+    "pinBtn": "最前面固定",
+    "activateBtn": "前面へ",
+    "picker": {
+      "hudHint": "照準ピッカー：対象ウィンドウにカーソルを合わせてクリックで最前面固定 · ESC または右クリックでキャンセル"
+    },
+    "badge": {
+      "tooltip": "📌 最前面に固定中 · クリックで解除"
+    },
+    "mirror": {
+      "alt": "外部ウィンドウのリアルタイムミラー",
+      "loading": "ウィンドウミラーを取得中...",
+      "activateBtn": "元のウィンドウへ",
+      "activateTooltip": "元のアプリウィンドウを前面に表示",
+      "unpinBtn": "固定解除",
+      "unpinTooltip": "最前面固定を解除してミラーを閉じる"
+    }
+  }
+}
