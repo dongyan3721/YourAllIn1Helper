@@ -182,6 +182,7 @@ const canUndo = ref<boolean>(false);
 const canRedo = ref<boolean>(false);
 const isPassthrough = ref<boolean>(false);
 const isSaving = ref<boolean>(false);
+const copyOnSave = ref(true);
 const toastMessage = ref<string | null>(null);
 
 let broadcastChannel: BroadcastChannel | null = null;
@@ -210,6 +211,8 @@ onMounted(async () => {
     if (status.active_tool) currentTool.value = status.active_tool as InkTool;
     if (status.color) currentColor.value = status.color;
     if (status.stroke_width) currentWidth.value = status.stroke_width;
+    const config = await invokeIpc<{ copy_to_clipboard_on_save: boolean }>('ink_get_config');
+    copyOnSave.value = config.copy_to_clipboard_on_save;
   } catch (_) {}
 
   // 4. 监听原生 Tauri 事件桥（快捷键/主控台切换穿透时立即同步更新工具栏）
@@ -256,7 +259,7 @@ function handleCanvasMessage(data: any) {
       } else if (data.clipboardError) {
         showToast(`${t('screen_ink.toastSaveFileOnly')} (${data.clipboardError})`);
       } else {
-        showToast(t('screen_ink.toastSaveSuccess'));
+        showToast(t('screen_ink.toastSaveFileOnly'));
       }
     } else {
       showToast(data.error || t('screen_ink.toastSaveFailed'));
@@ -310,7 +313,7 @@ async function togglePassthrough() {
 function triggerSave() {
   isSaving.value = true;
   showToast(t('screen_ink.toastSaving'));
-  broadcastChannel?.postMessage({ type: 'request_snapshot', copyToClipboard: true });
+  broadcastChannel?.postMessage({ type: 'request_snapshot', copyToClipboard: copyOnSave.value });
 }
 
 async function exitSession() {

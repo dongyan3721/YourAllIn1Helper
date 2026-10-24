@@ -55,6 +55,13 @@ onMounted(async () => {
     handleToolbarMessage(event.data);
   };
 
+  // 先读取已生效的模块配置，避免默认 pen/red 覆盖工具栏的自定义初始状态。
+  try {
+    const status = await invokeIpc<{ active_tool: InkTool; color: string; stroke_width: number }>('ink_get_status');
+    currentTool.value = status.active_tool;
+    currentColor.value = status.color;
+    currentWidth.value = status.stroke_width;
+  } catch (_) {}
   // 通知工具栏画布已就绪
   notifyToolbar();
 

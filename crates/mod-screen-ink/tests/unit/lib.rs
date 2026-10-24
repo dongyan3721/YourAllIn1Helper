@@ -321,3 +321,68 @@ fn test_screen_ink_config_applied_on_init() {
 
     kernel.shutdown().unwrap();
 }
+
+// 隐藏第二个窗口失败时必须恢复第一个，不能继续截取包含工具栏的脏底图。
+#[test]
+fn clean_capture_visibility_failure_restores_windows_and_can_retry() {
+    use app_core::{WindowBackend, WindowSpec};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    struct VisibilityBackend {
+        fail_hide: AtomicBool,
+        fail_restore: AtomicBool,
+        events: parking_lot::Mutex<Vec<(String, bool)>>,
+    }
+    impl WindowBackend for VisibilityBackend {
+        fn create_or_focus_window(&self, _: &WindowSpec) -> CoreResult<()> {
+            Ok(())
+        }
+        fn destroy_window(&self, _: &str) -> CoreResult<()> {
+            Ok(())
+        }
+        fn set_ignore_cursor_events(&self, _: &str, _: bool) -> CoreResult<()> {
+            Ok(())
+        }
+        fn set_always_on_top(&self, _: &str, _: bool) -> CoreResult<()> {
+            Ok(())
+        }
+        fn set_window_visible(&self, label: &str, visible: bool) -> CoreResult<()> {
+            self.events.lock().push((label.into(), visible));
+            if (!visible && label == "screen-ink-toolbar" && self.fail_hide.load(Ordering::SeqCst))
+                || (visible && self.fail_restore.load(Ordering::SeqCst))
+            {
+                return Err(CoreError::Internal(anyhow!("visibility failure")));
+            }
+            Ok(())
+        }
+    }
+    let backend = Arc::new(VisibilityBackend {
+        fail_hide: AtomicBool::new(true),
+        fail_restore: AtomicBool::new(false),
+        events: Default::default(),
+    });
+    let pool = WindowPoolManager::new(backend.clone());
+    let (canvas, toolbar) = WindowSpec::screen_ink_pair(800.0, 600.0);
+    pool.open_window(canvas).unwrap();
+    pool.open_window(toolbar).unwrap();
+    assert!(
+        CleanCaptureVisibilityGuard::new(&pool, &["screen-ink-canvas", "screen-ink-toolbar"])
+            .is_err()
+    );
+    assert_eq!(
+        *backend.events.lock(),
+        vec![
+            ("screen-ink-canvas".into(), false),
+            ("screen-ink-toolbar".into(), false),
+            ("screen-ink-canvas".into(), true)
+        ]
+    );
+    backend.fail_hide.store(false, Ordering::SeqCst);
+    let mut guard =
+        CleanCaptureVisibilityGuard::new(&pool, &["screen-ink-canvas", "screen-ink-toolbar"])
+            .unwrap();
+    backend.fail_restore.store(true, Ordering::SeqCst);
+    assert!(guard.restore().is_err());
+    backend.fail_restore.store(false, Ordering::SeqCst);
+    guard.restore().unwrap();
+    assert!(guard.labels.is_empty());
+}

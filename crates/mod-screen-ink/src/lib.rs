@@ -62,25 +62,51 @@ pub struct SaveSnapshotResult {
 /// RAII 守护：在截屏时临时隐藏画布与工具栏，确保异常或提前返回时 100% 恢复窗口可见性
 struct CleanCaptureVisibilityGuard<'a> {
     window_pool: &'a WindowPoolManager,
-    labels: &'static [&'static str],
+    labels: Vec<&'static str>,
 }
 
 impl<'a> CleanCaptureVisibilityGuard<'a> {
-    fn new(window_pool: &'a WindowPoolManager, labels: &'static [&'static str]) -> Self {
-        for label in labels {
-            let _ = window_pool.set_window_visible(label, false);
-        }
-        Self {
+    fn new(
+        window_pool: &'a WindowPoolManager,
+        labels: &'static [&'static str],
+    ) -> CoreResult<Self> {
+        let mut guard = Self {
             window_pool,
-            labels,
+            labels: Vec::new(),
+        };
+        for label in labels {
+            if window_pool.get_active_window(label).is_some() {
+                // 隐藏失败时停止抓屏；已隐藏的窗口由守护对象恢复。
+                window_pool.set_window_visible(label, false)?;
+                guard.labels.push(label);
+            }
+        }
+        Ok(guard)
+    }
+
+    fn restore(&mut self) -> CoreResult<()> {
+        let mut first_error = None;
+        self.labels.retain(|label| {
+            if let Err(error) = self.window_pool.set_window_visible(label, true) {
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+                true
+            } else {
+                false
+            }
+        });
+        match first_error {
+            Some(error) => Err(error),
+            None => Ok(()),
         }
     }
 }
 
 impl<'a> Drop for CleanCaptureVisibilityGuard<'a> {
     fn drop(&mut self) {
-        for label in self.labels {
-            let _ = self.window_pool.set_window_visible(label, true);
+        if let Err(error) = self.restore() {
+            warn!(%error, "Failed to restore screen ink windows after capture");
         }
     }
 }
@@ -261,35 +287,34 @@ impl ScreenInkModule {
         // 1. 干净底图捕获：在抓屏期间临时隐藏自身窗口，避免双重叠墨以及工具栏截入快照中
         let bg_frame = {
             // RAII 守护确保无论成功还是失败，画布和工具栏都会恢复显示
-            let _guard = CleanCaptureVisibilityGuard::new(
+            let mut guard = CleanCaptureVisibilityGuard::new(
                 &ctx.window_pool,
                 &["screen-ink-canvas", "screen-ink-toolbar"],
-            );
+            )?;
 
             // 让系统显示合成器有短暂时间（40ms）完成帧刷新
             thread::sleep(Duration::from_millis(40));
 
-            self.capturer
-                .capture_monitor(None)
-                .map_err(|err| match err {
-                    HalError::PermissionDenied {
-                        capability,
-                        guidance,
-                    } => CoreError::Internal(anyhow!(
-                        "屏幕截取权限不足 [{}]: {}",
-                        capability,
-                        guidance
-                    )),
-                    HalError::Unsupported(cap) => {
-                        CoreError::Internal(anyhow!("当前系统不支持能力 '{}'", cap))
-                    }
-                    HalError::NotFound(msg) => {
-                        CoreError::Internal(anyhow!("未发现可用显示器: {}", msg))
-                    }
-                    HalError::NativeCallFailed(msg) => {
-                        CoreError::Internal(anyhow!("调用系统屏幕捕获 API 失败: {}", msg))
-                    }
-                })?
+            let captured = self.capturer.capture_monitor(None);
+            // 在返回成功或捕获错误之前恢复窗口，恢复失败也不能冒充快照成功。
+            guard.restore()?;
+            captured.map_err(|err| match err {
+                HalError::PermissionDenied {
+                    capability,
+                    guidance,
+                } => {
+                    CoreError::Internal(anyhow!("屏幕截取权限不足 [{}]: {}", capability, guidance))
+                }
+                HalError::Unsupported(cap) => {
+                    CoreError::Internal(anyhow!("当前系统不支持能力 '{}'", cap))
+                }
+                HalError::NotFound(msg) => {
+                    CoreError::Internal(anyhow!("未发现可用显示器: {}", msg))
+                }
+                HalError::NativeCallFailed(msg) => {
+                    CoreError::Internal(anyhow!("调用系统屏幕捕获 API 失败: {}", msg))
+                }
+            })?
         };
 
         // 2. 执行底图与透明墨迹像素 Alpha 叠加混合
