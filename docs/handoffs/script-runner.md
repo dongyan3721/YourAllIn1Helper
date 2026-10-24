@@ -4,8 +4,9 @@
 
 - Worktree：`/Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/team/opencode-script-runner`
 - 分支：`codex/feature-script-runner`
-- 代码提交：`51874d5 feat(script-runner): implement module 06 custom script library and execution`
-- 未合并主分支、未推送远端。HANDOFF 本身为后续独立提交。
+- 功能提交：`51874d5 feat(script-runner): implement module 06 custom script library and execution`
+- 修复提交：`8340ae7 fix(script-runner): align script type JSON and native hotkey rollback`
+- 未合并主分支、未推送远端。HANDOFF 增量为后续独立提交。
 
 ## 实现内容
 
@@ -21,12 +22,14 @@
 - 执行：真实子进程、stdout/stderr 增量事件、内存日志字节上限、执行记录尾部日志持久化、
   取消、超时、退出码、启动失败和中断状态。
 - Unix 使用独立进程组并在取消/超时时 `SIGKILL` 整个组；Windows 使用
-  `CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP` 隐藏控制台。
+  `CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP` 隐藏控制台，并通过
+  `taskkill /PID <pid> /T /F` 终止整棵进程树。
 - `on_init` 只标记上次残留的 running 记录并注册已有快捷键，不执行脚本；
   `script_save` 只持久化，不执行脚本。仅在 `script_execute`、单脚本快捷键或托盘点击时运行。
 - 停用/退出时终止活动子进程、等待监控线程收尾、注销脚本快捷键、清理临时运行目录。
-- 单脚本快捷键使用 `script:run:{id}`，接入现有 `ShortcutRegistry` 生命周期；保存/删除后由
-  Tauri 重新同步全局快捷键并重建托盘“快捷脚本”平铺菜单。
+- 单脚本快捷键使用 `script:run:{id}`，接入现有 `ShortcutRegistry` 生命周期。保存/删除时由
+  注入的 `ScriptHotkeySync` 只迁移该动作的系统注册；失败时回滚数据库与核心注册表，并保留旧
+  系统快捷键。Tauri 随后重建托盘“快捷脚本”平铺菜单。
 - `AIO_CLIPBOARD` / `AIO_SELECTION` 通过显式注入的 `ScriptEnvironment` 提供：
   - 生产 Tauri 宿主使用 `arboard` 读取真实剪贴板；选区使用注入的 `SelectionExtractor`。
   - `NativeOsHal` 的选区能力仍为 Unsupported，因此 UI 显示不可用且执行时不设置该变量。
@@ -69,6 +72,33 @@
 - `src-ui/src/{api/ipc.ts,components/Dashboard.vue,components/Icons.vue,locales/*.json}`
 - 新增 `docs/testing/GUI_SCRIPT_RUNNER_TEST_PLAN.md`。
 
+
+## 修复增量（2026-10-24，提交 `8340ae7`）
+
+### 1. ScriptType JSON 契约统一
+
+- `AppleScript` 序列化为 `applescript`，`PowerShell` 序列化为 `powershell`，与
+  `as_str()`、SQLite 存储和 Vue `ScriptKind`/options 完全一致。
+- 反序列化兼容旧值 `apple_script` / `power_shell`。
+- 新增模块级 `serde_json` roundtrip 测试（全部七种类型 + 两种旧别名），以及 host
+  `script_save` IPC 测试：旧别名输入保存后回包和列表均为新契约值，中文/英文/日文标签未改动。
+
+### 2. 系统快捷键失败可见并回滚
+
+- 新增 `ScriptHotkeySync` 注入点与 `TauriScriptHotkeySync` 实现；脚本保存/删除只迁移
+  `script:run:{id}` 单个动作，不再全量 `unregister_all`，因此失败不会影响其他模块快捷键。
+- 注册新快捷键时先注册再注销旧快捷键；失败时旧快捷键保留，并尽力撤销刚注册的新快捷键。
+- 删除快捷键失败、注册失败或切换失败时，模块回滚 SQLite 脚本记录与 `ShortcutRegistry`，
+  IPC 返回包含“系统全局快捷键更新失败”的错误，不会静默成功。
+- `hotkey_active` 只在同步成功后返回 true；失败路径已回滚，不再谎报。
+- 新增可注入失败同步器的模块测试（新建/更新/删除三种回滚）和 host IPC 回滚测试。
+
+### 3. Windows 进程树终止
+
+- Windows 取消/超时/停用新增 `taskkill /PID <pid> /T /F`，以显式进程树终止补足
+  `Child::kill` 只杀解释器的问题；仍保留 `CREATE_NO_WINDOW` 隐藏控制台。
+- 当前环境只有 macOS ARM64 目标，未在 Windows 实机编译或运行，不能标记为 Windows 已通过。
+
 ## 真实验证结果
 
 最终验证均在当前 worktree 执行，未使用 shell 管道掩盖测试退出码。
@@ -76,11 +106,11 @@
 | 命令 | 结果 |
 | --- | --- |
 | `cargo fmt --all -- --check` | 退出码 0 |
-| `TMPDIR="$PWD/.runtime_data/test-tmp/tmp" cargo test --workspace --offline --all-targets` | 退出码 0；`mod-script-runner` 16 passed；host `tests/modules` 8 passed；workspace 其余全部通过；1 个原生窗口枚举测试按设计 ignored |
+| `TMPDIR="$PWD/.runtime_data/test-tmp/tmp" cargo test --workspace --offline --all-targets` | 退出码 0；修复后 `mod-script-runner` 20 passed；host `tests/modules` 10 passed；workspace 其余全部通过；1 个原生窗口枚举测试按设计 ignored |
 | `pnpm --dir src-ui test` | 退出码 0；2 passed，0 failed（三语键结构一致、Logo 矢量结构） |
 | `pnpm --dir src-ui run build` | 退出码 0；`vue-tsc --noEmit` 通过，Vite 生产构建成功 |
 
-`mod-script-runner` 的 16 个测试覆盖：
+`mod-script-runner` 的 20 个测试覆盖修复后的 JSON 契约与快捷键同步失败回滚，并覆盖原有行为：
 
 - 七种脚本类型的 argv 构造，包含 PowerShell/Batch/VBScript 的独立参数与路径空格；
 - 内联/文件脚本 CRUD、重启持久化、初始化与保存不执行；
@@ -90,7 +120,11 @@
 - 睡眠脚本超时终止、取消、停用清理；
 - 增量日志序号、日志缓存上限、final 模式抑制实时条目；
 - `AIO_CLIPBOARD`/`AIO_SELECTION` 注入与 Unavailable 时不设置；
-- 单脚本快捷键冲突、启停注册/注销、删除后保留历史记录。
+- 单脚本快捷键冲突、启停注册/注销、删除后保留历史记录；
+- `applescript`/`powershell` JSON roundtrip 与旧别名读取；
+- 原生快捷键同步失败时新建、更新、删除的回滚与错误可见性。
+
+host `tests/modules` 的 10 个测试新增覆盖脚本 IPC 类型契约、设置持久化和注入失败的系统快捷键回滚。
 
 测试临时目录通过 `TMPDIR` 指向 worktree `.runtime_data/test-tmp`，未写入用户日常数据库或文件。
 
@@ -112,15 +146,13 @@
 
 1. **macOS 选区提取仍是 Unsupported**：`NativeOsHal::SelectionExtractor` 未实现，`AIO_SELECTION`
    界面显示不可用且执行时不注入；这是真实能力状态，不是本次功能回归。
-2. **Windows 仅做编译期条件与 argv 单测，未在 Windows 实机执行**：控制台隐藏标志与
-   PowerShell/Batch/VBScript 命令构造已覆盖，但未实机验证。
-3. **Windows 取消只 `Child::kill` 直接子进程**：Unix 使用进程组连同子进程终止；Windows 未实现
-   Job Object 级联终止，若脚本自身派生后台进程可能残留。需后续补 Job Object 或 taskkill /T。
-4. **OS 级快捷键注册失败未回滚脚本保存**：模块注册表会登记快捷键，Tauri 会尝试重新注册；
-   若系统级注册失败，当前仅记录错误并保留已保存脚本。集成时建议补充可见错误或回滚策略。
-5. **托盘快捷键菜单为平铺项，不是嵌套 Submenu**：行为与 `show_in_tray` 一致，菜单项点击即执行；
+2. **Windows 未实机验证**：仅 macOS ARM64 目标可用；控制台隐藏、argv 构造和
+   `taskkill /T /F` 进程树终止未在 Windows 实机编译/运行，不能标记为 Windows 通过。
+3. **系统快捷键极端回滚失败仍可能不一致**：适配器在新快捷键注册失败或旧键注销失败时会保留/
+   恢复旧键，并尽力撤销新键；若操作系统连撤销新键也失败，会返回复合错误，此时 OS 状态需人工检查。
+4. **托盘快捷键菜单为平铺项，不是嵌套 Submenu**：行为与 `show_in_tray` 一致，菜单项点击即执行；
    未使用子菜单层级。
-6. **`output_handling` 的 `final` 与 `discard` 目前都抑制实时事件**，`final` 保留最终尾部日志；
+5. **`output_handling` 的 `final` 与 `discard` 目前都抑制实时事件**，`final` 保留最终尾部日志；
    `discard` 也不清空最终尾部（界面文案为“不推送实时日志”）。若需彻底丢弃输出，需再调整。
-7. **GUI 未执行**：不能据此提交发布门槛通过结论。
-8. 公共文件存在并行成员改动风险，冲突由 Codex 集成处理；本 worktree 未修改其他成员目录。
+6. **GUI 仍未执行**：本次修复未启动 release App 做真实点击/键盘/托盘回归，不能据此提交发布门槛通过结论。
+7. 公共文件存在并行成员改动风险，冲突由 Codex 集成处理；本 worktree 未修改其他成员目录。
