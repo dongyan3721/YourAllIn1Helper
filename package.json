@@ -1,0 +1,9 @@
+{
+  "name": "your_all_in_one",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build:ui": "pnpm --dir src-ui run build:fast",
+    "build:app": "node src-ui/node_modules/@tauri-apps/cli/bin/tauri.js build --bundles app"
+  }
+}

@@ -4,7 +4,10 @@
   "version": "0.1.0",
   "identifier": "com.allinone.desktop",
   "build": {
-    "frontendDist": "../src-ui"
+    "beforeBuildCommand": "pnpm --dir src-ui run build:fast",
+    "beforeDevCommand": "pnpm --dir src-ui run dev",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../src-ui/dist"
   },
   "app": {
     "withGlobalTauri": true,

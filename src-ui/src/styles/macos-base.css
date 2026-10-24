@@ -1,0 +1,318 @@
+/**
+ * macOS Apple 风格原生样式规范 (冷淡、极简、高质感毛玻璃材质)
+ * 严格遵循 Apple Human Interface Guidelines (HIG)：
+ * - 拒绝科技风霓虹与高饱和刺眼色彩；
+ * - 拒绝 Emoji 字符图标大杂烩；
+ * - 采用 SF Pro 与苹方高精度排版、细腻微边框、分段选择器与系统级材质。
+ */
+
+:root {
+  /* 基础灰色色阶 (macOS Dark 经典中性灰) */
+  --macos-bg-window: rgba(28, 28, 30, 0.88);
+  --macos-bg-sidebar: rgba(24, 24, 26, 0.92);
+  --macos-bg-card: rgba(44, 44, 46, 0.65);
+  --macos-bg-card-hover: rgba(58, 58, 60, 0.75);
+  --macos-bg-card-active: rgba(72, 72, 74, 0.85);
+  --macos-bg-input: rgba(30, 30, 32, 0.75);
+
+  /* 细致微边框 */
+  --macos-border-subtle: rgba(255, 255, 255, 0.08);
+  --macos-border-focus: rgba(10, 132, 255, 0.6);
+  --macos-border-separator: rgba(255, 255, 255, 0.06);
+
+  /* 文字层级色 */
+  --macos-text-primary: #f5f5f7;
+  --macos-text-secondary: #a1a1a6;
+  --macos-text-tertiary: #6e6e73;
+
+  /* 核心系统强调色 (静谧蓝、冷灰红、石墨灰) */
+  --macos-accent: #0a84ff;
+  --macos-accent-subtle: rgba(10, 132, 255, 0.15);
+  --macos-danger: #ff453a;
+  --macos-danger-subtle: rgba(255, 69, 58, 0.15);
+  --macos-success: #30d158;
+  --macos-success-subtle: rgba(48, 209, 88, 0.15);
+
+  /* 材质与圆角 */
+  --macos-radius-sm: 6px;
+  --macos-radius-md: 8px;
+  --macos-radius-lg: 12px;
+  --macos-blur: blur(28px) saturate(180%);
+  --macos-shadow-window: 0 20px 48px rgba(0, 0, 0, 0.45);
+  --macos-shadow-popup: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+
+/* 全局重置与排版规范 */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Helvetica Neue", sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--macos-text-primary);
+  background: transparent;
+  overflow: hidden;
+  letter-spacing: -0.01em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 系统毛玻璃窗口底板 */
+.macos-window {
+  width: 100vw;
+  height: 100vh;
+  background: var(--macos-bg-window);
+  backdrop-filter: var(--macos-blur);
+  -webkit-backdrop-filter: var(--macos-blur);
+  border: 1px solid var(--macos-border-subtle);
+  border-radius: var(--macos-radius-lg);
+  box-shadow: var(--macos-shadow-window);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 原生单窗口模式适配 */
+body.native-window-mode .macos-window {
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+}
+
+/* 顶部原生标题栏 / 工具栏 */
+.macos-titlebar {
+  height: 38px;
+  background: transparent;
+  border-bottom: 1px solid var(--macos-border-separator);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+}
+
+.macos-titlebar button,
+.macos-titlebar input {
+  -webkit-app-region: no-drag;
+}
+
+.macos-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--macos-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.macos-badge-pill {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--macos-text-secondary);
+}
+
+.macos-badge-pill.active {
+  background: var(--macos-accent-subtle);
+  color: var(--macos-accent);
+}
+
+/* 分段控制器 (Segmented Control - 经典 Apple 控件) */
+.macos-segmented {
+  display: inline-flex;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--macos-border-subtle);
+  border-radius: var(--macos-radius-sm);
+  padding: 2px;
+  gap: 2px;
+}
+
+.macos-segment-item {
+  border: none;
+  background: transparent;
+  color: var(--macos-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.macos-segment-item:hover {
+  color: var(--macos-text-primary);
+}
+
+.macos-segment-item.active {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--macos-text-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* 经典 macOS 按钮规范 */
+.macos-button {
+  background: var(--macos-bg-card);
+  color: var(--macos-text-primary);
+  border: 1px solid var(--macos-border-subtle);
+  border-radius: var(--macos-radius-sm);
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.12s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.macos-button:hover {
+  background: var(--macos-bg-card-hover);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.macos-button:active {
+  background: var(--macos-bg-card-active);
+  transform: scale(0.99);
+}
+
+.macos-button.primary {
+  background: var(--macos-accent);
+  color: #ffffff;
+  border-color: transparent;
+}
+
+.macos-button.primary:hover {
+  background: #0077ed;
+}
+
+.macos-button.danger {
+  background: var(--macos-danger-subtle);
+  color: var(--macos-danger);
+  border-color: rgba(255, 69, 58, 0.3);
+}
+
+.macos-button.danger:hover {
+  background: var(--macos-danger);
+  color: #ffffff;
+}
+
+/* 搜索框 (Search Field) */
+.macos-search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.macos-search-box svg {
+  position: absolute;
+  left: 9px;
+  width: 14px;
+  height: 14px;
+  color: var(--macos-text-tertiary);
+  pointer-events: none;
+}
+
+.macos-search-input {
+  width: 100%;
+  background: var(--macos-bg-input);
+  border: 1px solid var(--macos-border-subtle);
+  border-radius: var(--macos-radius-sm);
+  padding: 6px 10px 6px 30px;
+  font-size: 12px;
+  color: var(--macos-text-primary);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.macos-search-input::placeholder {
+  color: var(--macos-text-tertiary);
+}
+
+.macos-search-input:focus {
+  border-color: var(--macos-accent);
+  box-shadow: 0 0 0 2px var(--macos-accent-subtle);
+}
+
+/* 列表卡片与条目 */
+.macos-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.macos-card-item {
+  background: var(--macos-bg-card);
+  border: 1px solid var(--macos-border-subtle);
+  border-radius: var(--macos-radius-md);
+  padding: 9px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.macos-card-item:hover {
+  background: var(--macos-bg-card-hover);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.macos-card-item.active {
+  border-color: var(--macos-accent);
+  background: rgba(10, 132, 255, 0.08);
+}
+
+/* 便笺独立样式 (冷淡纸质感与极简微调色) */
+.macos-sticky-frame {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  border-radius: 0;
+  overflow: hidden;
+  box-shadow: none;
+  border: none;
+}
+
+.sticky-theme-neutral { background: #1c1c1e; }
+.sticky-theme-amber { background: #26201a; }
+.sticky-theme-sky { background: #18222d; }
+.sticky-theme-emerald { background: #16241e; }
+.sticky-theme-rose { background: #28191d; }
+.sticky-theme-violet { background: #221c2c; }
+
+/* 滚动条极简处理 (macOS 原生自动隐藏条) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}

@@ -26,5 +26,15 @@
 *.bak
 *.tmp
 
-# Frontend / Node Dependencies (if added later)
+# Frontend / Node Dependencies & Build Outputs
 node_modules/
+**/node_modules/
+dist/
+**/dist/
+.pnpm-store/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.turbo/
+.vite/

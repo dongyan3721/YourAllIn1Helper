@@ -1,0 +1,26 @@
+{
+  "name": "all-in-one-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "build:fast": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "katex": "^0.16.11",
+    "marked": "^14.1.2",
+    "vue": "^3.5.12"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4",
+    "@types/katex": "^0.16.7",
+    "@types/node": "^22.7.5",
+    "@vitejs/plugin-vue": "^5.1.4",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.8",
+    "vue-tsc": "^2.1.6"
+  }
+}
