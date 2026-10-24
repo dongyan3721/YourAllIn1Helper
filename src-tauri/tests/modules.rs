@@ -238,6 +238,36 @@ fn media_ipc_runs_real_image_jobs_persists_settings_and_honors_disable() {
 }
 
 #[test]
+fn media_native_pickers_require_async_desktop_adapter_and_enabled_module() {
+    let dir = tempfile::tempdir().unwrap();
+    let host = DesktopHost::bootstrap(dir.path(), true).unwrap();
+    host.kernel()
+        .set_module_enabled("media_proc", false)
+        .unwrap();
+    for command in ["media_pick_files", "media_pick_directory"] {
+        let disabled = host.invoke_ipc(command, serde_json::json!({}));
+        assert!(!disabled.ok, "disabled picker unexpectedly succeeded");
+        assert!(disabled.error.unwrap().contains("disabled"));
+
+        host.kernel()
+            .set_module_enabled("media_proc", true)
+            .unwrap();
+        let sync = host.invoke_ipc(command, serde_json::json!({}));
+        assert!(
+            !sync.ok,
+            "synchronous picker entry must not launch a process"
+        );
+        assert!(sync
+            .error
+            .unwrap()
+            .contains("asynchronous desktop IPC adapter"));
+        host.kernel()
+            .set_module_enabled("media_proc", false)
+            .unwrap();
+    }
+}
+
+#[test]
 fn general_config_language_update_persists_across_restarts() {
     let dir = tempfile::tempdir().unwrap();
     let host = DesktopHost::bootstrap(dir.path(), false).unwrap();

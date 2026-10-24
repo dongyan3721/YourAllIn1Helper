@@ -28,6 +28,7 @@ mod demo;
 mod ipc;
 mod legacy_http;
 mod modules;
+mod native_dialog;
 mod tauri_app;
 pub use legacy_http::serve_desktop_ui;
 pub use tauri_app::run;

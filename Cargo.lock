@@ -55,11 +55,15 @@ dependencies = [
  "app-core",
  "arboard",
  "base64 0.22.1",
+ "block2",
  "image",
  "mod-clipboard",
  "mod-media-proc",
  "mod-sticky-note",
  "mod-window-pin",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
  "os-hal",
  "parking_lot",
  "serde",
@@ -68,6 +72,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-global-shortcut",
  "tempfile",
+ "tokio",
  "tracing",
 ]
 
