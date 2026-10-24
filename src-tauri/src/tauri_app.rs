@@ -180,13 +180,24 @@ fn start_window_pin_guard_and_badges(app: &AppHandle) {
     let app_handle = app.clone();
     std::thread::spawn(move || {
         let mut last_foreground_pid = 0;
+        let mut had_pinned_windows = false;
         loop {
             let pinned_entries = host.window_pin.list_pinned_windows();
             if pinned_entries.is_empty() {
+                if had_pinned_windows {
+                    // 当置顶列表归零变空时，确保在主线程执行一次 reconcile_pin_badges 清理所有残余角标窗口
+                    had_pinned_windows = false;
+                    let app_for_main = app_handle.clone();
+                    let _ = app_handle.run_on_main_thread(move || {
+                        reconcile_pin_badges(&app_for_main, vec![]);
+                    });
+                }
                 // 无置顶窗口时进行深睡，避免消耗任何 CPU
                 std::thread::sleep(std::time::Duration::from_millis(1500));
                 continue;
             }
+
+            had_pinned_windows = true;
 
             // 检查当前前台应用
             let current_fg_pid = host
@@ -196,7 +207,7 @@ fn start_window_pin_guard_and_badges(app: &AppHandle) {
                 .map(|w| w.process_id)
                 .unwrap_or(0);
 
-            // 若用户切换了前台应用，并且前台不是被置顶的应用，则执行 AXRaise 保持置顶窗口在最前
+            // 若用户切换了前台应用，并且前台不是被置顶的应用，则执行保持置顶动作
             if current_fg_pid != last_foreground_pid && current_fg_pid > 0 {
                 last_foreground_pid = current_fg_pid;
                 let is_pinned_fg = pinned_entries.iter().any(|p| p.info.process_id == current_fg_pid);
@@ -208,8 +219,12 @@ fn start_window_pin_guard_and_badges(app: &AppHandle) {
             // 收集需显示的图钉角标位置
             let mut badges = Vec::new();
             for pinned in pinned_entries {
-                if let Ok(info) = host.os_hal.get_window_info(pinned.info.handle) {
-                    badges.push(info);
+                match host.os_hal.get_window_info(pinned.info.handle) {
+                    Ok(info) => badges.push(info),
+                    Err(_) => {
+                        // 目标外部物理窗口已被用户在外部关闭，自动从置顶列表中解钉并清理
+                        let _ = host.window_pin.unpin_window(pinned.info.handle);
+                    }
                 }
             }
 

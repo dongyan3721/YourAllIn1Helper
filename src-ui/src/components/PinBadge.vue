@@ -18,13 +18,14 @@ import Icons from './Icons.vue';
 // 解析当前图钉角标对应的目标窗口 handle
 const handle = Number(new URLSearchParams(window.location.search).get('handle') || 0);
 
-/** 点击图钉角标：解除目标外部窗口置顶 */
+/** 点击图钉角标：解除目标外部窗口置顶并销毁角标窗口 */
 async function unpinWindow() {
   if (!handle) return;
   try {
+    // 1. 调用 winpin_unpin 恢复目标物理窗口为正常层级并触发后端销毁
     await invokeIpc('winpin_unpin', { handle });
-    // 销毁当前图钉角标窗口
-    (window as any).__TAURI__?.window?.getCurrentWindow?.()?.destroy?.();
+    // 2. 双重保障：调用内核通用窗口销毁命令立即销毁角标
+    await invokeIpc('kernel_destroy_window', { label: `pin-badge-${handle}` });
   } catch (err) {
     console.error('解除窗口置顶失败:', err);
   }

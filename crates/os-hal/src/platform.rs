@@ -720,8 +720,26 @@ impl WindowController for NativeOsHal {
         }
         #[cfg(target_os = "macos")]
         {
+            use std::os::raw::{c_int, c_uint};
+            #[link(name = "CoreGraphics", kind = "framework")]
+            extern "C" {
+                fn CGSMainConnectionID() -> c_int;
+                fn CGSSetWindowLevel(cid: c_int, wid: c_uint, level: c_int) -> c_int;
+            }
+
+            // macOS CoreGraphics / SkyLight 窗口渲染层级规范：
+            // kCGNormalWindowLevel = 0: 普通应用默认层级
+            // kCGFloatingWindowLevel = 3: 浮动窗口层级（WindowServer 将其物理渲染在所有普通应用之上，点击其他应用不会被遮挡）
+            let level: c_int = if topmost { 3 } else { 0 };
+            unsafe {
+                let cid = CGSMainConnectionID();
+                let err = CGSSetWindowLevel(cid, handle as c_uint, level);
+                if err != 0 {
+                    tracing::warn!(handle, level, err, "CGSSetWindowLevel 返回非零状态码");
+                }
+            }
             if topmost {
-                self.raise_native_window(handle)?;
+                let _ = self.raise_native_window(handle);
             }
             return Ok(());
         }
@@ -841,6 +859,45 @@ mod tests {
             assert!(win.width >= 32, "窗口宽度必须合规");
             assert!(win.height >= 32, "窗口高度必须合规");
             assert!(win.handle > 0, "窗口句柄必须合法有效");
+        }
+    }
+
+    #[test]
+    fn test_cgs_set_window_level() {
+        #[cfg(target_os = "macos")]
+        {
+            use std::os::raw::{c_int, c_uint};
+            type CGSConnectionID = c_int;
+            type CGSWindowID = c_uint;
+            type CGWindowLevel = c_int;
+            type CGError = c_int;
+
+            #[link(name = "CoreGraphics", kind = "framework")]
+            extern "C" {
+                fn CGSMainConnectionID() -> CGSConnectionID;
+                fn CGSSetWindowLevel(cid: CGSConnectionID, wid: CGSWindowID, level: CGWindowLevel) -> CGError;
+            }
+
+            let hal = NativeOsHal::new();
+            let windows = hal.list_external_windows().unwrap();
+            if let Some(target) = windows.first() {
+                println!("Testing CGSSetWindowLevel on window id={}, app={}", target.handle, target.process_name);
+                unsafe {
+                    let cid = CGSMainConnectionID();
+                    let err_pin = CGSSetWindowLevel(cid, target.handle as u32, 3);
+                    println!("CGSSetWindowLevel(..., 3) err = {}", err_pin);
+                    assert_eq!(err_pin, 0);
+
+                    // 还原
+                    let err_unpin = CGSSetWindowLevel(cid, target.handle as u32, 0);
+                    println!("CGSSetWindowLevel(..., 0) err = {}", err_unpin);
+                    assert_eq!(err_unpin, 0);
+
+                    // 验证 NativeOsHal::set_external_window_topmost 集成调用
+                    assert!(hal.set_external_window_topmost(target.handle, true).is_ok());
+                    assert!(hal.set_external_window_topmost(target.handle, false).is_ok());
+                }
+            }
         }
     }
 }

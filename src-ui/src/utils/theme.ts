@@ -7,7 +7,7 @@
  * 4. 多窗口间通过 Storage 事件无感秒级同步。
  */
 
-import { ref, watchEffect } from 'vue';
+import { ref } from 'vue';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 export type AccentColor = 'blue' | 'purple' | 'pink' | 'orange' | 'green' | 'graphite';
