@@ -4,11 +4,11 @@
 //! active window watcher, idle timer) and modules (e.g., translator, password vault,
 //! screenshot, clipboard) to communicate without tight coupling.
 
-use serde::{Deserialize, Serialize};
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
+use crate::clipboard_guard::{
+    ClipboardSuppressionLease, ClipboardSuppressionRegistry, SuppressionHolder,
 };
+use serde::{Deserialize, Serialize};
+use std::{sync::Arc, time::Duration};
 use tokio::sync::broadcast;
 
 pub use crate::screenshot_region::{
@@ -83,7 +83,7 @@ pub enum SystemEvent {
 #[derive(Clone)]
 pub struct EventBus {
     sender: broadcast::Sender<SystemEvent>,
-    clipboard_suppressed: Arc<AtomicBool>,
+    clipboard_suppression: Arc<ClipboardSuppressionRegistry>,
 }
 
 impl Default for EventBus {
@@ -98,16 +98,15 @@ impl EventBus {
         let (sender, _) = broadcast::channel(capacity.max(16));
         Self {
             sender,
-            clipboard_suppressed: Arc::new(AtomicBool::new(false)),
+            clipboard_suppression: Arc::new(ClipboardSuppressionRegistry::default()),
         }
     }
 
     /// Publishes a `SystemEvent` to all active subscribers.
-    /// Automatically synchronizes the fast-path `clipboard_suppressed` atomic flag.
+    /// `SuppressClipboardCapture` 只开关旧接口的兼容槽，不会释放其他模块持有的租约。
     pub fn publish(&self, event: SystemEvent) -> usize {
-        if let SystemEvent::SuppressClipboardCapture { suppressed, .. } = &event {
-            self.clipboard_suppressed
-                .store(*suppressed, Ordering::SeqCst);
+        if let SystemEvent::SuppressClipboardCapture { suppressed, reason } = &event {
+            self.clipboard_suppression.set_legacy(*suppressed, reason);
         }
         // If there are no active receivers, `send` returns Err, which is harmless.
         self.sender.send(event).unwrap_or(0)
@@ -118,13 +117,29 @@ impl EventBus {
         self.sender.subscribe()
     }
 
-    /// Fast lock-free check used by `mod-clipboard` before recording a clipboard change.
+    /// `mod-clipboard` 记录新内容前检查：任一有效租约或兼容槽存在即为真。
     #[inline]
     pub fn is_clipboard_suppressed(&self) -> bool {
-        self.clipboard_suppressed.load(Ordering::SeqCst)
+        self.clipboard_suppression.is_suppressed()
     }
 
-    /// Convenience helper to toggle clipboard capture suppression and emit the corresponding event.
+    /// 申请剪贴板捕获屏蔽租约（推荐接口）：持有期间不记录剪贴板历史，离开作用域自动释放，
+    /// `ttl` 到期也会失效（上限 [`crate::clipboard_guard::MAX_LEASE_DURATION`]）。
+    pub fn acquire_clipboard_suppression(
+        &self,
+        owner: impl Into<String>,
+        reason: impl Into<String>,
+        ttl: Duration,
+    ) -> ClipboardSuppressionLease {
+        self.clipboard_suppression.acquire(owner, reason, ttl)
+    }
+
+    /// 当前屏蔽来源（诊断用，不含剪贴板内容）。
+    pub fn clipboard_suppression_holders(&self) -> Vec<SuppressionHolder> {
+        self.clipboard_suppression.holders()
+    }
+
+    /// 旧接口：开关兼容槽并广播事件。新代码请使用 [`Self::acquire_clipboard_suppression`]。
     pub fn set_clipboard_suppression(&self, suppressed: bool, reason: impl Into<String>) {
         self.publish(SystemEvent::SuppressClipboardCapture {
             suppressed,

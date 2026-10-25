@@ -71,8 +71,11 @@ fn wait_for_job(module: &MediaProcModule, ctx: &ModuleContext, id: &str) -> Medi
             .into_iter()
             .find(|job| job.id == id)
             .unwrap();
-        if job.status != MediaJobStatus::Queued && job.status != MediaJobStatus::Running {
-            assert_eq!(module.active_job_count(), 0);
+        // 任务状态先于活动计数更新；在同一截止时间内等待计数归零，避免高负载下的时序误报。
+        if job.status != MediaJobStatus::Queued
+            && job.status != MediaJobStatus::Running
+            && module.active_job_count() == 0
+        {
             return job;
         }
         assert!(Instant::now() < deadline, "media job {id} timed out");

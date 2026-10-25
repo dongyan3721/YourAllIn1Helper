@@ -47,6 +47,7 @@ mod screenshot_window;
 mod script_env;
 mod script_events;
 mod script_hotkeys;
+mod secure_credentials;
 mod tauri_app;
 pub use legacy_http::serve_desktop_ui;
 pub use tauri_app::run;
@@ -97,6 +98,7 @@ pub struct DesktopHost {
     media_proc: Arc<MediaProcModule>,
     app_usage: Arc<AppUsageModule>,
     translator: Arc<TranslatorModule>,
+    translator_credentials: Arc<secure_credentials::HostCredentialStore>,
     os_hal: OsHalBundle,
     mock_hal: Option<MockOsHal>,
     /// 系统全局快捷键注册失败记录（action_id → 错误），供界面如实显示未生效的快捷键。
@@ -237,6 +239,7 @@ impl DesktopHost {
             media_proc,
             app_usage,
             translator,
+            translator_credentials,
         } = modules::mount(
             builder,
             &os_hal,
@@ -255,6 +258,7 @@ impl DesktopHost {
             media_proc,
             app_usage,
             translator,
+            translator_credentials,
             os_hal,
             mock_hal,
             native_shortcut_failures: parking_lot::RwLock::new(HashMap::new()),

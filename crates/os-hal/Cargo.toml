@@ -33,9 +33,12 @@ windows = { version = "0.62", features = [
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.4"
 objc2-app-kit = "0.3.2"
+objc2-core-audio = "0.3.2"
 objc2-core-foundation = "0.3.2"
 objc2-core-graphics = "0.3.2"
 objc2-foundation = "0.3.2"
+# 登录钥匙串通用密码项（翻译 API Key 等凭据）；版本与 native-tls 已锁定的一致，无新增下载。
+security-framework = "3.7"
 
 [dev-dependencies]
 tempfile = "3.10"

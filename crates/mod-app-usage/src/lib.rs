@@ -15,6 +15,7 @@ pub mod tracker;
 use crate::config::{AppUsageConfig, MODULE_ID};
 use crate::report::{
     AppUsageCapabilities, AppUsageStatus, HourlyBreakdown, TrackedApp, UsageOverview,
+    UsageSessionPage,
 };
 use crate::tracker::{SystemUsageClock, Tracker, UsageClock, SAMPLE_INTERVAL_MS};
 use app_core::{AppModule, CoreError, CoreResult, ModuleContext, ModuleMigration};
@@ -28,6 +29,7 @@ use tracing::{info, warn};
 
 pub struct AppUsageModule {
     tracker: Arc<Tracker>,
+    watcher: Arc<dyn ActiveAppWatcher>,
     worker: Mutex<Option<JoinHandle<()>>>,
     stop: Arc<AtomicBool>,
     running: AtomicBool,
@@ -42,7 +44,8 @@ impl AppUsageModule {
     /// 测试入口：注入可控时间源，验证切段、休眠跳变与重启行为。
     pub fn with_clock(watcher: Arc<dyn ActiveAppWatcher>, clock: Arc<dyn UsageClock>) -> Self {
         Self {
-            tracker: Arc::new(Tracker::new(watcher, clock)),
+            tracker: Arc::new(Tracker::new(Arc::clone(&watcher), clock)),
+            watcher,
             worker: Mutex::new(None),
             stop: Arc::new(AtomicBool::new(false)),
             running: AtomicBool::new(false),
@@ -102,6 +105,17 @@ impl AppUsageModule {
         store::list_tracked_apps(ctx)
     }
 
+    /// 当日逐会话列表；关闭窗口标题保存时不返回历史标题。
+    pub fn sessions(
+        &self,
+        ctx: &ModuleContext,
+        date: &str,
+        offset: u64,
+        limit: u64,
+    ) -> CoreResult<UsageSessionPage> {
+        store::sessions(ctx, date, offset, limit, self.config().keep_window_titles)
+    }
+
     /// 更新逐应用分类与忽略状态；忽略后下一次采样立即停止累计。
     pub fn set_app_category(
         &self,
@@ -137,6 +151,18 @@ impl AppUsageModule {
             .normalized();
         self.tracker.apply_config(config.clone());
         Ok(config)
+    }
+
+    /// 订阅系统锁屏/睡眠事件；平台不支持时继续使用严格轮询，不阻断模块启用。
+    fn start_event_monitor(&self) {
+        if let Err(error) = self.watcher.start_usage_event_monitor() {
+            tracing::debug!(%error, "Usage event monitor unavailable; relying on polling");
+        }
+    }
+
+    /// 停止采样时同步撤销系统通知观察者与事件线程。
+    fn stop_event_monitor(&self) {
+        self.watcher.stop_usage_event_monitor();
     }
 
     fn start_worker(&self, ctx: &ModuleContext) -> CoreResult<()> {
@@ -215,15 +241,19 @@ impl AppModule for AppUsageModule {
             Err(error) => warn!(%error, "Failed to load ignored app list"),
         }
         self.tracker.begin();
+        self.start_event_monitor();
         self.start_worker(ctx)
     }
 
     fn on_shutdown(&self, ctx: &ModuleContext) -> CoreResult<()> {
-        self.stop_worker(ctx)
+        let result = self.stop_worker(ctx);
+        self.stop_event_monitor();
+        result
     }
 
     fn on_shutdown_failed(&self, ctx: &ModuleContext) -> CoreResult<()> {
         self.tracker.begin();
+        self.start_event_monitor();
         self.start_worker(ctx)
     }
 }

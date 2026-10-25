@@ -33,6 +33,10 @@ impl DesktopHost {
             "translator_take_selection" => {
                 Ok(serde_json::to_value(self.translator.take_selection())?)
             }
+            "translator_credential_storage" => Ok(json!({
+                // 界面据此如实显示 API Key 的保存位置，不再固定写「仅内存」。
+                "backend": self.translator_credentials.backend_kind(),
+            })),
             "translator_list_providers" => {
                 let list = self.translator.service().list_providers_metadata();
                 Ok(Value::Array(list))

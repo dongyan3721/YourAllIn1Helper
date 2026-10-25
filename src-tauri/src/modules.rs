@@ -13,6 +13,7 @@ pub(super) struct Mounted {
     pub media_proc: Arc<MediaProcModule>,
     pub app_usage: Arc<AppUsageModule>,
     pub translator: Arc<TranslatorModule>,
+    pub translator_credentials: Arc<crate::secure_credentials::HostCredentialStore>,
 }
 pub(super) fn mount(
     builder: AppKernelBuilder,
@@ -38,7 +39,13 @@ pub(super) fn mount(
     let screen_ink = Arc::new(ScreenInkModule::new(hal.screen_capturer.clone()));
     let media_proc = Arc::new(MediaProcModule::new());
     let app_usage = Arc::new(AppUsageModule::new(hal.active_app_watcher.clone()));
-    let translator = Arc::new(TranslatorModule::new(hal.selection_extractor.clone()));
+    // 翻译凭据默认会话内存；生产 Tauri 进程启动后切换为系统钥匙串。
+    let translator_credentials =
+        Arc::new(crate::secure_credentials::HostCredentialStore::new_session());
+    let translator = Arc::new(TranslatorModule::with_credentials(
+        hal.selection_extractor.clone(),
+        translator_credentials.clone(),
+    ));
     let builder = builder
         .register_module_arc(screenshot.clone())?
         .register_module_arc(clipboard.clone())?
@@ -60,5 +67,6 @@ pub(super) fn mount(
         media_proc,
         app_usage,
         translator,
+        translator_credentials,
     })
 }

@@ -95,6 +95,18 @@ pub trait ActiveAppWatcher: Send + Sync + 'static {
     fn system_idle_seconds(&self) -> HalResult<u64>;
     /// Returns `true` if the workstation screen is currently locked or asleep.
     fn is_screen_locked(&self) -> HalResult<bool>;
+    /// 查询默认输出设备当前是否有音频流在运行（只看是否播放，不读取音频内容）。
+    /// 未实现或不可用的平台必须返回 `Unsupported`，不得用 `false` 冒充真实能力。
+    fn default_output_audio_active(&self) -> HalResult<bool> {
+        Err(HalError::Unsupported("default_output_audio_activity"))
+    }
+    /// 订阅系统锁屏/息屏/睡眠事件；实现方必须保证重复启动幂等。
+    /// 默认表示平台没有事件源，调用方应继续使用严格轮询语义。
+    fn start_usage_event_monitor(&self) -> HalResult<()> {
+        Err(HalError::Unsupported("usage_event_monitor"))
+    }
+    /// 取消订阅并释放事件观察者与后台线程；未启动时调用也必须安全。
+    fn stop_usage_event_monitor(&self) {}
 }
 
 /// 8. Synthetic input simulator (`mod-clipboard` quick paste, `mod-screenshot` scroll capture).

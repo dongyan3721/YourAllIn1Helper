@@ -13,8 +13,10 @@
 //! - **`WindowPoolManager`**: 3-level WebView lifecycle manager guaranteeing 0 hidden WebViews on startup.
 
 pub mod catalog;
+pub mod clipboard_guard;
 pub mod config;
 pub use catalog::{ModuleDefinition, MODULE_CATALOG};
+pub use clipboard_guard::{ClipboardSuppressionLease, SuppressionHolder};
 pub use config::ModulesConfig;
 pub mod env_probe;
 pub mod error;

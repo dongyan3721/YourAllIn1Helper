@@ -7,7 +7,7 @@ use app_core::{
 use os_hal::{ActiveAppSnapshot, ActiveAppWatcher, HalResult};
 use parking_lot::{Mutex, RwLock};
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use tempfile::TempDir;
 
@@ -48,6 +48,10 @@ struct FakeWatcher {
     app: Mutex<Option<ActiveAppSnapshot>>,
     idle_seconds: AtomicU64,
     locked: AtomicBool,
+    audio_playing: AtomicBool,
+    audio_supported: AtomicBool,
+    event_starts: AtomicUsize,
+    event_stops: AtomicUsize,
 }
 
 impl FakeWatcher {
@@ -62,6 +66,10 @@ impl FakeWatcher {
             })),
             idle_seconds: AtomicU64::new(0),
             locked: AtomicBool::new(false),
+            audio_playing: AtomicBool::new(false),
+            audio_supported: AtomicBool::new(true),
+            event_starts: AtomicUsize::new(0),
+            event_stops: AtomicUsize::new(0),
         }
     }
 
@@ -82,6 +90,14 @@ impl FakeWatcher {
     fn set_locked(&self, locked: bool) {
         self.locked.store(locked, Ordering::SeqCst);
     }
+
+    fn set_audio_playing(&self, playing: bool) {
+        self.audio_playing.store(playing, Ordering::SeqCst);
+    }
+
+    fn set_audio_supported(&self, supported: bool) {
+        self.audio_supported.store(supported, Ordering::SeqCst);
+    }
 }
 
 impl ActiveAppWatcher for FakeWatcher {
@@ -98,6 +114,23 @@ impl ActiveAppWatcher for FakeWatcher {
 
     fn is_screen_locked(&self) -> HalResult<bool> {
         Ok(self.locked.load(Ordering::SeqCst))
+    }
+
+    fn default_output_audio_active(&self) -> HalResult<bool> {
+        if self.audio_supported.load(Ordering::SeqCst) {
+            Ok(self.audio_playing.load(Ordering::SeqCst))
+        } else {
+            Err(os_hal::HalError::Unsupported("audio"))
+        }
+    }
+
+    fn start_usage_event_monitor(&self) -> HalResult<()> {
+        self.event_starts.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+
+    fn stop_usage_event_monitor(&self) {
+        self.event_stops.fetch_add(1, Ordering::SeqCst);
     }
 }
 
@@ -371,8 +404,9 @@ fn window_titles_can_be_disabled_before_persisting() {
 }
 
 #[test]
-fn capabilities_report_audio_limit() {
+fn capabilities_report_audio_limit_when_probe_is_unsupported() {
     let watcher = Arc::new(FakeWatcher::new("com.example.editor", "Editor"));
+    watcher.set_audio_supported(false);
     let module = AppUsageModule::new(watcher);
     let caps = module.capabilities();
     assert!(caps.active_app);
@@ -380,6 +414,143 @@ fn capabilities_report_audio_limit() {
     assert!(caps.screen_lock_detection);
     assert!(!caps.audio_afk_exception);
     assert!(caps.limitations.iter().any(|line| line.contains("音频")));
+}
+
+#[test]
+fn audio_probe_failure_keeps_plain_idle_pause() {
+    let dir = temp_dir("audio-unavailable");
+    let ctx = context(dir.path(), true);
+    let watcher = Arc::new(FakeWatcher::new("com.example.player", "Player"));
+    watcher.set_idle(301);
+    watcher.set_audio_playing(true);
+    watcher.set_audio_supported(false);
+    let clock = Arc::new(FakeClock::at(chrono::Utc::now().timestamp_millis()));
+    let module = AppUsageModule::with_clock(watcher, clock.clone());
+
+    module.sample_now(&ctx).unwrap();
+    run_seconds(&module, &ctx, &clock, 10);
+    module.flush_pending(&ctx).unwrap();
+    assert_eq!(total_seconds(&ctx), 0);
+    let caps = module.capabilities();
+    assert!(!caps.audio_afk_exception);
+    assert!(caps.limitations.iter().any(|line| line.contains("音频")));
+}
+
+#[test]
+fn audio_playback_keeps_idle_time_active() {
+    let dir = temp_dir("audio-afk");
+    let ctx = context(dir.path(), true);
+    let watcher = Arc::new(FakeWatcher::new("com.example.player", "Player"));
+    watcher.set_idle(301);
+    watcher.set_audio_playing(true);
+    let clock = Arc::new(FakeClock::at(chrono::Utc::now().timestamp_millis()));
+    let module = AppUsageModule::with_clock(watcher.clone(), clock.clone());
+
+    module.sample_now(&ctx).unwrap();
+    run_seconds(&module, &ctx, &clock, 10);
+    module.flush_pending(&ctx).unwrap();
+    assert_eq!(total_seconds(&ctx), 10);
+
+    // 停止播放后的那一个间隔仍处于上一采样点活跃状态，随后进入 AFK 暂停。
+    watcher.set_audio_playing(false);
+    run_seconds(&module, &ctx, &clock, 10);
+    module.flush_pending(&ctx).unwrap();
+    assert_eq!(total_seconds(&ctx), 11);
+}
+
+#[test]
+fn lock_and_sleep_take_priority_over_audio_exception() {
+    let dir = temp_dir("audio-lock-priority");
+    let ctx = context(dir.path(), true);
+    let watcher = Arc::new(FakeWatcher::new("com.example.player", "Player"));
+    watcher.set_idle(301);
+    watcher.set_audio_playing(true);
+    watcher.set_locked(true);
+    let clock = Arc::new(FakeClock::at(chrono::Utc::now().timestamp_millis()));
+    let module = AppUsageModule::with_clock(watcher.clone(), clock.clone());
+
+    module.sample_now(&ctx).unwrap();
+    run_seconds(&module, &ctx, &clock, 10);
+    module.flush_pending(&ctx).unwrap();
+    assert_eq!(total_seconds(&ctx), 0);
+
+    watcher.set_locked(false);
+    // 解锁后的第一个采样点只负责重新开启会话，随后 9 个间隔计入时长。
+    run_seconds(&module, &ctx, &clock, 10);
+    module.flush_pending(&ctx).unwrap();
+    assert_eq!(total_seconds(&ctx), 9);
+}
+
+#[test]
+fn disabling_audio_exception_restores_plain_idle_pause() {
+    let dir = temp_dir("audio-disabled");
+    let ctx = context(dir.path(), true);
+    let watcher = Arc::new(FakeWatcher::new("com.example.player", "Player"));
+    watcher.set_idle(301);
+    watcher.set_audio_playing(true);
+    let clock = Arc::new(FakeClock::at(chrono::Utc::now().timestamp_millis()));
+    let module = AppUsageModule::with_clock(watcher.clone(), clock.clone());
+    module.apply_config(crate::config::AppUsageConfig {
+        audio_afk_exception: false,
+        ..Default::default()
+    });
+
+    module.sample_now(&ctx).unwrap();
+    run_seconds(&module, &ctx, &clock, 10);
+    module.flush_pending(&ctx).unwrap();
+    assert_eq!(total_seconds(&ctx), 0);
+    let caps = module.capabilities();
+    assert!(caps.audio_afk_exception);
+    assert!(caps.limitations.iter().any(|line| line.contains("关闭")));
+}
+
+#[test]
+fn repeated_enable_disable_starts_and_stops_event_monitor() {
+    use app_core::AppModule as _;
+
+    let dir = temp_dir("event-lifecycle");
+    let ctx = context(dir.path(), true);
+    let watcher = Arc::new(FakeWatcher::new("com.example.editor", "Editor"));
+    let clock = Arc::new(FakeClock::at(chrono::Utc::now().timestamp_millis()));
+    let module = AppUsageModule::with_clock(watcher.clone(), clock.clone());
+
+    module.on_init(&ctx).unwrap();
+    module.on_shutdown(&ctx).unwrap();
+    module.on_init(&ctx).unwrap();
+    module.on_shutdown(&ctx).unwrap();
+
+    assert_eq!(watcher.event_starts.load(Ordering::SeqCst), 2);
+    assert_eq!(watcher.event_stops.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn sessions_list_reports_day_sessions_and_hides_titles_when_disabled() {
+    let dir = temp_dir("sessions");
+    let ctx = context(dir.path(), true);
+    let clock = Arc::new(FakeClock::at(chrono::Utc::now().timestamp_millis()));
+    let module = AppUsageModule::with_clock(
+        Arc::new(FakeWatcher::new("com.example.editor", "Editor")),
+        clock.clone(),
+    );
+
+    module.sample_now(&ctx).unwrap();
+    run_seconds(&module, &ctx, &clock, 5);
+    module.tracker.finish(&ctx).unwrap();
+
+    let today = module.today_local();
+    let page = module.sessions(&ctx, &today, 0, 20).unwrap();
+    assert_eq!(page.total, 1);
+    assert_eq!(page.sessions[0].app_id, "com.example.editor");
+    assert_eq!(page.sessions[0].active_seconds, 5);
+    assert!(page.sessions[0].window_title.is_some());
+
+    module.apply_config(crate::config::AppUsageConfig {
+        keep_window_titles: false,
+        ..Default::default()
+    });
+    let hidden = module.sessions(&ctx, &today, 0, 20).unwrap();
+    assert_eq!(hidden.total, 1);
+    assert!(hidden.sessions[0].window_title.is_none());
 }
 
 #[test]

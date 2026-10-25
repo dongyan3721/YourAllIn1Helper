@@ -146,3 +146,92 @@ GUI 用例见 [`docs/testing/GUI_TEST_APP_USAGE.md`](../testing/GUI_TEST_APP_USA
 - 定向验证使用本工作区 `.runtime_data/target-app-usage`：usage 21 项、核心生命周期 5 项通过。原有累计测试起点对齐整秒，去掉随机毫秒起点跨小时造成的整数秒桶舍入抖动。
 - 本轮 HAL 实测发现当前进程无法取得 macOS 会话字典，另一次调用也未取得前台应用；旧测试的锁屏“成功”来自 `None => false`。原生能力 smoke 保持严格成功断言，本轮结果为 2 通过、1 失败；该失败是当前进程环境不可用的真实证据，不能作为锁屏检测成功证据。面板会显示本地化的暂停原因。公开函数为 `CGSessionCopyCurrentDictionary`，不是原报告误写的私有 `CGSSessionCopyCurrentDictionary`；真实 AppKit 宿主的检测仍需 GUI 阶段验证。
 - 未补齐既有计划缺项：音频 AFK 例外、Windows 编译/实机验证、GUI 与真实锁屏/睡眠证据、会话列表 UI。整数秒报表仍对每个桶的不足一秒部分取整。
+
+## 9. 第三轮（事件驱动锁屏/睡眠 + 音频 AFK 例外 + 会话列表）
+
+- 认领智能体：OpenCode
+- 实际模型：`deepseek/deepseek-flash`（DeepSeek V4.1 Flash 1017）
+- 工作区：`/Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/team/opencode-app-usage`
+- 分支：`codex/feature-app-usage`
+- 本轮提交（本地，未 merge / 未 push）：
+  - `fa6cf11` feat(os-hal): add event-driven sleep/lock monitoring and audio probe
+  - `94c4e74` feat(app-usage): add audio AFK exception and daily session list
+  - `4646ddc` docs(app-usage): record round 3 event, audio and session changes
+  - `dd4b455` test(app-usage): cover audio probe failure idle pause
+  - `2ce8630` fix(app-usage): hide session titles immediately after privacy change
+  - 本文档最终更新提交见本文件所在提交
+- 只写入本 worktree；未修改主目录、其他成员目录、截图/翻译/密码本目录；未改全局权限、代理或模型。
+
+### 9.1 事件驱动锁屏 / 息屏 / 睡眠
+
+- macOS 事件源位于 `crates/os-hal/src/platform/usage/macos_events.rs`，使用独立后台线程与 `CFRunLoop` 订阅：
+  - `NSWorkspaceWillSleepNotification` → `WillSleep`
+  - `NSWorkspaceDidWakeNotification` → `DidWake`
+  - `NSWorkspaceScreensDidSleepNotification` → `ScreensDidSleep`
+  - `NSWorkspaceScreensDidWakeNotification` → `ScreensDidWake`
+  - 分布式通知 `com.apple.screenIsLocked` / `com.apple.screenIsUnlocked`
+- 事件与严格轮询在 `crates/os-hal/src/platform/usage/mod.rs` 的 `UsageActivityState` 合并：
+  - 任一来源报告锁定/睡眠即 `Ok(true)`，业务停止计时。
+  - 轮询成功时以轮询为准；轮询失败且事件明确“已唤醒且已解锁”时恢复。
+  - 只有解锁通知但没有唤醒来源、或轮询与事件都无法确认时保持未知，返回错误让业务暂停。
+- 严格失败语义保留：`CGSessionCopyCurrentDictionary` 不可用时仍返回 `NativeCallFailed`，不把未知当作未锁定。
+- 模块 `on_init` 启动事件监视，`on_shutdown` 停止；停止会撤销两个通知中心的观察者并 join 事件线程。`MacUsageEventMonitor` 的 start/stop 幂等，重复启停不会累积观察者。
+- 睡眠跳变与单调时钟逻辑未改：仍丢弃超过 5 秒的采样间隔，唤醒后不补算睡眠时间。
+
+### 9.2 音频 AFK 例外（macOS 真实能力）
+
+- 新增 HAL 默认能力 `ActiveAppWatcher::default_output_audio_active()`；未实现平台默认返回 `Unsupported`，不伪造 `false`。
+- macOS 实现 `crates/os-hal/src/platform/usage/macos.rs`：
+  - 先查 `kAudioHardwarePropertyDefaultOutputDevice`，再查 `kAudioDevicePropertyDeviceIsRunningSomewhere`。
+  - 只判断默认输出设备是否被任意进程启动，不读取音频内容、不改音量、不需要额外权限；没有默认输出设备视为未播放。
+- 业务规则：键鼠空闲达到阈值时，若配置开启且默认输出设备正在播放，则继续计时；锁屏/睡眠优先，始终暂停。
+- 能力探测失败时该例外不生效，`usage_get_status.capabilities.audio_afk_exception=false` 并在 `limitations` 说明；Windows 同样返回 `Unsupported`。
+- 新增配置 `modules.settings.app_usage.audio_afk_exception`（默认 `true`）。旧配置缺该字段时反序列化为 `true`，已有持久化配置不会被误关。
+
+### 9.3 当日会话列表
+
+- 新增 IPC `usage_get_sessions`：
+  - 参数：`date?`（默认本地今天）、`offset?`（默认 0）、`limit?`（默认 50，服务端夹紧 1–200）。
+  - 返回：`date`、`total`、`offset`、`limit`、`sessions[]`；会话含应用标识/名称、窗口标题、起止毫秒与活跃秒数。
+- 查询按本地日期边界（处理夏令时空档），默认排除忽略名单中的应用；`keep_window_titles=false` 时 IPC 不返回历史标题。
+- `/usage` 面板新增“当日会话列表”：日期选择、上一页/下一页、空状态与分页信息；窗口标题缺失显示“标题已隐藏”。
+- 前端设置区新增“空闲时音频播放不计为 AFK”开关，能力不可用时禁用；状态区按真实探测结果显示可用/已关闭/不可用三语文案。
+
+### 9.4 本轮公共文件清单（集成比对）
+
+- `Cargo.lock`、`crates/os-hal/Cargo.toml`：macOS 目标新增 `objc2-core-audio = "0.3.2"`（默认特性，使用 AudioHardware）。
+- `crates/os-hal/src/traits.rs`：`ActiveAppWatcher` 新增带默认实现的音频探测与事件监视启停方法；其他实现方无需改动。
+- `crates/os-hal/src/platform/mod.rs`：`NativeOsHal` 新增 `usage_events` 字段。
+- `crates/os-hal/src/platform/usage/{mod,macos,macos_events}.rs`：事件合并、CoreAudio 探测、macOS 通知观察者。
+- `crates/os-hal/tests/{capabilities.rs,unit/usage_events.rs}`：原生能力与事件合并测试。
+- `crates/mod-app-usage/src/{config,lib,report,store,tracker}.rs`：音频规则、事件生命周期、会话查询。
+- `crates/mod-app-usage/tests/unit/{config,lib}.rs`：音频 AFK、锁屏优先、关闭例外、启停、会话隐私与旧配置兼容。
+- `src-tauri/src/ipc/usage.rs`：`usage_get_sessions` 与音频配置项。
+- `src-tauri/tests/modules.rs`：会话 IPC、音频配置持久化。
+- `src-ui/src/{api/ipc.ts,components/AppUsagePanel.vue,locales/{zh-CN,en-US,ja-JP}.json}`：会话列表、音频开关与状态文案。
+- `docs/testing/GUI_TEST_APP_USAGE.md`：修订 4–6、13，新增 16–17。
+- 未修改 `crates/app-core`；未触碰共享剪贴板公共层。
+
+### 9.5 实际执行与结果
+
+所有命令在本 worktree 执行，`CARGO_TARGET_DIR=$PWD/target`。
+
+| 命令 | 结果 |
+| --- | --- |
+| `cargo fmt --all -- --check` | 通过，无差异 |
+| `cargo test -p mod-app-usage --offline` | 28 passed；新增音频 AFK、锁屏优先、关闭例外、探测失败暂停、事件启停、会话列表与旧配置兼容 |
+| `cargo test -p os-hal --offline` | lib 5 passed / 1 ignored；capabilities 4 passed / 2 ignored；非 ignored 的 CoreAudio 真实探测通过 |
+| `cargo test --workspace --offline --all-targets` | 177 passed，0 failed，3 ignored |
+| `pnpm --dir src-ui run build` | 通过（`vue-tsc --noEmit` + Vite；仅有既有 >500 kB chunk 提示） |
+| `pnpm --dir src-ui test` | 18 passed（含三语言字典同构） |
+| `cargo test -p os-hal --offline --test capabilities macos_usage_event_monitor_start_stop_is_idempotent -- --ignored` | 1 passed（本机桌面会话，验证 start/stop 幂等；不替代实体锁屏验收） |
+
+### 9.6 GUI 与未执行项、平台限制
+
+- GUI 用例已更新为 17 项，**全部仍标未执行**。本轮无人工桌面会话，未实际锁屏、息屏、睡眠或播放音频；IPC/单元测试不替代这些证据。
+- 需协调者在 GUI 验收阶段执行 4–6、13、16–17，并附截图/数据库查询。
+- **Windows 未编译/未实机验证**：事件监视与音频探测在 Windows 返回 `Unsupported`，界面会显示限制；接入 Windows 时需单独实现并回归。
+- 音频探测是“默认输出设备是否在运行”的设备级状态，不等于逐应用识别；某些静音流也可能保持设备运行。本实现不读取音频内容，也不据此生成应用级结论。
+- 真实锁屏/睡眠通知的完整链路（含分布式通知）仍需实体锁屏与睡眠唤醒验收；自动化只验证了状态合并、启停幂等和严格失败语义。
+- 会话列表默认分页 20 条；超过后可用上一页/下一页，不提供无限滚动。
+- 整数秒报表仍按桶向下取整；跨小时切段与睡眠丢弃逻辑保持第二轮行为。

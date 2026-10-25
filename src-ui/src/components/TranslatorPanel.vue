@@ -112,14 +112,22 @@
               v-model="inputApiKey"
               type="password"
               class="macos-input key-input"
-              :placeholder="t('translator.apiKeyPlaceholder')"
+              :placeholder="
+                credentialBackend === 'system_keychain'
+                  ? t('translator.apiKeyPlaceholderKeychain')
+                  : t('translator.apiKeyPlaceholder')
+              "
             />
             <button class="macos-btn mini-btn" :disabled="!inputApiKey.trim()" @click="saveApiKey">
               {{ t('translator.saveApiKey') }}
             </button>
           </div>
           <p class="form-hint">
-            {{ t('translator.sessionCredentials') }}
+            {{
+              credentialBackend === 'system_keychain'
+                ? t('translator.keychainCredentials')
+                : t('translator.sessionCredentials')
+            }}
           </p>
         </div>
 
@@ -216,6 +224,8 @@ const newCustom = ref({
 });
 
 const providers = ref<ProviderMeta[]>([]);
+/** API Key 的实际保存位置（由后端报告，默认按会话内存显示）。 */
+const credentialBackend = ref<'session' | 'system_keychain'>('session');
 let unlistenStream: (() => void) | null = null;
 let currentRequestId = -1;
 let submission = 0;
@@ -245,6 +255,10 @@ async function loadData() {
     if (provs) {
       providers.value = provs;
     }
+    const storage = await invokeIpc<{ backend: 'session' | 'system_keychain' }>(
+      'translator_credential_storage'
+    );
+    credentialBackend.value = storage?.backend ?? 'session';
   } catch (e) {
     console.error('加载翻译配置失败:', e);
   }

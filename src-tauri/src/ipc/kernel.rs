@@ -28,6 +28,7 @@ impl DesktopHost {
                     "shortcuts": shortcuts,
                     "config": config,
                     "clipboard_suppressed": ctx.event_bus.is_clipboard_suppressed(),
+                    "clipboard_suppression_holders": ctx.event_bus.clipboard_suppression_holders(),
                     "paste_trigger_count": self.os_hal.input_simulator.paste_trigger_count(),
                     "foreground_external_window": fg_window,
                     "env_tools": env_tools,
