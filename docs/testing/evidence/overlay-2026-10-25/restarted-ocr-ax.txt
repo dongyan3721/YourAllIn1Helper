@@ -1,0 +1,20 @@
+Window: "Capture Overlay", App: All-in-One Toolbox.
+0 standard window Capture Overlay, Secondary Actions: Raise
+	1 scroll area
+		2 HTML content Description: All-in-One Desktop Toolbox, URL: tauri://localhost/index.html?mode=native&window=capture-overlay
+			3 container
+				4 text 选好区域后按 Enter 识别文字 · 单击选取高亮窗口或整屏 · 拖拽自由框选 · 滚轮/Tab 切换层级 · Esc 退出
+				5 text visual_edge
+				6 text 1344, 1598
+				7 text #F6F6F6
+				8 text rgb(246, 246, 246)
+				9 text C 复制 HEX · Shift+C 复制 RGB
+10 menu bar
+	11 All-in-One Toolbox
+	12 File
+	13 Edit
+	14 View
+	15 Window
+	16 Help
+
+The focused UI element is 3 container

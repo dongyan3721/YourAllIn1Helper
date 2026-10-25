@@ -1064,10 +1064,6 @@ function onResize() {
 
 // ───────────────────────────── 生命周期 ─────────────────────────────
 
-function nextFrame(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
-}
-
 onMounted(async () => {
   document.body.classList.add('capture-overlay-body');
   window.addEventListener('keydown', onKeyDown);
@@ -1094,9 +1090,9 @@ onMounted(async () => {
     probe.value = { x: Math.floor(info.frame_width / 2), y: Math.floor(info.frame_height / 2) };
     ready.value = true;
     renderUi();
-    // 等两帧确保冻结帧已合成到屏幕，再通知宿主显示遮罩。
-    await nextFrame();
-    await nextFrame();
+    // 隐藏的 WKWebView 会暂停 rAF；若先等动画帧再显示窗口，两者会永久互等。
+    // 像素已同步写入 canvas，只需刷新 Vue 的提示/工具 DOM，然后交给宿主显示并启动合成。
+    await nextTick();
     await screenshotApi.overlayReady(info.session_id);
     rootEl.value?.focus();
     if (info.target_mode === 'scroll') {

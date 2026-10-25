@@ -1,0 +1,19 @@
+{
+  "bundle_id": "com.allinone.desktop",
+  "signing_identity": "271023D7C47579D97F8E05720C765A4AF682D336",
+  "designated_requirement": "designated => identifier \"com.allinone.desktop\" and certificate leaf = H\"271023d7c47579d97f8e05720c765a4af682d336\"",
+  "executable_sha256": "8a73fb79c03297ebfb0d1821370e9024a85b6f9467b1c2adaa7ef0b4190d0e49",
+  "source_head": "ae153eebfc7314e44c25121ca0720493e8e0578d",
+  "source_dirty": true,
+  "scope": "CaptureOverlay hidden-window initialization; real GUI, existing screen permission",
+  "private_screenshots": [
+    {
+      "local_path": ".runtime_data/overlay-qa/01-visible-selection-and-annotation.png",
+      "sha256": "2b8eaac35471d3f86ba76d296b1ed985bb8078e709a3d83b16260d00bb52be96"
+    },
+    {
+      "local_path": ".runtime_data/overlay-qa/02-restarted-ocr-overlay.png",
+      "sha256": "806a32ae810b5b577a71f9022c68e532991710f877b27b23787993346b6fca4e"
+    }
+  ]
+}

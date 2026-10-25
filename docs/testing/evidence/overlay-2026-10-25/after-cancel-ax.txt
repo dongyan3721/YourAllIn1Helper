@@ -1,0 +1,156 @@
+Window: "All-in-One Toolbox", App: All-in-One Toolbox.
+0 standard window All-in-One Toolbox, Secondary Actions: Raise
+	1 scroll area
+		2 HTML content Description: All-in-One Desktop Toolbox, URL: tauri://localhost/index.html?mode=native&window=dashboard&route=dashboard/overview
+			3 container
+				4 image All-in-One Toolbox Logo
+				5 text All-in-One Toolbox 1 个原生窗口
+				6 button 总览
+				7 button 01. 截图
+				8 button 02. 剪贴板
+				9 button 03. 屏幕注释
+				10 button 04. 便笺库
+				11 button 05. 使用时长
+				12 button 06. 脚本
+				13 button 07. 划词翻译
+				14 button 10. 密码本
+				15 button 08. 媒体处理
+				16 button 09. 窗口置顶
+				17 container Language Switcher, Help: 切换界面显示语言 (自动同步至 config.json)
+					18 button 中, Help: 简体中文
+					19 button EN, Help: English
+					20 button 日, Help: 日本語
+				21 container 选择系统强调色
+					22 button 强调色：经典蓝
+					23 button 强调色：罗兰紫
+					24 button 强调色：亮粉红
+					25 button 强调色：暖夕橙
+					26 button 强调色：薄荷绿
+					27 button 强调色：石墨灰
+				28 button 浅色白蓝色调 (默认)
+				29 button 深色背景模式
+				30 button 跟随系统自动开关灯
+				31 button 退出, Help: 退出并清理所有置顶窗口
+			32 container
+				33 heading 增强截图与贴图, Value: 2
+					34 text 增强截图与贴图
+				35 text 冻结截图、选区、标注、保存/复制、贴图、文字识别、滚动长截图和 GIF 已可用。自定义 ONNX 模型仍未实现。
+				36 button 截图识字
+				37 button 开始截图
+				38 text 屏幕录制权限 已授权 区域截图快捷键 F1 截图会话 空闲，未持有冻结帧 贴图 0 / 16 个
+				39 heading 当前贴图, Value: 3
+					40 text 当前贴图
+				41 button (disabled) 关闭全部贴图
+				42 table
+					43 row (selectable) 贴图
+像素尺寸
+创建时间
+操作
+					44 row (selectable)
+						45 cell (selectable) Columns: 0-3, Value: 暂无贴图；在截图工具栏点击「贴到屏幕」创建
+				46 heading 截图设置, Value: 3
+					47 text 截图设置
+				48 button 保存设置
+				49 text 保存目录（留空使用默认目录）
+				50 text field (settable) 保存目录（留空使用默认目录）, Placeholder: /Users/santa_antilles/Library/Application Support/com.allinone.desktop/screenshots
+				51 text 文件名前缀
+				52 text field (settable) 文件名前缀, Value: screenshot
+				53 text 贴图数量上限
+				54 number field (settable) 贴图数量上限, Value: 16
+					55 stepper 0
+						56 unknown
+						57 unknown
+				58 text 默认标注颜色
+				59 color well 默认标注颜色, Value: rgb 1.00000 0.231373 0.188235 1
+				60 text 默认线宽（逻辑像素）
+				61 number field (settable) 默认线宽（逻辑像素）, Value: 4
+					62 stepper 0
+						63 unknown
+						64 unknown
+				65 text 新贴图不透明度 100%
+				66 slider (settable, float) 新贴图不透明度 100%, Value: 1
+					67 value indicator 1
+				68 checkbox 保存后同时复制到剪贴板, Value: 0
+				69 text 保存后同时复制到剪贴板
+				70 checkbox 显示放大镜与取色, Value: 1
+				71 text 显示放大镜与取色
+				72 checkbox 窗口级智能选区, Value: 1
+				73 text 窗口级智能选区
+				74 checkbox 滚轮/Tab 切换区域层级, Value: 1
+				75 text 滚轮/Tab 切换区域层级
+				76 checkbox 允许拖拽自由框选, Value: 1
+				77 text 允许拖拽自由框选
+				78 heading 能力与阶段, Value: 3
+					79 text 能力与阶段
+				80 table
+					81 row (selectable)
+						82 cell (selectable) 冻结截图
+						83 cell (selectable) 可用
+						84 cell (selectable) 权限预检后抓取真实冻结帧，再显示遮罩；按物理像素裁剪，Retina 尺寸准确
+					85 row (selectable)
+						86 cell (selectable) 手动选区
+						87 cell (selectable) 可用
+						88 cell (selectable) 拖拽框选、八手柄调整、方向键 1px 平移、Shift+方向键调宽高、按住 Space 拖移
+					89 row (selectable)
+						90 cell (selectable) 窗口级智能选区
+						91 cell (selectable) 可用
+						92 cell (selectable) 基于系统窗口列表（L1）高亮光标处最前窗口，滚轮/Tab 扩展到整屏
+					93 row (selectable)
+						94 cell (selectable) 标注编辑
+						95 cell (selectable) 可用
+						96 cell (selectable) 矩形、箭头、马赛克、序号、文字，撤销/重做，放大镜 RGB/HEX 取色
+					97 row (selectable)
+						98 cell (selectable) 贴图
+						99 cell (selectable) 可用
+						100 cell (selectable) 独立置顶窗口：拖动、滚轮缩放 10%–500%、Shift+滚轮透明度、双击折叠、关闭释放
+					101 row (selectable)
+						102 cell (selectable) 控件级 / 视觉智能选区
+						103 cell (selectable) 可用
+						104 cell (selectable) 光标处控件 → 父级容器 → 窗口 → 整屏逐级切换（macOS 无障碍树，需「辅助功能」权限；未授权时如实提示并退回窗口级）；无控件信息时用视觉边缘推导卡片区域
+					105 row (selectable)
+						106 cell (selectable) OCR 文字识别
+						107 cell (selectable) 可用
+						108 cell (selectable) macOS Vision 离线识别选区原图文字（中/英/日/韩），可编辑后复制；Windows.Media.Ocr 未接入
+					109 row (selectable)
+						110 cell (selectable) 滚动长截图
+						111 cell (selectable) 可用
+						112 cell (selectable) 框选后滚动页面，按画面位移拼接成长图。重复画面和固定页眉页脚会处理；对不齐时停止并保留已拼部分
+					113 row (selectable)
+						114 cell (selectable) GIF 录制
+						115 cell (selectable) 可用
+						116 cell (selectable) 框选区域后按设定分辨率和帧率录制，保存为可播放的 GIF。取消时删除未完成文件
+					117 row (selectable)
+						118 cell (selectable) 自定义 ONNX 模型
+						119 cell (selectable) 待开发
+						120 cell (selectable) 自定义 det/rec 模型与 GPU→NPU→CPU 执行提供器回退、180 秒闲置释放尚未实现
+				121 heading 操作说明, Value: 3
+					122 text 操作说明
+				123 content list
+					124 container F1 或托盘「区域截图」开始；拖拽框选，单击采用高亮区域，右键清除选区，再次右键退出
+						125 text • F1 或托盘「区域截图」开始；拖拽框选，单击采用高亮区域，右键清除选区，再次右键退出
+					126 container 未选区时滚轮或 Tab / Shift+Tab 在「窗口 ↔ 整屏」之间切换
+						127 text • 未选区时滚轮或 Tab / Shift+Tab 在「窗口 ↔ 整屏」之间切换
+					128 container 方向键平移 1 像素，Shift+方向键调整宽高，按住 Space 拖动整个选区，八个手柄调整边界
+						129 text • 方向键平移 1 像素，Shift+方向键调整宽高，按住 Space 拖动整个选区，八个手柄调整边界
+					130 container 数字键 1–5 切换矩形/箭头/马赛克/序号/文字；⌘/Ctrl+Z 撤销，⌘/Ctrl+Shift+Z 重做
+						131 text • 数字键 1–5 切换矩形/箭头/马赛克/序号/文字；⌘/Ctrl+Z 撤销，⌘/Ctrl+Shift+Z 重做
+					132 container Enter、⌘/Ctrl+C 或双击选区复制；⌘/Ctrl+S 保存（不覆盖已有文件）；F3 贴到屏幕；Esc 取消
+						133 text • Enter、⌘/Ctrl+C 或双击选区复制；⌘/Ctrl+S 保存（不覆盖已有文件）；F3 贴到屏幕；Esc 取消
+					134 container 放大镜跟随光标，WASD 或方向键逐像素移动；C 复制 HEX，Shift+C 复制 RGB
+						135 text • 放大镜跟随光标，WASD 或方向键逐像素移动；C 复制 HEX，Shift+C 复制 RGB
+					136 container ⌘/Ctrl+Shift+O 或「截图识字」进入识字模式，选区后按 Enter；工具栏 OCR 按钮随时识别，Esc 先关闭结果面板
+						137 text • ⌘/Ctrl+Shift+O 或「截图识字」进入识字模式，选区后按 Enter；工具栏 OCR 按钮随时识别，Esc 先关闭结果面板
+					138 container 贴图：拖动移动，滚轮缩放，Shift+滚轮调透明度，双击折叠，右键固定工具条，Esc 关闭
+						139 text • 贴图：拖动移动，滚轮缩放，Shift+滚轮调透明度，双击折叠，右键固定工具条，Esc 关闭
+	140 close button
+	141 full screen button Help: this button also has an action to zoom the window, Secondary Actions: zoom the window
+	142 minimize button
+	143 text All-in-One Toolbox
+144 menu bar
+	145 All-in-One Toolbox
+	146 File
+	147 Edit
+	148 View
+	149 Window
+	150 Help
+

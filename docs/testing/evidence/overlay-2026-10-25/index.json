@@ -1,0 +1,33 @@
+{
+  "date": "2026-10-25",
+  "evidence": [
+    {
+      "file": "after-cancel-ax.txt",
+      "sha256": "0703def75105d8a5a3887503e2ae5bf5c738e4922ca05db7a8b8823338c7a29e"
+    },
+    {
+      "file": "after-cancel.png",
+      "sha256": "4d80994f27d34835f57ce3cb012ae4fc659990aaee042d9982fc304f9fe8e921"
+    },
+    {
+      "file": "build.json",
+      "sha256": "82498b1f4b717f37ac697981ddad13796d620c16a5e489b53a3bfaecba3127ca"
+    },
+    {
+      "file": "package.log",
+      "sha256": "296150fc1a35f18b2587f728b4d2166dbaa6714ae14cb923820424bb9bfb4920"
+    },
+    {
+      "file": "restarted-ocr-ax.txt",
+      "sha256": "2fdcff9bc35414fb0490014da526ace355f932539e331b6b46aac5222c3ca9c8"
+    },
+    {
+      "file": "ui-build.log",
+      "sha256": "3972ab56fcbe944727d71991fb86f2a91301e40870752f5bf1d7ed49f6ec97dd"
+    },
+    {
+      "file": "ui-tests.log",
+      "sha256": "561ad00756b04987040ea3d3affb4be3299ab6196cda950b7a2a2db213de00e1"
+    }
+  ]
+}
