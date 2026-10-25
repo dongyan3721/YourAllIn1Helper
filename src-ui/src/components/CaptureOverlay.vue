@@ -56,14 +56,16 @@
       class="text-editor"
       :style="textEditorStyle"
       :placeholder="t('screenshot.overlay.textPlaceholder')"
+      spellcheck="false"
       @pointerdown.stop
       @keydown.stop="onTextKeydown"
-      @blur="commitText"
+      @compositionstart="textComposing = true"
+      @compositionend="textComposing = false"
     ></textarea>
 
     <!-- 标注工具栏：与画布同属一个 WebView，z-index 位于画布之上，并阻止事件穿到画布 -->
     <div
-      v-if="selectionCss && !dragging"
+      v-if="selectionCss && !dragging && !liveMode && !gifPreviewUrl"
       ref="toolbarEl"
       class="capture-toolbar"
       :style="toolbarStyle"
@@ -203,6 +205,30 @@
       </div>
     </div>
 
+    <div v-if="liveMode === 'gif'" class="capture-toolbar live-bar" :style="toolbarStyle" @pointerdown.stop>
+      <span class="rec-dot"></span>
+      <span>{{ gifClock }}</span>
+      <span>{{ gifFrames }} {{ t('screenshot.gif.frames') }}</span>
+      <button class="tool-btn text-btn" @click="stopGifRecording">{{ t('screenshot.gif.stop') }}</button>
+      <button class="tool-btn text-btn" @click="cancelGifRecording">{{ t('screenshot.overlay.cancel') }}</button>
+    </div>
+
+    <div v-if="liveMode === 'scroll'" class="scroll-live" :style="thumbStyle">
+      <img v-if="scrollThumbUrl" :src="scrollThumbUrl" alt="" />
+      <div class="scroll-live-meta">{{ t('screenshot.scroll.scrolling') }} · {{ scrollHeight }}px</div>
+      <p>{{ t('screenshot.scroll.liveHint') }}</p>
+    </div>
+
+    <div v-if="gifPreviewUrl" class="gif-preview-panel" @pointerdown.stop>
+      <strong>{{ gifAutoStopped ? t('screenshot.gif.autoStopped') : t('screenshot.gif.previewTitle') }}</strong>
+      <img :src="gifPreviewUrl" alt="" />
+      <div class="gif-preview-actions">
+        <button class="tool-btn text-btn" @click="confirmGif">{{ t('screenshot.gif.keep') }}</button>
+        <button class="tool-btn text-btn" @click="copyGifToClipboard">{{ t('screenshot.gif.copy') }}</button>
+        <button class="tool-btn text-btn" @click="discardGif">{{ t('screenshot.gif.discard') }}</button>
+      </div>
+    </div>
+
     <!-- 放大镜与取色 -->
     <div v-if="showMagnifier" class="magnifier" :style="magnifierStyle">
       <canvas ref="magCanvas" class="mag-canvas"></canvas>
@@ -262,6 +288,8 @@ import { t } from '../utils/i18n';
 import {
   exportSelection,
   fetchFrozenFrame,
+  fetchGifImage,
+  fetchScrollPreview,
   screenshotApi,
   type DetectedRegion,
   type ExportAction,
@@ -352,6 +380,18 @@ const GIF_PRESET_OPTIONS: GifRecordingPreset[] = ['original', '1080p', '720p', '
 const GIF_FPS_OPTIONS: Array<10 | 15 | 24 | 30> = [10, 15, 24, 30];
 const selectedGifPreset = ref<GifRecordingPreset>('original');
 const selectedGifFps = ref<10 | 15 | 24 | 30>(15);
+const liveMode = ref<'gif' | 'scroll' | null>(null);
+const gifFrames = ref(0);
+const gifElapsedMs = ref(0);
+const gifAutoStopped = ref(false);
+const gifPreviewUrl = ref<string | null>(null);
+const scrollHeight = ref(0);
+const scrollThumbUrl = ref<string | null>(null);
+const textComposing = ref(false);
+let textOpenedAt = 0;
+let liveTimer: ReturnType<typeof setInterval> | undefined;
+let gifFinishing = false;
+let scrollStopping = false;
 const color = ref(ANNOTATION_COLORS[0]);
 const strokeWidth = ref(STROKE_WIDTHS[1]);
 const history = new EditHistory();
@@ -433,6 +473,21 @@ const toolbarStyle = computed(() => {
   if (!selectionCss.value) return {};
   const p = placeToolbar(selectionCss.value, toolbarSize, viewport);
   return { left: `${p.x}px`, top: `${p.y}px` };
+});
+
+const gifClock = computed(() => {
+  const total = Math.floor(gifElapsedMs.value / 1000);
+  const m = Math.floor(total / 60).toString().padStart(2, '0');
+  const s = (total % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+});
+
+const thumbStyle = computed(() => {
+  const rect = selectionCss.value;
+  if (!rect) return {};
+  const width = 168;
+  const top = rect.y > 196 ? rect.y - 188 : rect.y + rect.height + 12;
+  return { left: `${Math.max(8, rect.x)}px`, top: `${Math.max(8, top)}px`, width: `${width}px` };
 });
 
 const textEditorStyle = computed(() => {
@@ -575,7 +630,7 @@ async function pumpResolve() {
 // ───────────────────────────── 指针交互 ─────────────────────────────
 
 function onPointerDown(e: PointerEvent) {
-  if (!ready.value || exporting.value || e.button !== 0) return;
+  if (!ready.value || exporting.value || liveMode.value || gifPreviewUrl.value || e.button !== 0) return;
   if (textEditor.value) {
     commitText();
     return;
@@ -583,6 +638,12 @@ function onPointerDown(e: PointerEvent) {
   const p = framePoint(e);
   probe.value = p;
   const sel = selection.value;
+  if (sel && tool.value === 'text' && containsPoint(sel, p)) {
+    // 阻止这次按下把焦点留在画布上，否则文字框刚出现就会失焦。
+    e.preventDefault();
+    beginAnnotation(p);
+    return;
+  }
   rootEl.value?.setPointerCapture(e.pointerId);
   if (sel && spaceHeld.value) {
     dragging.value = { kind: 'move', start: p, origin: sel };
@@ -763,6 +824,7 @@ function beginAnnotation(p: Point) {
       return;
     case 'text':
       textEditor.value = { at: p, value: '', size: frameSize.value, color: color.value };
+      textOpenedAt = performance.now();
       void nextTick(() => textEl.value?.focus());
       return;
     case 'rect':
@@ -854,37 +916,223 @@ function toggleGifOptions() {
   void measureToolbar();
 }
 
+function setLiveHole(on: boolean) {
+  document.body.classList.toggle('live-hole', on);
+  rootEl.value?.classList.toggle('live-hole', on);
+  const canvas = baseCanvas.value;
+  if (!canvas || !frame) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.putImageData(new ImageData(new Uint8ClampedArray(frame.rgba), frame.width, frame.height), 0, 0);
+  if (on && selection.value) {
+    ctx.clearRect(selection.value.x, selection.value.y, selection.value.width, selection.value.height);
+  }
+}
+
+function stopLiveTimer() {
+  if (liveTimer) clearInterval(liveTimer);
+  liveTimer = undefined;
+}
+
+function replaceBlob(current: string | null, bytes: ArrayBuffer, type: string): string {
+  if (current) URL.revokeObjectURL(current);
+  return URL.createObjectURL(new Blob([bytes], { type }));
+}
+
+async function showGifPreview(autoStopped: boolean) {
+  if (gifPreviewUrl.value || gifFinishing) return;
+  gifFinishing = true;
+  stopLiveTimer();
+  try {
+    const bytes = await fetchGifImage();
+    gifAutoStopped.value = autoStopped;
+    gifPreviewUrl.value = replaceBlob(null, bytes, 'image/gif');
+    liveMode.value = null;
+    setLiveHole(false);
+  } catch (err: any) {
+    showToast(err?.message || String(err), 'error');
+    liveMode.value = null;
+    setLiveHole(false);
+  }
+}
+
+function beginLivePoll() {
+  stopLiveTimer();
+  liveTimer = setInterval(() => {
+    void pollLive();
+  }, 300);
+}
+
+async function pollLive() {
+  if (liveMode.value === 'gif') {
+    try {
+      const status = await screenshotApi.gifStatus();
+      if (!status) return;
+      gifElapsedMs.value = status.duration_ms;
+      gifFrames.value = status.frame_count;
+      if (!status.is_recording) {
+        if (status.pending_path) await showGifPreview(status.auto_stopped);
+        else {
+          stopLiveTimer();
+          liveMode.value = null;
+          setLiveHole(false);
+          if (status.error) showToast(status.error, 'error');
+        }
+      }
+    } catch {
+      // 下一次轮询再试，避免一次抖动退出录制。
+    }
+    return;
+  }
+  if (liveMode.value !== 'scroll') return;
+  try {
+    const status = await screenshotApi.scrollStatus();
+    if (status) {
+      scrollHeight.value = status.current_height;
+      if (!status.is_active) {
+        stopLiveTimer();
+        await stopScrollCapture();
+        return;
+      }
+    }
+    const png = await fetchScrollPreview();
+    scrollThumbUrl.value = replaceBlob(scrollThumbUrl.value, png, 'image/png');
+  } catch {
+    // 缩略图还没生成时预览接口会失败，继续采帧即可。
+  }
+}
+
 async function startScrollCapture() {
   const sel = selection.value;
-  if (!sel || !session.value || exporting.value) {
+  if (!sel || !session.value || exporting.value || liveMode.value) {
     showToast(t('screenshot.scroll.needSelection'), 'error');
     return;
   }
   if (textEditor.value) commitText();
-  exporting.value = true;
+  if (history.items.length > 0 && !window.confirm(t('screenshot.scroll.discardAnnotations'))) return;
+  history.clear();
+  historyVersion.value++;
+  draft.value = null;
+  requestRender();
   try {
     await screenshotApi.scrollStart(session.value.session_id, sel);
+    liveMode.value = 'scroll';
+    scrollHeight.value = sel.height;
+    setLiveHole(true);
+    beginLivePoll();
   } catch (err: any) {
-    exporting.value = false;
+    setLiveHole(false);
+    showToast(err?.message || String(err), 'error');
+  }
+}
+
+async function stopScrollCapture() {
+  if (scrollStopping) return;
+  scrollStopping = true;
+  stopLiveTimer();
+  liveMode.value = null;
+  try {
+    await screenshotApi.scrollStop();
+  } catch (err: any) {
+    setLiveHole(false);
+    showToast(err?.message || String(err), 'error');
+  }
+}
+
+async function cancelScrollCapture() {
+  stopLiveTimer();
+  liveMode.value = null;
+  if (scrollThumbUrl.value) URL.revokeObjectURL(scrollThumbUrl.value);
+  scrollThumbUrl.value = null;
+  setLiveHole(false);
+  try {
+    await screenshotApi.scrollCancel();
+  } catch (err: any) {
     showToast(err?.message || String(err), 'error');
   }
 }
 
 async function startGifRecording() {
   const sel = selection.value;
-  if (!sel || !session.value || exporting.value) {
+  if (!sel || !session.value || exporting.value || liveMode.value) {
     showToast(t('screenshot.gif.needSelection'), 'error');
     return;
   }
   if (textEditor.value) commitText();
-  exporting.value = true;
   try {
+    const png = await renderOverlayPng(sel);
     await screenshotApi.gifStart(session.value.session_id, sel, {
       preset: selectedGifPreset.value,
       fps: selectedGifFps.value,
+      overlayPng: png,
     });
+    showGifOptions.value = false;
+    liveMode.value = 'gif';
+    gifElapsedMs.value = 0;
+    gifFrames.value = 0;
+    setLiveHole(true);
+    requestRender();
+    beginLivePoll();
   } catch (err: any) {
-    exporting.value = false;
+    setLiveHole(false);
+    showToast(err?.message || String(err), 'error');
+  }
+}
+
+async function stopGifRecording() {
+  if (liveMode.value !== 'gif') return;
+  try {
+    const status = await screenshotApi.gifStop();
+    gifElapsedMs.value = status.duration_ms;
+    gifFrames.value = status.frame_count;
+    if (status.pending_path) await showGifPreview(status.auto_stopped);
+    else {
+      stopLiveTimer();
+      liveMode.value = null;
+      setLiveHole(false);
+      if (status.error) showToast(status.error, 'error');
+    }
+  } catch (err: any) {
+    showToast(err?.message || String(err), 'error');
+  }
+}
+
+async function cancelGifRecording() {
+  stopLiveTimer();
+  liveMode.value = null;
+  setLiveHole(false);
+  try {
+    await screenshotApi.gifCancel();
+  } catch (err: any) {
+    showToast(err?.message || String(err), 'error');
+  }
+}
+
+async function confirmGif() {
+  try {
+    const status = await screenshotApi.gifConfirm();
+    showToast(t('screenshot.gif.kept', { path: status.saved_path || '' }), 'info');
+  } catch (err: any) {
+    showToast(err?.message || String(err), 'error');
+  }
+}
+
+async function copyGifToClipboard() {
+  try {
+    await screenshotApi.gifCopy();
+    showToast(t('screenshot.gif.copied'), 'info');
+  } catch (err: any) {
+    showToast(err?.message || String(err), 'error');
+  }
+}
+
+async function discardGif() {
+  if (gifPreviewUrl.value) URL.revokeObjectURL(gifPreviewUrl.value);
+  gifPreviewUrl.value = null;
+  gifAutoStopped.value = false;
+  try {
+    await screenshotApi.gifCancel();
+  } catch (err: any) {
     showToast(err?.message || String(err), 'error');
   }
 }
@@ -960,7 +1208,28 @@ function moveProbe(dx: number, dy: number) {
 
 function onKeyDown(e: KeyboardEvent) {
   if (!ready.value && e.key !== 'Escape') return;
-  if (textEditor.value) return;
+  if (textEditor.value || textComposing.value) return;
+  if (liveMode.value === 'gif' || gifPreviewUrl.value) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (gifPreviewUrl.value) void discardGif();
+      else void cancelGifRecording();
+    } else if (e.key === 'Enter' && liveMode.value === 'gif') {
+      e.preventDefault();
+      void stopGifRecording();
+    }
+    return;
+  }
+  if (liveMode.value === 'scroll') {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      void cancelScrollCapture();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      void stopScrollCapture();
+    }
+    return;
+  }
   const mod = e.metaKey || e.ctrlKey;
   const key = e.key;
   if (key === 'Escape') {
@@ -1102,11 +1371,18 @@ onMounted(async () => {
       showToast(t('screenshot.gif.selectHint'), 'info');
     }
   } catch (err: any) {
-    loadError.value = err?.message || String(err);
+    const message = err?.message || String(err);
+    loadError.value = message;
     try {
-      if (session.value) await screenshotApi.overlayReady(session.value.session_id);
-      else await screenshotApi.cancel();
+      if (session.value) {
+        await screenshotApi.overlayReady(session.value.session_id);
+        // 冻结帧已经画上，只是最小化时第一次显示超时。重试成功就清掉错误，避免恢复窗口后还停在 kernel error。
+        if (ready.value) loadError.value = '';
+      } else {
+        await screenshotApi.cancel();
+      }
     } catch {
+      loadError.value = message;
       await cancelCapture();
     }
   }
@@ -1117,6 +1393,9 @@ onUnmounted(() => {
   window.removeEventListener('keyup', onKeyUp);
   window.removeEventListener('resize', onResize);
   if (toastTimer) clearTimeout(toastTimer);
+  stopLiveTimer();
+  if (gifPreviewUrl.value) URL.revokeObjectURL(gifPreviewUrl.value);
+  if (scrollThumbUrl.value) URL.revokeObjectURL(scrollThumbUrl.value);
   mosaicCache.clear();
   frame = null;
 });
@@ -1132,6 +1411,7 @@ onUnmounted(() => {
   user-select: none;
   -webkit-user-select: none;
 }
+.capture-root.live-hole { background: transparent; }
 .cursor-cross { cursor: crosshair; }
 .cursor-move { cursor: move; }
 .cursor-grab { cursor: grab; }
@@ -1202,14 +1482,18 @@ onUnmounted(() => {
 .text-editor {
   min-width: 120px;
   min-height: 1.4em;
-  padding: 0;
+  padding: 2px 4px;
   margin: 0;
   border: 1px dashed rgba(255, 255, 255, 0.85);
-  background: rgba(0, 0, 0, 0.12);
+  background: rgba(0, 0, 0, 0.35);
   outline: none;
   resize: both;
   overflow: hidden;
   z-index: 14;
+  pointer-events: auto;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  caret-color: currentColor;
 }
 
 .capture-toolbar {
@@ -1436,4 +1720,48 @@ body.capture-overlay-body {
   margin: 0;
   overflow: hidden;
 }
+body.capture-overlay-body.live-hole {
+  background: transparent !important;
+}
+.scroll-live {
+  position: absolute;
+  z-index: 24;
+  padding: 8px;
+  border-radius: 10px;
+  background: rgba(28, 28, 30, 0.92);
+  color: #f5f5f7;
+  pointer-events: none;
+}
+.scroll-live img {
+  display: block;
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  background: #000;
+}
+.scroll-live-meta { margin-top: 6px; font-size: 12px; font-weight: 600; }
+.scroll-live p { margin: 4px 0 0; font-size: 11px; color: rgba(255, 255, 255, 0.72); }
+.gif-preview-panel {
+  position: absolute;
+  z-index: 30;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(640px, calc(100vw - 48px));
+  padding: 16px;
+  border-radius: 12px;
+  background: rgba(28, 28, 30, 0.96);
+  color: #f5f5f7;
+}
+.gif-preview-panel img {
+  max-width: 100%;
+  max-height: 60vh;
+  object-fit: contain;
+  background: #000;
+}
+.gif-preview-actions { display: flex; gap: 8px; }
+.live-bar { z-index: 22; }
 </style>

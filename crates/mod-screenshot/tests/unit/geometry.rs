@@ -177,6 +177,21 @@ fn frame_points_map_back_to_desktop_units_including_negative_origin() {
     let left = MonitorGeometry::new(&monitor(-1920, -200, 1920, 1080, 2.0), 3840, 2160).unwrap();
     assert_eq!(left.frame_point_to_desktop(0, 0), (-1920, -200));
     assert_eq!(left.frame_point_to_desktop(3840, 400), (0, 0));
+    let desktop = left.frame_selection_to_desktop(&SelectionBox {
+        x: 200,
+        y: 100,
+        width: 40,
+        height: 20,
+    });
+    assert_eq!(
+        desktop,
+        SelectionBox {
+            x: -1820,
+            y: -150,
+            width: 20,
+            height: 10,
+        }
+    );
 }
 
 #[test]

@@ -53,6 +53,7 @@ pub struct ScrollCaptureSession {
     cancel_signal: Arc<AtomicBool>,
     auto_scroll_flag: Arc<AtomicBool>,
     stitched_result: Arc<Mutex<Option<StitchedImage>>>,
+    preview_png: Arc<Mutex<Option<Vec<u8>>>>,
     worker_handle: Mutex<Option<JoinHandle<()>>>,
 }
 
@@ -60,15 +61,18 @@ impl ScrollCaptureSession {
     pub fn new(
         session_id: String,
         selection: SelectionBox,
+        capture_bounds: SelectionBox,
         capturer: Arc<dyn ScreenCapturer>,
         input_simulator: Option<Arc<dyn InputSimulator>>,
         config: StitcherConfig,
         event_sink: Option<ScrollEventSink>,
+        exclude_window_id: u32,
     ) -> Arc<Self> {
         let stop_signal = Arc::new(AtomicBool::new(false));
         let cancel_signal = Arc::new(AtomicBool::new(false));
         let auto_scroll_flag = Arc::new(AtomicBool::new(false));
         let stitched_result = Arc::new(Mutex::new(None));
+        let preview_png = Arc::new(Mutex::new(None));
 
         let status = Arc::new(RwLock::new(ScrollStatusBrief {
             is_active: true,
@@ -88,6 +92,7 @@ impl ScrollCaptureSession {
             cancel_signal: cancel_signal.clone(),
             auto_scroll_flag: auto_scroll_flag.clone(),
             stitched_result: stitched_result.clone(),
+            preview_png: preview_png.clone(),
             worker_handle: Mutex::new(None),
         });
 
@@ -98,15 +103,17 @@ impl ScrollCaptureSession {
             .spawn(move || {
                 Self::run_capture_loop(
                     session_id,
-                    selection,
+                    capture_bounds,
                     capturer,
                     input_simulator,
                     config,
+                    exclude_window_id,
                     status,
                     stop_signal,
                     cancel_signal,
                     auto_scroll_flag,
                     stitched_result,
+                    preview_png,
                     event_sink,
                 );
             })
@@ -184,27 +191,35 @@ impl ScrollCaptureSession {
         self.stitched_result.lock().clone()
     }
 
+    /// 录制过程中的缩略图 PNG。重复帧不会改它。
+    pub fn preview_png(&self) -> Option<Vec<u8>> {
+        self.preview_png.lock().clone()
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn run_capture_loop(
         session_id: String,
-        selection: SelectionBox,
+        capture_bounds: SelectionBox,
         capturer: Arc<dyn ScreenCapturer>,
         input_simulator: Option<Arc<dyn InputSimulator>>,
         config: StitcherConfig,
+        exclude_window_id: u32,
         status: Arc<RwLock<ScrollStatusBrief>>,
         stop_signal: Arc<AtomicBool>,
         cancel_signal: Arc<AtomicBool>,
         auto_scroll_flag: Arc<AtomicBool>,
         stitched_result: Arc<Mutex<Option<StitchedImage>>>,
+        preview_png: Arc<Mutex<Option<Vec<u8>>>>,
         event_sink: Option<ScrollEventSink>,
     ) {
         let frame_interval = Duration::from_millis(66); // ~15 FPS
         let mut stitcher = ScrollStitcher::new(config);
+        let mut last_preview = Instant::now() - Duration::from_secs(1);
 
-        let center_x = selection.x + (selection.width as i32) / 2;
-        let center_y = selection.y + (selection.height as i32) / 2;
+        let center_x = capture_bounds.x + (capture_bounds.width as i32) / 2;
+        let center_y = capture_bounds.y + (capture_bounds.height as i32) / 2;
 
-        info!(session_id = %session_id, bounds = ?selection, "Scroll capture worker started");
+        info!(session_id = %session_id, bounds = ?capture_bounds, "Scroll capture worker started");
 
         let mut auto_scroll_counter = 0;
 
@@ -212,7 +227,7 @@ impl ScrollCaptureSession {
             let loop_start = Instant::now();
 
             // 1. 抓取选区
-            let captured = match capturer.capture_region(selection) {
+            let captured = match capturer.capture_region_below(capture_bounds, exclude_window_id) {
                 Ok(frame) => frame,
                 Err(error) => {
                     warn!(%error, "Failed to capture region for long screenshot");
@@ -238,8 +253,15 @@ impl ScrollCaptureSession {
                     let frame_count = stitcher.frame_count();
                     {
                         let mut st = status.write();
+                        st.width = stitcher.width() as u32;
                         st.current_height = current_height as u32;
                         st.frame_count = frame_count;
+                    }
+                    if last_preview.elapsed() >= Duration::from_millis(250) {
+                        if let Some(png) = encode_preview(&stitcher) {
+                            *preview_png.lock() = Some(png);
+                        }
+                        last_preview = Instant::now();
                     }
 
                     if let Some(sink) = &event_sink {
@@ -316,6 +338,9 @@ impl ScrollCaptureSession {
             st.stop_reason = Some(StopReason::Cancelled);
             *stitched_result.lock() = None;
         } else {
+            if let Some(png) = encode_preview(&stitcher) {
+                *preview_png.lock() = Some(png);
+            }
             let final_reason = status.read().stop_reason.clone();
             let final_image = stitcher.finish(final_reason);
             info!(
@@ -336,4 +361,19 @@ impl ScrollCaptureSession {
             *stitched_result.lock() = Some(final_image);
         }
     }
+}
+
+fn encode_preview(stitcher: &ScrollStitcher) -> Option<Vec<u8>> {
+    let (width, height, rgba) = stitcher.downscaled_rgba(220)?;
+    let mut png = Vec::new();
+    let encoder = image::codecs::png::PngEncoder::new(&mut png);
+    image::ImageEncoder::write_image(
+        encoder,
+        &rgba,
+        width,
+        height,
+        image::ExtendedColorType::Rgba8,
+    )
+    .ok()?;
+    Some(png)
 }

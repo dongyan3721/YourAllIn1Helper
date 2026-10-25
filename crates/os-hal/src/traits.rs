@@ -13,8 +13,20 @@ pub trait ScreenCapturer: Send + Sync + 'static {
     fn list_monitors(&self) -> HalResult<Vec<DisplayMonitorInfo>>;
     /// Captures a frozen RGBA8 frame of the specified monitor (or primary monitor if `None`).
     fn capture_monitor(&self, monitor_id: Option<u32>) -> HalResult<CapturedFrame>;
-    /// Captures a sub-rectangle of the screen in physical coordinates.
+    /// 抓取全局桌面单位矩形（与 `list_monitors` 的 x/y/宽高同一空间）。
+    /// macOS 为逻辑点，Windows 为物理像素。不要传入冻结帧的物理像素。
     fn capture_region(&self, bounds: SelectionBox) -> HalResult<CapturedFrame>;
+
+    /// 同 [`capture_region`]，但 `below_window_id != 0` 时只采集该窗口之下的画面。
+    /// 用于 GIF / 长截图避开自身遮罩。默认忽略窗口号，退回普通区域抓取。
+    fn capture_region_below(
+        &self,
+        bounds: SelectionBox,
+        below_window_id: u32,
+    ) -> HalResult<CapturedFrame> {
+        let _ = below_window_id;
+        self.capture_region(bounds)
+    }
     /// 抓屏前的权限预检：只检查、不申请，也不修改系统安全设置。
     /// 没有独立屏幕录制授权概念的平台（如 Windows 桌面会话）保持默认 `Ok`；
     /// macOS 未授权时系统仍会返回仅含壁纸的画面，因此必须显式预检并返回 `PermissionDenied`。

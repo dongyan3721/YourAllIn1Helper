@@ -415,15 +415,23 @@ fn trigger_action(app: &AppHandle, action_id: &str) {
     if is_exiting(app) {
         return;
     }
-    if action_id == ACTION_TRANSLATOR {
+    // 翻译要等目标应用的无障碍树。截图要抓屏并创建全屏遮罩。
+    // macOS 全局热键回调在 AppKit 主线程上：若在这里同步做完，遮罩页随后
+    // `run_on_main_thread` 等主线程显示窗口。主窗口最小化时窗口服务会拖住这条回调，
+    // 等待超时后界面留下 Internal kernel error，恢复窗口也不会清掉。
+    if action_id == ACTION_TRANSLATOR || action_id.starts_with("screenshot:") {
         let app = app.clone();
-        // AX 跨进程调用可能等待目标应用，移出 AppKit 主事件循环。
+        let action_id = action_id.to_string();
         tauri::async_runtime::spawn_blocking(move || {
+            if is_exiting(&app) {
+                return;
+            }
             if let Some(host) = app.try_state::<Arc<DesktopHost>>() {
-                if let Err(error) = host.kernel().trigger_action(ACTION_TRANSLATOR) {
-                    tracing::error!(%error, "Translator shortcut failed");
+                if let Err(error) = host.kernel().trigger_action(&action_id) {
+                    tracing::error!(action_id, %error, "Global shortcut action failed");
                 }
             }
+            emit_update(&app);
         });
         return;
     }
@@ -906,7 +914,9 @@ pub fn run() {
             crate::screenshot_binary::screenshot_frame,
             crate::screenshot_binary::screenshot_pin_image,
             crate::screenshot_binary::screenshot_export,
-            crate::screenshot_binary::screenshot_scroll_image
+            crate::screenshot_binary::screenshot_scroll_image,
+            crate::screenshot_binary::screenshot_scroll_preview,
+            crate::screenshot_binary::screenshot_gif_image
         ])
         .setup(move |app| {
             // 人工 GUI 回归可使用独立的数据目录，避免改动日常使用记录。

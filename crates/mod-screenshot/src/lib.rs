@@ -40,7 +40,7 @@ use session::{
 use std::{
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU32, Ordering},
         Arc,
     },
     thread,
@@ -134,6 +134,8 @@ pub struct ScreenshotModule {
     gate: Mutex<()>,
     session: RwLock<Option<SharedSession>>,
     overlay_visible: AtomicBool,
+    /// 遮罩窗口号。GIF / 长截图抓屏时排除它，避免拍到冻结帧。
+    overlay_window_id: AtomicU32,
     pins: PinStore,
     last_export: RwLock<Option<ExportOutcome>>,
     last_error: RwLock<Option<ScreenshotFailure>>,
@@ -193,6 +195,7 @@ impl ScreenshotModule {
             gate: Mutex::new(()),
             session: RwLock::new(None),
             overlay_visible: AtomicBool::new(false),
+            overlay_window_id: AtomicU32::new(0),
             pins: PinStore::default(),
             last_export: RwLock::new(None),
             last_error: RwLock::new(None),
@@ -214,6 +217,11 @@ impl ScreenshotModule {
     /// 替换剪贴板端口（生产宿主在 Tauri 启动后注入系统剪贴板）。
     pub fn set_clipboard(&self, clipboard: Arc<dyn ScreenshotClipboard>) {
         *self.clipboard.write() = clipboard;
+    }
+
+    /// 记录遮罩的原生窗口号，供区域抓取排除自身。
+    pub fn set_overlay_window_id(&self, window_id: u32) {
+        self.overlay_window_id.store(window_id, Ordering::SeqCst);
     }
 
     /// 注入输入模拟器（供自动滚轮滚动）。
@@ -820,28 +828,27 @@ impl ScreenshotModule {
 
     // ───────────────────────────── 滚动长截图 (M3) ─────────────────────────────
 
-    /// 开启滚动长截图：关闭遮罩，创建选区外部的浮动控制条窗口，并在后台以约 15 FPS 循环抓帧拼接。
+    /// 开启滚动长截图：遮罩保留并挖开选区，鼠标穿透给用户自己滚动；控制条停在选区外。
     pub fn start_scroll(
         &self,
         ctx: &ModuleContext,
         session_id: &str,
         selection: SelectionBox,
     ) -> CoreResult<scroll::ScrollStatusBrief> {
-        let _session = self.current_session(session_id)?;
+        let session = self.current_session(session_id)?;
+        let selection =
+            geometry::normalize_crop(&selection, session.frame.width, session.frame.height)?;
+        let capture_bounds = session.monitor.frame_selection_to_desktop(&selection);
+        let (cx, cy) = control_origin(&session.monitor, &selection);
 
         let control_w = 340.0;
         let control_h = 52.0;
-        let cx = (selection.x as f64) + ((selection.width as f64) - control_w) / 2.0;
-        let cy = (selection.y as f64) + (selection.height as f64) + 12.0;
-
-        self.finish_session_locked(ctx)?;
-
         let spec = WindowSpec {
             label: CONTROL_LABEL.to_string(),
             title: "Screenshot Control".to_string(),
             route: "/screenshot-control?mode=scroll".to_string(),
-            x: Some(cx.max(0.0)),
-            y: Some(cy.max(0.0)),
+            x: Some(cx),
+            y: Some(cy),
             width: control_w,
             height: control_h,
             min_width: Some(control_w),
@@ -858,16 +865,22 @@ impl ScreenshotModule {
             },
         };
         ctx.window_pool.open_window(spec)?;
+        // 选区要能滚到底下的窗口。控制条是另一个窗口，仍然接收点击。
+        let _ = ctx
+            .window_pool
+            .set_mouse_passthrough(OVERLAY_LABEL, true);
 
         let sim = self.input_simulator.read().clone();
         let sink = self.event_sink.read().clone();
         let scroll_session = scroll::ScrollCaptureSession::new(
             session_id.to_string(),
             selection,
+            capture_bounds,
             self.capturer.clone(),
             sim,
             scroll::StitcherConfig::default(),
             sink,
+            self.overlay_window_id.load(Ordering::SeqCst),
         );
         let status = scroll_session.status();
         *self.active_scroll.write() = Some(scroll_session);
@@ -881,7 +894,12 @@ impl ScreenshotModule {
         scroll.stop();
         scroll.wait_finished(Duration::from_secs(2));
 
+        let _ = ctx
+            .window_pool
+            .set_mouse_passthrough(OVERLAY_LABEL, false);
         let _ = ctx.window_pool.destroy_window(CONTROL_LABEL);
+        // 预览窗口不能被全屏遮罩盖住。
+        let _ = self.finish_session_locked(ctx);
 
         let status = scroll.status();
         if let Some(img) = scroll.take_stitched_image() {
@@ -920,6 +938,9 @@ impl ScreenshotModule {
             scroll.wait_finished(Duration::from_secs(1));
         }
         *self.last_stitched.write() = None;
+        let _ = ctx
+            .window_pool
+            .set_mouse_passthrough(OVERLAY_LABEL, false);
         let _ = ctx.window_pool.destroy_window(CONTROL_LABEL);
         let _ = ctx.window_pool.destroy_window(PREVIEW_LABEL);
         Ok(true)
@@ -938,6 +959,15 @@ impl ScreenshotModule {
             .ok_or_else(|| internal("当前没有运行中的长截图"))?;
         scroll.set_auto_scroll(enabled);
         Ok(())
+    }
+
+    /// 长截图进行中的缩略图 PNG。还没有拼出画面时返回空。
+    pub fn scroll_preview_png(&self) -> CoreResult<Vec<u8>> {
+        self.active_scroll
+            .read()
+            .as_ref()
+            .and_then(|session| session.preview_png())
+            .ok_or_else(|| internal("长截图预览还没有生成"))
     }
 
     /// 获取拼接完成的长截图原始像素字节流。
@@ -1085,102 +1115,93 @@ impl ScreenshotModule {
 
     // ───────────────────────────── GIF 录制 (M3) ─────────────────────────────
 
-    /// 开启 GIF 录制：关闭遮罩，创建控制条并在后台以指定帧率流式编码。
+    /// 开启 GIF 录制：遮罩留在原处，选区透出底下的动态画面，墨迹单独合成进每一帧。
     pub fn start_gif(
         &self,
         ctx: &ModuleContext,
         session_id: &str,
         selection: SelectionBox,
         config: gif::GifRecordingConfig,
+        overlay_png: Option<Vec<u8>>,
     ) -> CoreResult<gif::GifRecordingStatus> {
-        let _session = self.current_session(session_id)?;
-
-        let control_w = 340.0;
-        let control_h = 52.0;
-        let cx = (selection.x as f64) + ((selection.width as f64) - control_w) / 2.0;
-        let cy = (selection.y as f64) + (selection.height as f64) + 12.0;
-
-        self.finish_session_locked(ctx)?;
-
-        let spec = WindowSpec {
-            label: CONTROL_LABEL.to_string(),
-            title: "GIF Control".to_string(),
-            route: "/screenshot-control?mode=gif".to_string(),
-            x: Some(cx.max(0.0)),
-            y: Some(cy.max(0.0)),
-            width: control_w,
-            height: control_h,
-            min_width: Some(control_w),
-            min_height: Some(control_h),
-            resizable: false,
-            decorations: false,
-            transparent: true,
-            always_on_top: true,
-            skip_taskbar: true,
-            focus: false,
-            ignore_cursor_events: false,
-            policy: app_core::WindowLifecyclePolicy::Transient {
-                destroy_on_blur: false,
-            },
-        };
-        ctx.window_pool.open_window(spec)?;
-
+        let session = self.current_session(session_id)?;
+        let selection =
+            geometry::normalize_crop(&selection, session.frame.width, session.frame.height)?;
+        let capture_bounds = session.monitor.frame_selection_to_desktop(&selection);
         let settings = self.settings(ctx);
         let save_dir = self.save_directory(ctx, &settings);
         let sink = self.event_sink.read().clone();
-        let session = gif::GifRecordingSession::new(
+        let recording = gif::GifRecordingSession::new(
             session_id.to_string(),
             selection,
+            capture_bounds,
             save_dir,
             settings.file_name_prefix,
             config,
             self.capturer.clone(),
             sink,
+            overlay_png,
+            self.overlay_window_id.load(Ordering::SeqCst),
         )
         .map_err(|e| internal(e.to_string()))?;
 
-        let status = session.status();
-        *self.active_gif.write() = Some(session);
+        let status = recording.status();
+        *self.active_gif.write() = Some(recording);
         Ok(status)
     }
 
-    /// 停止 GIF 录制并保存最终文件。
-    pub fn stop_gif(&self, ctx: &ModuleContext) -> CoreResult<gif::GifRecordingStatus> {
-        let gif_opt = self.active_gif.write().take();
-        let session = gif_opt.ok_or_else(|| internal("当前没有运行中的 GIF 录制"))?;
+    /// 停止 GIF 录制并留下临时文件，等用户确认后再持久化。遮罩继续显示预览。
+    pub fn stop_gif(&self, _ctx: &ModuleContext) -> CoreResult<gif::GifRecordingStatus> {
+        let session = self
+            .active_gif
+            .read()
+            .clone()
+            .ok_or_else(|| internal("当前没有运行中的 GIF 录制"))?;
         session.stop();
         session.wait_finished(Duration::from_secs(3));
-
-        let _ = ctx.window_pool.destroy_window(CONTROL_LABEL);
-
         let status = session.status();
         *self.last_gif_status.write() = Some(status.clone());
-
-        if status.saved_path.is_some() {
-            let spec = WindowSpec {
-                label: PREVIEW_LABEL.to_string(),
-                title: "GIF 录制预览".to_string(),
-                route: "/screenshot-preview?type=gif".to_string(),
-                x: None,
-                y: None,
-                width: 760.0,
-                height: 840.0,
-                min_width: Some(400.0),
-                min_height: Some(400.0),
-                resizable: true,
-                decorations: true,
-                transparent: false,
-                always_on_top: true,
-                skip_taskbar: false,
-                focus: true,
-                ignore_cursor_events: false,
-                policy: app_core::WindowLifecyclePolicy::Transient {
-                    destroy_on_blur: false,
-                },
-            };
-            let _ = ctx.window_pool.open_window(spec);
-        }
         Ok(status)
+    }
+
+    /// 确认保留：把临时 GIF 独占写成最终文件，并结束截图遮罩。
+    pub fn confirm_gif(&self, ctx: &ModuleContext) -> CoreResult<gif::GifRecordingStatus> {
+        let session = self
+            .active_gif
+            .write()
+            .take()
+            .ok_or_else(|| internal("当前没有可保存的 GIF"))?;
+        let path = session.commit().map_err(|e| internal(e.to_string()))?;
+        let mut status = session.status();
+        status.saved_path = Some(path.to_string_lossy().to_string());
+        *self.last_gif_status.write() = Some(status.clone());
+        let _ = self.finish_session_locked(ctx);
+        Ok(status)
+    }
+
+    /// 把尚未确认的 GIF 写入系统剪贴板。
+    pub fn copy_gif(&self) -> CoreResult<()> {
+        let session = self
+            .active_gif
+            .read()
+            .clone()
+            .ok_or_else(|| internal("当前没有可复制的 GIF"))?;
+        let bytes = session
+            .read_pending()
+            .map_err(|e| internal(e.to_string()))?;
+        self.clipboard()
+            .write_gif(&bytes)
+            .map_err(|e| internal(format!("复制 GIF 失败：{}", e)))
+    }
+
+    /// 预览用的 GIF 字节（临时文件或已确认文件）。
+    pub fn gif_bytes(&self) -> CoreResult<Vec<u8>> {
+        if let Some(session) = self.active_gif.read().clone() {
+            return session
+                .read_pending()
+                .map_err(|e| internal(e.to_string()));
+        }
+        Err(internal("当前没有可预览的 GIF"))
     }
 
     /// 取消 GIF 录制并删除半成品文件。
@@ -1188,6 +1209,7 @@ impl ScreenshotModule {
         if let Some(session) = self.active_gif.write().take() {
             session.cancel();
             session.wait_finished(Duration::from_secs(2));
+            session.discard_pending();
         }
         let _ = ctx.window_pool.destroy_window(CONTROL_LABEL);
         let _ = ctx.window_pool.destroy_window(PREVIEW_LABEL);
@@ -1295,6 +1317,24 @@ impl ScreenshotModule {
         session_result?;
         pins_result.map(|_| ())
     }
+}
+
+/// 控制条放在选区下方；下方放不下时改到上方，并夹在被截显示器里。
+fn control_origin(monitor: &geometry::MonitorGeometry, selection: &SelectionBox) -> (f64, f64) {
+    let logical = monitor.frame_to_logical(selection);
+    let screen = monitor.overlay_logical_rect();
+    let control_w = 340.0;
+    let control_h = 52.0;
+    let mut x = logical.x + (logical.width - control_w) / 2.0;
+    let mut y = logical.y + logical.height + 12.0;
+    if y + control_h > screen.y + screen.height {
+        y = (logical.y - control_h - 12.0).max(screen.y);
+    }
+    let max_x = (screen.x + screen.width - control_w).max(screen.x);
+    let max_y = (screen.y + screen.height - control_h).max(screen.y);
+    x = x.clamp(screen.x, max_x);
+    y = y.clamp(screen.y, max_y);
+    (x, y)
 }
 
 /// 选择显示器：指定 ID → 主屏 → 第一块。

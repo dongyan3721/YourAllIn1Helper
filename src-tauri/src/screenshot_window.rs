@@ -6,22 +6,26 @@
 //! 因此显式提升到菜单栏之上，并允许出现在全屏应用所在的空间。
 
 use app_core::{CoreError, CoreResult};
-use tauri::{AppHandle, WebviewWindow};
+use tauri::{AppHandle, Manager, WebviewWindow};
 
-/// 显示遮罩并取得键盘焦点；层级提升失败时返回错误，由调用方销毁遮罩，不让用户面对半可用窗口。
+/// 显示遮罩并尽量取得键盘焦点。层级提升失败时返回错误，由调用方销毁遮罩。
+/// 焦点失败不阻断：主窗口最小化时系统可能拒绝把键焦点交给新窗口，但遮罩已经置于前台。
 pub(crate) fn present_capture_overlay(app: &AppHandle, overlay: &WebviewWindow) -> CoreResult<()> {
     overlay.show().map_err(to_core_error)?;
     elevate_overlay(app, overlay)?;
-    overlay.set_focus().map_err(to_core_error)?;
+    let _ = overlay.set_focus();
     Ok(())
 }
 
 #[cfg(target_os = "macos")]
 fn elevate_overlay(app: &AppHandle, overlay: &WebviewWindow) -> CoreResult<()> {
     use objc2::MainThreadMarker;
-    use objc2_app_kit::{NSMainMenuWindowLevel, NSWindow, NSWindowCollectionBehavior};
+    use objc2_app_kit::{
+        NSApplication, NSMainMenuWindowLevel, NSWindow, NSWindowCollectionBehavior,
+    };
 
     let overlay = overlay.clone();
+    let app_handle = app.clone();
     let apply = move || -> CoreResult<()> {
         // SAFETY: 窗口由 Tauri 持有，闭包只在 AppKit 主线程执行。
         let window: &NSWindow = unsafe {
@@ -39,8 +43,32 @@ fn elevate_overlay(app: &AppHandle, overlay: &WebviewWindow) -> CoreResult<()> {
                 | NSWindowCollectionBehavior::IgnoresCycle,
         );
         window.setHasShadow(false);
+        // 主面板缩在 Dock 里时应用是非激活的。激活应用才能把遮罩置于前台，
+        // 但激活有时会把已最小化的主面板一起拉回来，挡住选区和滚动预览。先记下状态，激活后再缩回去。
+        let dashboard_was_miniaturized = ns_window_is_miniaturized(&app_handle, "dashboard");
+        if let Some(mtm) = MainThreadMarker::new() {
+            let ns_app = NSApplication::sharedApplication(mtm);
+            if ns_app.isHidden() {
+                ns_app.unhide(None);
+            }
+            // 新的 activate() 不保证抢到前台。截图热键必须盖住当前应用。
+            #[allow(deprecated)]
+            ns_app.activateIgnoringOtherApps(true);
+        }
+        if dashboard_was_miniaturized {
+            miniaturize_window(&app_handle, "dashboard");
+        }
+        if window.isMiniaturized() {
+            window.deminiaturize(None);
+        }
         window.orderFrontRegardless();
         window.makeKeyAndOrderFront(None);
+        if overlay.label() == mod_screenshot::OVERLAY_LABEL {
+            let window_id = window.windowNumber() as u32;
+            if let Some(host) = app_handle.try_state::<std::sync::Arc<crate::DesktopHost>>() {
+                host.screenshot().set_overlay_window_id(window_id);
+            }
+        }
         Ok(())
     };
     if MainThreadMarker::new().is_some() {
@@ -62,6 +90,33 @@ fn elevate_overlay(app: &AppHandle, overlay: &WebviewWindow) -> CoreResult<()> {
 #[cfg(not(target_os = "macos"))]
 fn elevate_overlay(_app: &AppHandle, _overlay: &WebviewWindow) -> CoreResult<()> {
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn ns_window_is_miniaturized(app: &AppHandle, label: &str) -> bool {
+    let Some(window) = app.get_webview_window(label) else {
+        return false;
+    };
+    let Ok(ptr) = window.ns_window() else {
+        return false;
+    };
+    // SAFETY: 只在 AppKit 主线程读取窗口状态，指针由 Tauri 持有。
+    unsafe { (*ptr.cast::<objc2_app_kit::NSWindow>()).isMiniaturized() }
+}
+
+#[cfg(target_os = "macos")]
+fn miniaturize_window(app: &AppHandle, label: &str) {
+    let Some(window) = app.get_webview_window(label) else {
+        return;
+    };
+    let Ok(ptr) = window.ns_window() else {
+        return;
+    };
+    // SAFETY: 调用方已在 AppKit 主线程。
+    let window = unsafe { &*ptr.cast::<objc2_app_kit::NSWindow>() };
+    if !window.isMiniaturized() {
+        window.miniaturize(None);
+    }
 }
 
 fn to_core_error(error: impl std::fmt::Display) -> CoreError {

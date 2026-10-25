@@ -9,6 +9,10 @@ pub trait ScreenshotClipboard: Send + Sync + 'static {
     fn write_image(&self, width: u32, height: u32, rgba: &[u8]) -> Result<(), String>;
     /// 写入纯文本（取色结果）。
     fn write_text(&self, text: &str) -> Result<(), String>;
+    /// 写入动态 GIF。默认如实失败，由生产宿主覆盖。
+    fn write_gif(&self, _bytes: &[u8]) -> Result<(), String> {
+        Err("当前剪贴板不能写入动态 GIF".to_string())
+    }
 }
 
 /// 宿主未提供剪贴板时的实现：所有写入返回明确错误。

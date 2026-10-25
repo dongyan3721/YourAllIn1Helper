@@ -177,11 +177,32 @@ impl DesktopHost {
                 if let Some(max_dur) = args.get("max_duration_secs").and_then(Value::as_u64) {
                     config.max_duration_secs = max_dur;
                 }
-                Ok(serde_json::to_value(
-                    shot.start_gif(ctx, session_id, selection, config)?,
-                )?)
+                let overlay_png = args
+                    .get("overlay_png_base64")
+                    .and_then(Value::as_str)
+                    .filter(|value| !value.is_empty())
+                    .map(|value| {
+                        base64::Engine::decode(
+                            &base64::engine::general_purpose::STANDARD,
+                            value,
+                        )
+                        .map_err(|e| CoreError::Config(format!("标注层数据无效: {}", e)))
+                    })
+                    .transpose()?;
+                Ok(serde_json::to_value(shot.start_gif(
+                    ctx,
+                    session_id,
+                    selection,
+                    config,
+                    overlay_png,
+                )?)?)
             }
             "screenshot_gif_stop" => Ok(serde_json::to_value(shot.stop_gif(ctx)?)?),
+            "screenshot_gif_confirm" => Ok(serde_json::to_value(shot.confirm_gif(ctx)?)?),
+            "screenshot_gif_copy" => {
+                shot.copy_gif()?;
+                Ok(json!({ "copied": true }))
+            }
             "screenshot_gif_cancel" => Ok(json!({ "cancelled": shot.cancel_gif(ctx)? })),
             "screenshot_gif_status" => Ok(serde_json::to_value(shot.gif_status())?),
             _ => Err(CoreError::Config(format!(
@@ -270,5 +291,19 @@ impl DesktopHost {
         self.kernel
             .registry()
             .with_enabled(MODULE_ID, || self.screenshot.stitched_image_bytes())
+    }
+
+    /// 长截图进行中的缩略图 PNG。
+    pub fn screenshot_scroll_preview_png(&self) -> CoreResult<Vec<u8>> {
+        self.kernel
+            .registry()
+            .with_enabled(MODULE_ID, || self.screenshot.scroll_preview_png())
+    }
+
+    /// 待确认 GIF 的原始字节。
+    pub fn screenshot_gif_bytes(&self) -> CoreResult<Vec<u8>> {
+        self.kernel
+            .registry()
+            .with_enabled(MODULE_ID, || self.screenshot.gif_bytes())
     }
 }

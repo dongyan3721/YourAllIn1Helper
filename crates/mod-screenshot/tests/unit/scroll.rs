@@ -327,18 +327,21 @@ fn test_scroll_session_cancellation_releases_all() {
         ]),
     });
 
+    let selection = app_core::SelectionBox {
+        x: 0,
+        y: 0,
+        width: width as u32,
+        height: height as u32,
+    };
     let session = ScrollCaptureSession::new(
         "test_cancel".to_string(),
-        app_core::SelectionBox {
-            x: 0,
-            y: 0,
-            width: width as u32,
-            height: height as u32,
-        },
+        selection,
+        selection,
         capturer,
         None,
         StitcherConfig::default(),
         None,
+        0,
     );
 
     // 稍作等待以接收初始帧

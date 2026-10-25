@@ -146,8 +146,8 @@ fn test_scroll_full_lifecycle_and_export_reusing_m1() {
         .expect("start_scroll");
     assert!(scroll_status.is_active);
 
-    // 遮罩已销毁，选区外控制条已创建
-    assert!(ctx.window_pool.get_active_window(OVERLAY_LABEL).is_none());
+    // 遮罩保留，选区外控制条已创建
+    assert!(ctx.window_pool.get_active_window(OVERLAY_LABEL).is_some());
     assert!(ctx.window_pool.get_active_window(CONTROL_LABEL).is_some());
 
     // 3. 运行约 200ms
@@ -212,23 +212,26 @@ fn test_gif_full_lifecycle_and_file_creation() {
     };
 
     let gif_status = module
-        .start_gif(ctx, &session_info.session_id, sel, config)
+        .start_gif(ctx, &session_info.session_id, sel, config, None)
         .expect("start_gif");
     assert!(gif_status.is_recording);
 
-    assert!(ctx.window_pool.get_active_window(OVERLAY_LABEL).is_none());
-    assert!(ctx.window_pool.get_active_window(CONTROL_LABEL).is_some());
+    assert!(ctx.window_pool.get_active_window(OVERLAY_LABEL).is_some());
+    assert!(ctx.window_pool.get_active_window(CONTROL_LABEL).is_none());
 
     std::thread::sleep(Duration::from_millis(200));
 
     let stop_status = module.stop_gif(ctx).expect("stop_gif");
     assert!(!stop_status.is_recording);
-    assert!(stop_status.saved_path.is_some());
+    assert!(stop_status.pending_path.is_some());
+    assert!(stop_status.saved_path.is_none());
+    assert!(ctx.window_pool.get_active_window(OVERLAY_LABEL).is_some());
 
-    assert!(ctx.window_pool.get_active_window(CONTROL_LABEL).is_none());
-    assert!(ctx.window_pool.get_active_window(PREVIEW_LABEL).is_some());
+    let confirmed = module.confirm_gif(ctx).expect("confirm_gif");
+    assert!(confirmed.saved_path.is_some());
+    assert!(ctx.window_pool.get_active_window(OVERLAY_LABEL).is_none());
 
-    let saved_file = std::path::PathBuf::from(stop_status.saved_path.unwrap());
+    let saved_file = std::path::PathBuf::from(confirmed.saved_path.unwrap());
     assert!(saved_file.exists());
     let file_data = std::fs::read(&saved_file).unwrap();
     let reader = gif::DecodeOptions::new()

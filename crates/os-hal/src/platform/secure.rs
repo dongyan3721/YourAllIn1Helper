@@ -5,6 +5,31 @@ use crate::{
     HalError, HalResult,
 };
 
+/// 把动态 GIF 放进系统剪贴板。确认保留前也可以复制。
+#[cfg(target_os = "macos")]
+pub fn write_animated_gif_clipboard(bytes: &[u8]) -> Result<(), String> {
+    use objc2_app_kit::NSPasteboard;
+    use objc2_foundation::{NSData, NSString};
+
+    if bytes.is_empty() {
+        return Err("GIF 内容为空".to_string());
+    }
+    let pasteboard = NSPasteboard::generalPasteboard();
+    pasteboard.clearContents();
+    let data = unsafe { NSData::dataWithBytes_length(bytes.as_ptr().cast(), bytes.len()) };
+    let gif_type = NSString::from_str("com.compuserve.gif");
+    if !pasteboard.setData_forType(Some(&data), &gif_type) {
+        return Err("NSPasteboard 写入 GIF 失败".to_string());
+    }
+    let _ = pasteboard.setData_forType(Some(&data), &NSString::from_str("public.gif"));
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn write_animated_gif_clipboard(_bytes: &[u8]) -> Result<(), String> {
+    Err("当前系统还不能把动态 GIF 写入剪贴板".to_string())
+}
+
 /// macOS 剪贴板管理器约定的敏感类型标记（nspasteboard.org）。
 #[cfg(target_os = "macos")]
 const CONCEALED_TYPE: &str = "org.nspasteboard.ConcealedType";

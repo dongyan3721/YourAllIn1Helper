@@ -22,4 +22,8 @@ impl ScreenshotClipboard for ArboardScreenshotClipboard {
             .set_text(text.to_string())
             .map_err(|e| e.to_string())
     }
+
+    fn write_gif(&self, bytes: &[u8]) -> Result<(), String> {
+        os_hal::write_animated_gif_clipboard(bytes)
+    }
 }

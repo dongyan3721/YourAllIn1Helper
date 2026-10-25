@@ -281,6 +281,7 @@ async function close() {
 
 .preview-content {
   flex: 1;
+  min-height: 0;
   position: relative;
   overflow-y: auto;
   overflow-x: hidden;
@@ -316,9 +317,9 @@ async function close() {
 
 .scroll-preview-wrapper {
   max-width: 100%;
+  flex: 0 0 auto;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   border-radius: 4px;
-  overflow: hidden;
 }
 
 .scroll-img {

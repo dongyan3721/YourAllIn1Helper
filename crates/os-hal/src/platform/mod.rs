@@ -13,6 +13,8 @@ mod services;
 mod usage;
 mod windows;
 
+pub use secure::write_animated_gif_clipboard;
+
 use crate::{HalError, OsHalBundle};
 use std::sync::{atomic::AtomicUsize, Arc};
 

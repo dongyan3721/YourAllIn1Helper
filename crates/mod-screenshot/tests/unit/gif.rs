@@ -152,19 +152,23 @@ fn test_gif_recording_session_completion_and_file_creation() {
         sample_factor: 10,
     };
 
+    let selection = app_core::SelectionBox {
+        x: 0,
+        y: 0,
+        width: 64,
+        height: 48,
+    };
     let session = GifRecordingSession::new(
         "test_gif_rec".to_string(),
-        app_core::SelectionBox {
-            x: 0,
-            y: 0,
-            width: 64,
-            height: 48,
-        },
+        selection,
+        selection,
         save_dir.clone(),
         "Screenshot".to_string(),
         config,
         capturer,
         None,
+        None,
+        0,
     )
     .expect("Session create");
 
@@ -176,9 +180,9 @@ fn test_gif_recording_session_completion_and_file_creation() {
 
     let st = session.status();
     assert!(!st.is_recording);
-    assert!(st.saved_path.is_some(), "Saved path must exist: {:?}", st);
-
-    let saved_path = std::path::PathBuf::from(st.saved_path.unwrap());
+    assert!(st.pending_path.is_some(), "Pending GIF must exist: {:?}", st);
+    assert!(st.saved_path.is_none());
+    let saved_path = session.commit().expect("confirm save");
     assert!(saved_path.exists());
     assert!(saved_path.extension().unwrap() == "gif");
 
@@ -206,19 +210,23 @@ fn test_gif_recording_session_cancellation_deletes_temp_file() {
         counter: parking_lot::Mutex::new(0),
     });
 
+    let selection = app_core::SelectionBox {
+        x: 0,
+        y: 0,
+        width: 40,
+        height: 40,
+    };
     let session = GifRecordingSession::new(
         "test_gif_cancel".to_string(),
-        app_core::SelectionBox {
-            x: 0,
-            y: 0,
-            width: 40,
-            height: 40,
-        },
+        selection,
+        selection,
         save_dir.clone(),
         "Screenshot".to_string(),
         GifRecordingConfig::default(),
         capturer,
         None,
+        None,
+        0,
     )
     .expect("Session create");
 
@@ -227,6 +235,7 @@ fn test_gif_recording_session_cancellation_deletes_temp_file() {
     // 用户在录制中取消
     assert!(session.cancel());
     session.wait_finished(std::time::Duration::from_secs(2));
+    session.discard_pending();
 
     let st = session.status();
     assert!(!st.is_recording);

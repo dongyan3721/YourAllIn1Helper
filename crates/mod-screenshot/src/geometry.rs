@@ -92,6 +92,21 @@ impl MonitorGeometry {
         }
     }
 
+    /// 帧像素选区 → 全局桌面单位矩形，供 `capture_region` 使用。
+    ///
+    /// macOS 的桌面单位是逻辑点，xcap / `CGWindowListCreateImage` 也按点解释矩形；
+    /// 直接传入帧像素会在 Retina 上越出显示器点尺寸，区域抓取整段失败。
+    pub fn frame_selection_to_desktop(&self, selection: &SelectionBox) -> SelectionBox {
+        let sx = self.pixels_per_desktop_x().max(0.01);
+        let sy = self.pixels_per_desktop_y().max(0.01);
+        SelectionBox {
+            x: (self.desktop_x as f64 + selection.x as f64 / sx).round() as i32,
+            y: (self.desktop_y as f64 + selection.y as f64 / sy).round() as i32,
+            width: ((selection.width as f64) / sx).round().max(1.0) as u32,
+            height: ((selection.height as f64) / sy).round().max(1.0) as u32,
+        }
+    }
+
     /// 帧像素选区 → 全局逻辑点矩形，用于把贴图放在原截图位置。
     pub fn frame_to_logical(&self, selection: &SelectionBox) -> LogicalRect {
         let origin = self.overlay_logical_rect();

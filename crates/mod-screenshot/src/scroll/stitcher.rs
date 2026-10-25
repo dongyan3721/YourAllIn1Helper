@@ -16,7 +16,7 @@ pub enum StopReason {
     UserStopped,
     /// 用户主动取消。
     Cancelled,
-    /// 达到最大长度上限（如 30000 像素）。
+    /// 达到最大长度上限（默认 8000 像素）。
     MaxLengthReached { max_height: usize },
     /// 达到内存上限。
     MaxMemoryReached { max_bytes: usize },
@@ -80,7 +80,7 @@ pub enum StitchStepResult {
 /// 拼接配置约束。
 #[derive(Debug, Clone)]
 pub struct StitcherConfig {
-    /// 最大允许高度（像素），默认 30,000。
+    /// 最大允许高度（像素），默认 8,000。
     pub max_height: usize,
     /// 最大允许内存（字节），默认 512 MB (512 * 1024 * 1024)。
     pub max_memory_bytes: usize,
@@ -93,7 +93,7 @@ pub struct StitcherConfig {
 impl Default for StitcherConfig {
     fn default() -> Self {
         Self {
-            max_height: 30_000,
+            max_height: 8_000,
             max_memory_bytes: 512 * 1024 * 1024,
             max_low_confidence_skips: 2,
             ncc: NccConfig::default(),
@@ -163,6 +163,31 @@ impl ScrollStitcher {
     /// 当前画布高度。
     pub fn current_height(&self) -> usize {
         self.current_height
+    }
+
+    /// 把当前拼接画布缩小到长边不超过 `max_edge`，供遮罩上的实时缩略图使用。
+    pub fn downscaled_rgba(&self, max_edge: usize) -> Option<(u32, u32, Vec<u8>)> {
+        if self.width == 0 || self.current_height == 0 || self.stitched_rgba.is_empty() {
+            return None;
+        }
+        let max_edge = max_edge.max(1);
+        let long_side = self.width.max(self.current_height);
+        let scale = (long_side as f64 / max_edge as f64).max(1.0);
+        let tw = ((self.width as f64) / scale).round().max(1.0) as usize;
+        let th = ((self.current_height as f64) / scale).round().max(1.0) as usize;
+        let mut out = vec![0u8; tw * th * 4];
+        for y in 0..th {
+            let sy = (y * self.current_height / th).min(self.current_height - 1);
+            for x in 0..tw {
+                let sx = (x * self.width / tw).min(self.width - 1);
+                let si = (sy * self.width + sx) * 4;
+                let di = (y * tw + x) * 4;
+                if si + 4 <= self.stitched_rgba.len() {
+                    out[di..di + 4].copy_from_slice(&self.stitched_rgba[si..si + 4]);
+                }
+            }
+        }
+        Some((tw as u32, th as u32, out))
     }
 
     /// 帧宽度。

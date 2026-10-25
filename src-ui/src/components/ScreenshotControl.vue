@@ -1,5 +1,5 @@
 <template>
-  <div class="control-root" data-tauri-drag-region>
+  <div class="control-root" tabindex="0" data-tauri-drag-region @keydown="onControlKey">
     <!-- 模式 1：长截图进行中 -->
     <template v-if="mode === 'scroll'">
       <div class="status-indicator scroll-indicator">
@@ -82,6 +82,18 @@ const gifFileSize = ref(0);
 const errorToast = ref<string | null>(null);
 let unlistenFn: (() => void) | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+function onControlKey(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    if (mode.value === 'gif') void cancelGif();
+    else void cancelScroll();
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (mode.value === 'gif') void stopGif();
+    else void stopScroll();
+  }
+}
 
 onMounted(async () => {
   // 订阅 Tauri 事件

@@ -20,7 +20,7 @@ pub mod types;
 
 pub use mock::MockOsHal;
 pub use mock_secure::MockSecureServices;
-pub use platform::NativeOsHal;
+pub use platform::{write_animated_gif_clipboard, NativeOsHal};
 pub use secure::{ClipboardOwnership, ClipboardWriteToken, SecretStore};
 pub use traits::{
     ActiveAppWatcher, BiometricAuthenticator, InputSimulator, OcrProvider, OsHalBundle,

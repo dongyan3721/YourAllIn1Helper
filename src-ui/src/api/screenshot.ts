@@ -162,6 +162,16 @@ export async function fetchScrollImage(): Promise<ArrayBuffer> {
   return toArrayBuffer(await tauriCore().invoke('screenshot_scroll_image'));
 }
 
+/** 长截图进行中的缩略图 PNG。 */
+export async function fetchScrollPreview(): Promise<ArrayBuffer> {
+  return toArrayBuffer(await tauriCore().invoke('screenshot_scroll_preview'));
+}
+
+/** 待确认的 GIF 字节。 */
+export async function fetchGifImage(): Promise<ArrayBuffer> {
+  return toArrayBuffer(await tauriCore().invoke('screenshot_gif_image'));
+}
+
 export interface ScrollStatus {
   is_active: boolean;
   width: number;
@@ -189,7 +199,9 @@ export interface GifStatus {
   duration_ms: number;
   frame_count: number;
   file_size_bytes: number;
+  pending_path: string | null;
   saved_path: string | null;
+  auto_stopped: boolean;
   error: string | null;
 }
 
@@ -257,9 +269,33 @@ export const screenshotApi = {
   scrollExport: (action: ExportAction) => invokeIpc<ExportOutcome>('screenshot_scroll_export', { action }),
 
   // ── M3: GIF 录制 ──
-  gifStart: (sessionId: string, selection: Rect, options?: GifRecordingConfigOptions) =>
-    invokeIpc<GifStatus>('screenshot_gif_start', { session_id: sessionId, selection, ...options }),
+  gifStart: (
+    sessionId: string,
+    selection: Rect,
+    options?: GifRecordingConfigOptions & { overlayPng?: Uint8Array | null }
+  ) =>
+    invokeIpc<GifStatus>('screenshot_gif_start', {
+      session_id: sessionId,
+      selection,
+      preset: options?.preset,
+      fps: options?.fps,
+      max_duration_secs: options?.max_duration_secs,
+      custom_width: options?.custom_width,
+      custom_height: options?.custom_height,
+      overlay_png_base64: options?.overlayPng?.length ? bytesToBase64(options.overlayPng) : undefined,
+    }),
   gifStop: () => invokeIpc<GifStatus>('screenshot_gif_stop'),
+  gifConfirm: () => invokeIpc<GifStatus>('screenshot_gif_confirm'),
+  gifCopy: () => invokeIpc<{ copied: boolean }>('screenshot_gif_copy'),
   gifCancel: () => invokeIpc<{ cancelled: boolean }>('screenshot_gif_cancel'),
   gifStatus: () => invokeIpc<GifStatus | null>('screenshot_gif_status'),
 };
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let text = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    text += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(text);
+}

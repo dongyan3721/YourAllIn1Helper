@@ -49,7 +49,8 @@ pub struct WindowSpec {
 
 impl WindowSpec {
     /// Preset for Module 01: Fullscreen screenshot & Snipaste smart-region overlay.
-    /// 冻结帧完整覆盖窗口，因此使用不透明背景；宿主先隐藏创建，前端绘制帧后再显示，避免闪出桌面。
+    /// 窗口本身透明，平时由页面黑底和冻结帧铺满；GIF / 长截图只挖开选区，才能看到底下的动态画面。
+    /// 宿主先隐藏创建，前端画完帧再显示，避免闪出桌面。
     pub fn capture_overlay(x: f64, y: f64, width: f64, height: f64) -> Self {
         Self {
             label: "capture-overlay".to_string(),
@@ -63,7 +64,7 @@ impl WindowSpec {
             min_height: None,
             resizable: false,
             decorations: false,
-            transparent: false,
+            transparent: true,
             always_on_top: true,
             skip_taskbar: true,
             focus: true,
