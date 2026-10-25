@@ -52,8 +52,13 @@ impl DesktopHost {
                     .get("as_plain_text")
                     .and_then(Value::as_bool)
                     .unwrap_or(false);
-                // 屏蔽剪贴板自捕获，避免写回操作系统剪贴板时再次被后台监听器重复记录
-                ctx.event_bus.set_clipboard_suppression(true, "quick_paste");
+                // 屏蔽剪贴板自捕获，避免写回操作系统剪贴板时再次被后台监听器重复记录；
+                // 租约在本分支结束（含写入失败提前返回）时自动释放，不影响其他模块的屏蔽。
+                let suppression = ctx.event_bus.acquire_clipboard_suppression(
+                    "clipboard",
+                    "quick_paste",
+                    std::time::Duration::from_secs(5),
+                );
                 let record = self.clipboard.paste_item(ctx, id, as_plain);
                 if let Ok(ref rec) = record {
                     if self.mock_hal.is_none() {
@@ -74,8 +79,7 @@ impl DesktopHost {
                         }
                     }
                 }
-                ctx.event_bus
-                    .set_clipboard_suppression(false, "quick_paste_done");
+                suppression.release();
                 let record = record?;
                 Ok(json!({
                     "pasted_record": record,

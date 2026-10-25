@@ -870,6 +870,20 @@ pub fn run() {
             host.screenshot.set_clipboard(Arc::new(
                 crate::screenshot_clipboard::ArboardScreenshotClipboard,
             ));
+            // 翻译 API Key 改存系统钥匙串；原生烟测保持会话内存，隔离 GUI 测试使用独立条目名。
+            if !ui_smoke_test {
+                let service = if gui_test::data_dir().is_some() {
+                    format!("{}.qa", crate::secure_credentials::TRANSLATOR_KEYCHAIN_SERVICE)
+                } else {
+                    crate::secure_credentials::TRANSLATOR_KEYCHAIN_SERVICE.to_string()
+                };
+                if !host
+                    .translator_credentials
+                    .use_system_store(Arc::new(os_hal::NativeOsHal::new()), &service)
+                {
+                    tracing::warn!("System keychain unavailable; translator keys stay in session memory");
+                }
+            }
             let selection_app = app.handle().clone();
             host.translator.set_selection_sink(Arc::new(move || {
                 let _ =

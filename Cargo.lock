@@ -3695,6 +3695,7 @@ dependencies = [
  "objc2-core-graphics",
  "objc2-foundation",
  "parking_lot",
+ "security-framework",
  "serde",
  "serde_json",
  "tempfile",

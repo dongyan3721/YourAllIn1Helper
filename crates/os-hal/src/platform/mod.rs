@@ -2,6 +2,7 @@
 mod input;
 mod regions;
 mod screen;
+mod secure;
 mod selection;
 mod services;
 mod usage;

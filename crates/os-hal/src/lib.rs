@@ -12,12 +12,16 @@
 //! - [`InputSimulator`]: Synthetic keyboard/mouse input (`Ctrl+V` / `Cmd+V` quick paste, auto-scroll wheel).
 
 pub mod mock;
+pub mod mock_secure;
 pub mod platform;
+pub mod secure;
 pub mod traits;
 pub mod types;
 
 pub use mock::MockOsHal;
+pub use mock_secure::MockSecureServices;
 pub use platform::NativeOsHal;
+pub use secure::{ClipboardOwnership, ClipboardWriteToken, SecretStore};
 pub use traits::{
     ActiveAppWatcher, BiometricAuthenticator, InputSimulator, OcrProvider, OsHalBundle,
     RegionDetector, ScreenCapturer, SelectionExtractor, WindowController,

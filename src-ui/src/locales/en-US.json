@@ -713,6 +713,8 @@
     "cancel": "Cancel",
     "pin": "Pin Window",
     "unpin": "Unpin Window",
-    "close": "Close"
+    "close": "Close",
+    "keychainCredentials": "Keys are stored in the macOS login keychain (items owned by this app) and never written to config, database or logs; the system may ask for keychain access the first time.",
+    "apiKeyPlaceholderKeychain": "Enter API Key (saved to system keychain)"
   }
 }
