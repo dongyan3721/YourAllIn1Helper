@@ -15,6 +15,7 @@ use tauri::{
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
+use crate::exit_coordinator::{ExitCoordinator, ExitDecision};
 use crate::script_env::AioScriptEnvironment;
 use crate::script_events::TauriScriptEventSink;
 use crate::script_hotkeys::TauriScriptHotkeySync;
@@ -197,6 +198,11 @@ impl WindowBackend for TauriWindowBackend {
 /// Single typed IPC entry point used by every WebView.
 #[tauri::command]
 async fn ipc(app: AppHandle, request: IpcRequest) -> IpcResponse {
+    if request.cmd == "kernel_shutdown" {
+        // 桌面退出统一交给 ExitRequested；这里不能在活动 IPC 中等待内核清理。
+        app.exit(0);
+        return IpcResponse::success(json!({ "exit_requested": true }));
+    }
     let host = app.state::<Arc<DesktopHost>>().inner().clone();
     if matches!(
         request.cmd.as_str(),
@@ -320,7 +326,16 @@ fn emit_update(app: &AppHandle) {
     let _ = app.emit("kernel://updated", Value::Null);
 }
 
+pub(crate) fn is_exiting(app: &AppHandle) -> bool {
+    app.try_state::<Arc<ExitCoordinator>>()
+        .is_some_and(|exit| exit.is_shutting_down())
+}
+
 fn trigger_action(app: &AppHandle, action_id: &str) {
+    // 后台 shutdown 可能正在等活动租约，原生回调不得再在主线程等待该锁。
+    if is_exiting(app) {
+        return;
+    }
     if let Some(host) = app.try_state::<Arc<DesktopHost>>() {
         if let Err(error) = host.kernel().trigger_action(action_id) {
             tracing::error!(action_id, %error, "Global shortcut action failed");
@@ -473,6 +488,9 @@ fn start_window_pin_guard_and_badges(app: &AppHandle) {
 
 #[cfg(target_os = "macos")]
 fn reconcile_pin_badges(app: &AppHandle, badges: Vec<ExternalWindowInfo>) {
+    if is_exiting(app) {
+        return;
+    }
     use std::collections::HashSet;
 
     let mut desired = HashSet::new();
@@ -734,44 +752,47 @@ fn setup_tray(app: &AppHandle) -> Result<(), tauri::Error> {
         ))?)
         .menu(&menu)
         .tooltip("All-in-One Toolbox")
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "tray_dashboard" => {
-                if let Some(host) = app.try_state::<Arc<DesktopHost>>() {
-                    let _ = host
-                        .kernel()
-                        .context()
-                        .window_pool
-                        .open_window(WindowSpec::dashboard("/overview"));
-                    emit_update(app);
-                }
+        .on_menu_event(|app, event| {
+            if is_exiting(app) {
+                return;
             }
-            "tray_screenshot" => trigger_action(app, mod_screenshot::ACTION_CAPTURE),
-            "tray_clipboard" => trigger_action(app, ACTION_CLIPBOARD),
-            "tray_translator" => trigger_action(app, ACTION_TRANSLATOR),
-            "tray_ink" => trigger_action(app, ACTION_SCREEN_INK),
-            "tray_sticky" => trigger_action(app, ACTION_STICKY),
-            "tray_pin" => trigger_action(app, ACTION_PIN_FOREGROUND),
-            "tray_quit" => {
-                if let Some(host) = app.try_state::<Arc<DesktopHost>>() {
-                    let _ = host.kernel().shutdown();
-                }
-                app.exit(0);
-            }
-            id if id.starts_with("tray_script_") => {
-                if let Some(host) = app.try_state::<Arc<DesktopHost>>() {
-                    if let Ok(script_id) = id.trim_start_matches("tray_script_").parse::<i64>() {
-                        if let Err(error) = host.script_runner.execute(
-                            host.kernel().context(),
-                            script_id,
-                            Vec::new(),
-                        ) {
-                            tracing::error!(script_id, %error, "Tray script execution failed");
-                        }
+            match event.id.as_ref() {
+                "tray_dashboard" => {
+                    if let Some(host) = app.try_state::<Arc<DesktopHost>>() {
+                        let _ = host
+                            .kernel()
+                            .context()
+                            .window_pool
+                            .open_window(WindowSpec::dashboard("/overview"));
                         emit_update(app);
                     }
                 }
+                "tray_screenshot" => trigger_action(app, mod_screenshot::ACTION_CAPTURE),
+                "tray_clipboard" => trigger_action(app, ACTION_CLIPBOARD),
+                "tray_translator" => trigger_action(app, ACTION_TRANSLATOR),
+                "tray_ink" => trigger_action(app, ACTION_SCREEN_INK),
+                "tray_sticky" => trigger_action(app, ACTION_STICKY),
+                "tray_pin" => trigger_action(app, ACTION_PIN_FOREGROUND),
+                "tray_quit" => {
+                    app.exit(0);
+                }
+                id if id.starts_with("tray_script_") => {
+                    if let Some(host) = app.try_state::<Arc<DesktopHost>>() {
+                        if let Ok(script_id) = id.trim_start_matches("tray_script_").parse::<i64>()
+                        {
+                            if let Err(error) = host.script_runner.execute(
+                                host.kernel().context(),
+                                script_id,
+                                Vec::new(),
+                            ) {
+                                tracing::error!(script_id, %error, "Tray script execution failed");
+                            }
+                            emit_update(app);
+                        }
+                    }
+                }
+                _ => {}
             }
-            _ => {}
         })
         .build(app)?;
     Ok(())
@@ -787,6 +808,7 @@ pub fn run() {
     let ui_smoke_test = std::env::args().any(|arg| arg == "--ui-smoke-test");
     let keep_open = std::env::args().any(|arg| arg == "--keep-open");
     let app = tauri::Builder::default()
+        .manage(Arc::new(ExitCoordinator::default()))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             ipc,
@@ -876,12 +898,16 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            // shutdown 工作线程负责销毁窗口；原生事件回调只让 AppKit 继续排空清理操作。
+            if is_exiting(window.app_handle()) {
+                return;
+            }
             let Some(host) = window.app_handle().try_state::<Arc<DesktopHost>>() else {
                 return;
             };
             let pool = &host.kernel().context().window_pool;
             match event {
-                WindowEvent::CloseRequested { .. } => {
+                WindowEvent::CloseRequested { api, .. } => {
                     let label = window.label();
                     if let Some(note_id) = label.strip_prefix("sticky-note-") {
                         let _ = host
@@ -894,9 +920,30 @@ pub fn run() {
                         let _ = pool.destroy_window(label);
                         host.screenshot.forget_pin(pin_id);
                     } else if label == mod_screenshot::OVERLAY_LABEL {
-                        let _ = host
+                        // 导出持有会话 gate，并可能等待主线程创建贴图或恢复遮罩层级。
+                        // 原生 CloseRequested 在主线程派发，不能在这里等待同一把 gate。
+                        api.prevent_close();
+                        let session_id = host
                             .screenshot
-                            .cancel_capture(host.kernel().context(), None);
+                            .session_info(host.kernel().context(), None)
+                            .ok()
+                            .map(|session| session.session_id);
+                        if let Some(session_id) = session_id {
+                            let host = host.inner().clone();
+                            let app = window.app_handle().clone();
+                            tauri::async_runtime::spawn_blocking(move || {
+                                // 等待中的旧窗口关闭请求不得取消后来启动的新会话。
+                                if let Err(error) = host.screenshot.cancel_capture(
+                                    host.kernel().context(),
+                                    Some(&session_id),
+                                ) {
+                                    tracing::warn!(%error, "Failed to cancel screenshot after native close request");
+                                }
+                                emit_update(&app);
+                            });
+                        } else {
+                            let _ = pool.destroy_window(label);
+                        }
                     } else {
                         let _ = pool.destroy_window(label);
                     }
@@ -912,9 +959,32 @@ pub fn run() {
         .expect("failed to build Tauri application");
 
     app.run(|app, event| {
-        if let RunEvent::Exit = event {
-            if let Some(host) = app.try_state::<Arc<DesktopHost>>() {
-                let _ = host.kernel().shutdown();
+        if let RunEvent::ExitRequested { api, code, .. } = event {
+            let exit = app.state::<Arc<ExitCoordinator>>().inner().clone();
+            match exit.request() {
+                ExitDecision::Allow => {}
+                ExitDecision::Wait => api.prevent_exit(),
+                ExitDecision::StartShutdown => {
+                    api.prevent_exit();
+                    if let Err(error) = app.global_shortcut().unregister_all() {
+                        tracing::warn!(%error, "Failed to unregister shortcuts during exit");
+                    }
+                    let host = app.try_state::<Arc<DesktopHost>>().map(|host| host.inner().clone());
+                    let app = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        // shutdown 等待现有活动租约及窗口操作；主线程必须继续处理 AppKit 事件。
+                        let result = tauri::async_runtime::spawn_blocking(move || {
+                            host.map(|host| host.kernel().shutdown()).transpose()
+                        }).await;
+                        match result {
+                            Ok(Ok(_)) => {}
+                            Ok(Err(error)) => tracing::warn!(%error, "Kernel shutdown reported an error during exit"),
+                            Err(error) => tracing::error!(%error, "Kernel shutdown worker failed during exit"),
+                        }
+                        exit.finish_shutdown();
+                        app.exit(code.unwrap_or(0));
+                    });
+                }
             }
         }
     });

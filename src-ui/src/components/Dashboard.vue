@@ -831,7 +831,6 @@ async function restoreAllPins() {
 /** 退出微内核守护进程 */
 async function shutdownDaemon() {
   await invokeIpc('kernel_shutdown');
-  (window as any).__TAURI__?.window?.getCurrentWindow?.()?.destroy?.();
 }
 
 /** 格式化日期时间 */
