@@ -13,6 +13,10 @@ impl OcrProvider for NativeOsHal {
         validate_frame(frame)?;
         #[cfg(target_os = "macos")]
         {
+            // Vision 冷启动加载模型期间并发请求会偶发 CRImageReaderError；串行化识别，
+            // 同时限制大图并发带来的内存峰值。
+            static VISION_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+            let _serial = VISION_LOCK.lock();
             return objc2::rc::autoreleasepool(|_| recognize_with_vision(frame));
         }
         #[cfg(not(target_os = "macos"))]
