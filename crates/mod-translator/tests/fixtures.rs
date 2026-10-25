@@ -256,3 +256,136 @@ async fn test_cancellation_and_discard_late_fixture() {
 
     let _ = server.join();
 }
+
+// [DONE] 即为结束，不依赖服务端关闭持久连接。
+#[tokio::test]
+async fn test_sse_done_completes_before_connection_closes() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = thread::spawn(move || {
+        let (mut socket, _) = listener.accept().unwrap();
+        let mut request = [0; 4096];
+        socket.read(&mut request).unwrap();
+        socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n").unwrap();
+        let body = "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n";
+        write!(socket, "{:X}\r\n{}\r\n", body.len(), body).unwrap();
+        thread::sleep(Duration::from_millis(500));
+        let _ = socket.write_all(b"0\r\n\r\n");
+    });
+    let provider = OpenAIProvider::custom(
+        "owned",
+        "Owned fixture",
+        format!("http://{addr}/v1/chat/completions"),
+        None,
+        None,
+    );
+    let client = reqwest::Client::builder().no_proxy().build().unwrap();
+    let req = TranslationRequest {
+        text: "test".into(),
+        from: "en".into(),
+        to: "zh".into(),
+        stream: true,
+    };
+    let (tx, mut rx) = tokio::sync::mpsc::channel(8);
+    tokio::time::timeout(
+        Duration::from_millis(300),
+        provider.translate_stream(&client, &req, None, tx),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        rx.recv().await,
+        Some(TranslationStreamEvent::Chunk("ok".into()))
+    );
+    assert_eq!(
+        rx.recv().await,
+        Some(TranslationStreamEvent::Done("ok".into()))
+    );
+    server.join().unwrap();
+}
+
+// 验证正式 Client 确实发出 TLS ClientHello；不读取信任库秘密，也不访问外网。
+#[tokio::test]
+async fn test_https_transport_attempts_tls_handshake() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let server = thread::spawn(move || {
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            match listener.accept() {
+                Ok((mut socket, _)) => {
+                    socket.set_nonblocking(false).unwrap();
+                    socket
+                        .set_read_timeout(Some(Duration::from_secs(1)))
+                        .unwrap();
+                    let mut record = [0; 3];
+                    socket.read_exact(&mut record).unwrap();
+                    assert_eq!(record[0], 22, "TLS handshake record");
+                    assert_eq!(record[1], 3, "TLS legacy record version");
+                    break;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    assert!(
+                        std::time::Instant::now() < deadline,
+                        "HTTPS connector never attempted TLS"
+                    );
+                    thread::sleep(Duration::from_millis(5));
+                }
+                Err(e) => panic!("owned listener failed: {e}"),
+            }
+        }
+    });
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_secs(2))
+        .build()
+        .unwrap();
+    // 服务端主动结束握手，因此这里预期错误；上面的字节断言证明启用了 TLS。
+    assert!(client.get(format!("https://{addr}/")).send().await.is_err());
+    server.join().unwrap();
+}
+
+#[tokio::test]
+async fn test_sse_service_error_and_truncated_stream_are_not_success() {
+    for body in [
+        "data: {\"error\":{\"message\":\"fixture rejected\"}}\n\n",
+        "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n",
+    ] {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut request = [0; 4096];
+            socket.read(&mut request).unwrap();
+            write!(socket, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
+        });
+        let provider = OpenAIProvider::custom(
+            "owned",
+            "Owned",
+            format!("http://{addr}/v1/chat/completions"),
+            None,
+            None,
+        );
+        let req = TranslationRequest {
+            text: "test".into(),
+            from: "en".into(),
+            to: "zh".into(),
+            stream: true,
+        };
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(8);
+        assert!(provider
+            .translate_stream(&client, &req, None, tx)
+            .await
+            .is_err());
+        let mut saw_error = false;
+        while let Some(event) = rx.recv().await {
+            assert!(!matches!(event, TranslationStreamEvent::Done(_)));
+            saw_error |= matches!(event, TranslationStreamEvent::Error(_));
+        }
+        assert!(saw_error);
+        server.join().unwrap();
+    }
+}

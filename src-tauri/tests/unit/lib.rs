@@ -138,3 +138,29 @@ fn test_translator_ipc_workflow_and_disabled_rejection() {
         .unwrap()
         .contains("Module 'translator' is disabled"));
 }
+
+#[tokio::test]
+async fn translator_ipc_translation_supports_current_thread_runtime() {
+    let dir = tempfile::tempdir().unwrap();
+    let host = DesktopHost::bootstrap(dir.path(), true).unwrap();
+    // 无凭据只产生本地错误事件，不访问外部 API。
+    let response = host.invoke_ipc(
+        "translator_translate",
+        json!({"text": "Owned runtime fixture"}),
+    );
+    assert!(response.ok, "{:?}", response.error);
+    assert!(response.data.unwrap()["request_id"].as_u64().is_some());
+    host.translator.cancel_current_translation();
+}
+
+#[test]
+fn translator_ipc_without_runtime_reports_error_instead_of_panicking() {
+    let dir = tempfile::tempdir().unwrap();
+    let host = DesktopHost::bootstrap(dir.path(), true).unwrap();
+    let response = host.invoke_ipc(
+        "translator_translate",
+        json!({"text": "Owned runtime fixture"}),
+    );
+    assert!(!response.ok);
+    assert!(response.error.unwrap().contains("异步运行时"));
+}

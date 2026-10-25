@@ -495,6 +495,8 @@
     }
   },
   "translator": {
+    "pendingOption": "此选项尚未实现",
+    "sessionCredentials": "密钥仅保存在本次内存会话中，退出后需重新输入，不写入配置文件或磁盘日志。",
     "title": "全局划词翻译",
     "sourceText": "原文",
     "targetText": "译文",

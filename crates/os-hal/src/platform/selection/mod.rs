@@ -6,7 +6,9 @@
 //!    由 Codex 统一重构为具名所有者与 RAII 租约。在此之前，模拟复制通道保持显式禁用 (Unsupported)，
 //!    不冒充已具备安全模拟复制能力，先完成原生选区读取闭环。
 
+#[cfg(target_os = "macos")]
 pub mod macos;
+#[cfg(target_os = "windows")]
 pub mod windows;
 
 use super::NativeOsHal;
@@ -25,7 +27,7 @@ impl SelectionExtractor for NativeOsHal {
         }
         #[cfg(target_os = "windows")]
         {
-            true
+            false // UIAutomation 适配尚未实现，不能报告可用。
         }
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {

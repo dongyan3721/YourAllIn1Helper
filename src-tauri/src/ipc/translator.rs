@@ -17,7 +17,8 @@ impl DesktopHost {
             }
             "translator_update_config" => {
                 let new_cfg: TranslatorConfig = serde_json::from_value(args)?;
-                self.translator.update_config(new_cfg.clone())?;
+                self.translator.update_config(new_cfg)?;
+                let new_cfg = self.translator.config();
                 // 持久化非敏感设置到磁盘 config.json
                 self.kernel.update_config(|config| {
                     if let Ok(val) = serde_json::to_value(&new_cfg) {
@@ -28,6 +29,9 @@ impl DesktopHost {
                     }
                 })?;
                 Ok(json!({ "updated": true }))
+            }
+            "translator_take_selection" => {
+                Ok(serde_json::to_value(self.translator.take_selection())?)
             }
             "translator_list_providers" => {
                 let list = self.translator.service().list_providers_metadata();
@@ -83,25 +87,9 @@ impl DesktopHost {
                 let provider_id = args.get("provider_id").and_then(|v| v.as_str());
                 let stream = args.get("stream").and_then(|v| v.as_bool()).unwrap_or(true);
 
-                let translator = self.translator.clone();
-                let text_owned = text.to_string();
-                let from_owned = from.map(|s| s.to_string());
-                let to_owned = to.map(|s| s.to_string());
-                let provider_owned = provider_id.map(|s| s.to_string());
-
-                let req_id = tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current().block_on(async move {
-                        translator
-                            .translate(
-                                &text_owned,
-                                from_owned.as_deref(),
-                                to_owned.as_deref(),
-                                provider_owned.as_deref(),
-                                stream,
-                            )
-                            .await
-                    })
-                })?;
+                let req_id =
+                    self.translator
+                        .start_translation(text, from, to, provider_id, stream)?;
 
                 Ok(json!({ "request_id": req_id }))
             }
@@ -117,6 +105,7 @@ impl DesktopHost {
                 Ok(json!({ "opened": true }))
             }
             "translator_close_popover" => {
+                self.translator.cancel_current_translation();
                 self.kernel
                     .context()
                     .window_pool

@@ -172,15 +172,22 @@ async fn test_missing_credentials_realistically_notified() {
         Some("llama3".to_string()),
         None,
     );
-    // 尝试调用本地（不应提示 API Key 未配置）
-    let res = local_openai.translate(&client, &req, None).await;
-    assert!(res.is_err());
-    let err_str = res.unwrap_err().to_string();
-    assert!(
-        !err_str.contains("API Key 未配置"),
-        "本地端点不应被 API Key 检查阻断: {}",
-        err_str
-    );
+    // 仅验证能力元数据，绝不连接用户可能正在运行的本地模型。
+    assert!(!local_openai.requires_api_key());
+    for endpoint in [
+        "https://localhost.evil.example/v1/chat/completions",
+        "https://remote.example/localhost/chat/completions",
+        "https://127.0.0.1@remote.example/v1/chat/completions",
+    ] {
+        let remote = OpenAIProvider::custom("remote", "Remote", endpoint, None, None);
+        assert!(remote.requires_api_key());
+        assert!(remote
+            .translate(&client, &req, None)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("API Key 未配置"));
+    }
 }
 
 #[tokio::test]
@@ -227,4 +234,91 @@ fn test_translator_module_selection_reading_with_mock_hal() {
     assert!(selection.is_some());
     let sel = selection.unwrap();
     assert_eq!(sel.text, "Hello All-in-One");
+}
+
+#[test]
+fn custom_endpoints_cannot_override_builtins_or_survive_removal() {
+    let module = TranslatorModule::new(Arc::new(MockOsHal::new()));
+    let custom = |id: &str| CustomProviderConfig {
+        id: id.into(),
+        name: "Custom".into(),
+        endpoint_url: "http://127.0.0.1:1234/v1/chat/completions".into(),
+        model: None,
+        temperature: None,
+        is_openai_compatible: true,
+    };
+    let mut cfg = TranslatorConfig::default();
+    cfg.custom_providers.push(custom("google"));
+    assert!(module.update_config(cfg.clone()).is_err());
+    cfg.custom_providers = vec![custom("local")];
+    module.update_config(cfg).unwrap();
+    assert!(module.service().get_provider("local").is_some());
+    module.update_config(TranslatorConfig::default()).unwrap();
+    assert!(module.service().get_provider("local").is_none());
+    assert!(module.service().get_provider("google").is_some());
+}
+
+#[test]
+fn cancellation_waits_for_request_registration() {
+    struct GatedCredentials {
+        entered: std::sync::mpsc::SyncSender<()>,
+        release: std::sync::Mutex<std::sync::mpsc::Receiver<()>>,
+    }
+    impl CredentialStorage for GatedCredentials {
+        fn get_api_key(&self, _: &str) -> app_core::CoreResult<Option<String>> {
+            self.entered.send(()).unwrap();
+            self.release.lock().unwrap().recv().unwrap();
+            Ok(None) // 无密钥，绝不会调用远端。
+        }
+        fn set_api_key(&self, _: &str, _: &str) -> app_core::CoreResult<()> {
+            Ok(())
+        }
+        fn delete_api_key(&self, _: &str) -> app_core::CoreResult<()> {
+            Ok(())
+        }
+        fn has_api_key(&self, _: &str) -> bool {
+            false
+        }
+    }
+    let (entered_tx, entered_rx) = std::sync::mpsc::sync_channel(1);
+    let (release_tx, release_rx) = std::sync::mpsc::sync_channel(1);
+    let service = Arc::new(TranslatorService::new(Arc::new(GatedCredentials {
+        entered: entered_tx,
+        release: std::sync::Mutex::new(release_rx),
+    })));
+    let worker_service = service.clone();
+    let worker = std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime
+            .block_on(worker_service.execute_translation(
+                "google",
+                TranslationRequest {
+                    text: "Owned test".into(),
+                    from: "en".into(),
+                    to: "zh".into(),
+                    stream: true,
+                },
+                Arc::new(|_, _| {}),
+            ))
+            .unwrap();
+    });
+    entered_rx.recv().unwrap();
+    let (cancelled_tx, cancelled_rx) = std::sync::mpsc::sync_channel(1);
+    let cancel = std::thread::spawn(move || {
+        service.cancel_current();
+        cancelled_tx.send(()).unwrap();
+    });
+    assert!(matches!(
+        cancelled_rx.recv_timeout(std::time::Duration::from_millis(50)),
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+    ));
+    release_tx.send(()).unwrap();
+    worker.join().unwrap();
+    cancelled_rx
+        .recv_timeout(std::time::Duration::from_secs(1))
+        .unwrap();
+    cancel.join().unwrap();
 }

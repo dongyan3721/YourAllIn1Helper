@@ -11,6 +11,18 @@ use app_core::{CoreError, CoreResult};
 use serde_json::json;
 use std::pin::Pin;
 
+/// 仅信任 URL 的主机部分；路径/用户名中的 localhost 不代表本地。
+pub fn is_loopback_url(url: &reqwest::Url) -> bool {
+    match url.host_str() {
+        Some("localhost") => true,
+        Some(host) => host
+            .trim_matches(['[', ']'])
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback()),
+        None => false,
+    }
+}
+
 pub struct OpenAIProvider {
     id: String,
     name: String,
@@ -66,9 +78,7 @@ impl OpenAIProvider {
     }
 
     fn is_local_endpoint(&self) -> bool {
-        self.endpoint.contains("localhost")
-            || self.endpoint.contains("127.0.0.1")
-            || self.endpoint.contains("0.0.0.0")
+        reqwest::Url::parse(&self.endpoint).is_ok_and(|url| is_loopback_url(&url))
     }
 }
 
@@ -79,6 +89,10 @@ impl TranslationProvider for OpenAIProvider {
 
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn requires_api_key(&self) -> bool {
+        !self.is_local_endpoint()
     }
 
     fn translate(
@@ -249,6 +263,23 @@ impl TranslationProvider for OpenAIProvider {
                     let line = line_buffer[..pos].to_string();
                     line_buffer.drain(..=pos);
 
+                    if line.trim().strip_prefix("data:").map(str::trim) == Some("[DONE]") {
+                        let _ = tx
+                            .send(TranslationStreamEvent::Done(full_accumulated))
+                            .await;
+                        return Ok(());
+                    }
+                    if let Some(data) = line.trim().strip_prefix("data:") {
+                        if let Ok(value) = serde_json::from_str::<serde_json::Value>(data.trim()) {
+                            if let Some(error) = value.get("error") {
+                                let message = format!("OpenAI SSE 服务错误: {}", error);
+                                let _ = tx
+                                    .send(TranslationStreamEvent::Error(message.clone()))
+                                    .await;
+                                return Err(CoreError::Internal(anyhow::anyhow!(message)));
+                            }
+                        }
+                    }
                     if let Some(delta) = parse_sse_openai_delta(&line) {
                         if !delta.is_empty() {
                             full_accumulated.push_str(&delta);
@@ -270,10 +301,17 @@ impl TranslationProvider for OpenAIProvider {
                 }
             }
 
+            if line_buffer.trim().strip_prefix("data:").map(str::trim) == Some("[DONE]") {
+                let _ = tx
+                    .send(TranslationStreamEvent::Done(full_accumulated))
+                    .await;
+                return Ok(());
+            }
+            let message = "SSE 响应提前结束，未收到 [DONE] 终止标记".to_string();
             let _ = tx
-                .send(TranslationStreamEvent::Done(full_accumulated))
+                .send(TranslationStreamEvent::Error(message.clone()))
                 .await;
-            Ok(())
+            Err(CoreError::Internal(anyhow::anyhow!(message)))
         })
     }
 }
