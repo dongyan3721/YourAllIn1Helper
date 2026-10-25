@@ -9,15 +9,30 @@ fn unimplemented_native_capabilities_do_not_return_mock_results() {
         Err(HalError::Unsupported(_))
     ));
     // 原生选区需要显式桌面验收，自动测试不得读取用户真实选区。
-    assert!(matches!(
-        native.recognize_rgba(&os_hal::CapturedFrame {
-            width: 1,
-            height: 1,
+    let blank = os_hal::CapturedFrame {
+        width: 1,
+        height: 1,
+        scale_factor_milli: 1000,
+        rgba_bytes: vec![0; 4],
+    };
+    let ocr = native.recognize_rgba(&blank);
+    if cfg!(target_os = "macos") {
+        // macOS 已接入 Vision：空白图只能得到空结果或真实错误，绝不能出现示例文本。
+        if let Ok(result) = ocr {
+            assert!(result.full_text.is_empty() && result.lines.is_empty());
+        }
+    } else {
+        assert!(matches!(ocr, Err(HalError::Unsupported(_))));
+    }
+    // 尺寸与缓冲区不一致必须拒绝，不能读越界内存。
+    assert!(native
+        .recognize_rgba(&os_hal::CapturedFrame {
+            width: 4,
+            height: 4,
             scale_factor_milli: 1000,
             rgba_bytes: vec![0; 4],
-        }),
-        Err(HalError::Unsupported(_))
-    ));
+        })
+        .is_err());
 }
 #[cfg(target_os = "macos")]
 #[test]
