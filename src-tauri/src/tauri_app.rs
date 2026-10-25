@@ -336,6 +336,18 @@ fn trigger_action(app: &AppHandle, action_id: &str) {
     if is_exiting(app) {
         return;
     }
+    if action_id == ACTION_TRANSLATOR {
+        let app = app.clone();
+        // AX 跨进程调用可能等待目标应用，移出 AppKit 主事件循环。
+        tauri::async_runtime::spawn_blocking(move || {
+            if let Some(host) = app.try_state::<Arc<DesktopHost>>() {
+                if let Err(error) = host.kernel().trigger_action(ACTION_TRANSLATOR) {
+                    tracing::error!(%error, "Translator shortcut failed");
+                }
+            }
+        });
+        return;
+    }
     if let Some(host) = app.try_state::<Arc<DesktopHost>>() {
         if let Err(error) = host.kernel().trigger_action(action_id) {
             tracing::error!(action_id, %error, "Global shortcut action failed");
@@ -858,6 +870,11 @@ pub fn run() {
             host.screenshot.set_clipboard(Arc::new(
                 crate::screenshot_clipboard::ArboardScreenshotClipboard,
             ));
+            let selection_app = app.handle().clone();
+            host.translator.set_selection_sink(Arc::new(move || {
+                let _ =
+                    selection_app.emit_to("translate-popover", "translator://selection-ready", ());
+            }));
             let trans_app = app.handle().clone();
             host.translator
                 .set_event_sink(Arc::new(move |req_id, event| {
@@ -909,6 +926,9 @@ pub fn run() {
             match event {
                 WindowEvent::CloseRequested { api, .. } => {
                     let label = window.label();
+                    if label == "translate-popover" {
+                        host.translator.cancel_current_translation();
+                    }
                     if let Some(note_id) = label.strip_prefix("sticky-note-") {
                         let _ = host
                             .sticky_note
@@ -949,7 +969,11 @@ pub fn run() {
                     }
                 }
                 WindowEvent::Focused(false) => {
-                    let _ = pool.on_window_blur(window.label());
+                    if pool.on_window_blur(window.label()).unwrap_or(false)
+                        && window.label() == "translate-popover"
+                    {
+                        host.translator.cancel_current_translation();
+                    }
                 }
                 _ => {}
             }

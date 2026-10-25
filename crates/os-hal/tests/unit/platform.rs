@@ -32,14 +32,9 @@ fn test_selection_extractor_contracts() {
     #[cfg(target_os = "macos")]
     assert!(native.is_available());
 
-    // 3. 原生选区提取：无桌面权限或无焦点时不 panic，准确返回 PermissionDenied/Unsupported/Ok(None)
-    let native_res = native.extract_selected_text();
-    assert!(matches!(
-        native_res,
-        Err(crate::HalError::PermissionDenied { .. })
-            | Err(crate::HalError::Unsupported(_))
-            | Ok(None)
-    ));
+    #[cfg(not(target_os = "macos"))]
+    assert!(!native.is_available());
+    // 原生取词留给显式桌面验收，单元测试不得读取真实前台应用。
 }
 
 #[test]

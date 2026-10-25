@@ -670,6 +670,8 @@
     }
   },
   "translator": {
+    "pendingOption": "この設定はまだ実装されていません",
+    "sessionCredentials": "キーは今回のセッションのメモリにのみ保持され、再起動後は再入力が必要です。設定ファイルやディスクのログには保存されません。",
     "title": "グローバル選択テキスト翻訳",
     "sourceText": "原文",
     "targetText": "訳文",

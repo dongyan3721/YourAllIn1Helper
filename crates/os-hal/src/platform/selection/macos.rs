@@ -19,12 +19,15 @@ extern "C" {
         value: *mut *mut c_void,
     ) -> i32;
     fn CFRelease(cf: *const c_void);
+    fn CFGetTypeID(cf: *const c_void) -> usize;
+    fn CFStringGetTypeID() -> usize;
 }
 
 // macOS AX 常量定义
 const K_AX_ERROR_SUCCESS: i32 = 0;
 const K_AX_ERROR_NO_VALUE: i32 = -25212;
-const K_AX_ERROR_NOT_IMPLEMENTED: i32 = -25206;
+const K_AX_ERROR_ATTRIBUTE_UNSUPPORTED: i32 = -25205;
+const K_AX_ERROR_NOT_IMPLEMENTED: i32 = -25208;
 const K_AX_ERROR_CANNOT_COMPLETE: i32 = -25204;
 const K_AX_ERROR_API_DISABLED: i32 = -25211;
 
@@ -96,8 +99,7 @@ pub fn extract_selected_text_macos(
                     guidance: "目标应用无障碍 API 已禁用，无法读取选区".to_string(),
                 });
             }
-            // 目标应用不支持获取焦点元素或处于不支持状态
-            return Ok(None);
+            return Err(HalError::Unsupported("accessibility_focused_element"));
         }
 
         // 4. 从焦点元素提取 AXSelectedText
@@ -109,6 +111,12 @@ pub fn extract_selected_text_macos(
         );
 
         let result = if text_status == K_AX_ERROR_SUCCESS && !selected_val.is_null() {
+            if CFGetTypeID(selected_val) != CFStringGetTypeID() {
+                CFRelease(selected_val);
+                CFRelease(focused_elem);
+                CFRelease(app_elem);
+                return Err(HalError::Unsupported("accessibility_selected_text_type"));
+            }
             let cf_str_ref = &*(selected_val as *const CFString);
             let text = cf_str_ref.to_string();
             CFRelease(selected_val);
@@ -126,13 +134,22 @@ pub fn extract_selected_text_macos(
         } else if text_status == K_AX_ERROR_NO_VALUE {
             // 当前元素没有选中文本，属于正常状态
             Ok(None)
-        } else if text_status == K_AX_ERROR_NOT_IMPLEMENTED
+        } else if text_status == K_AX_ERROR_API_DISABLED {
+            Err(HalError::PermissionDenied {
+                capability: "accessibility",
+                guidance: "目标应用无障碍 API 已禁用，无法读取选区".to_string(),
+            })
+        } else if text_status == K_AX_ERROR_ATTRIBUTE_UNSUPPORTED
+            || text_status == K_AX_ERROR_NOT_IMPLEMENTED
             || text_status == K_AX_ERROR_CANNOT_COMPLETE
         {
             // 元素不支持选区读取
             Err(HalError::Unsupported("accessibility_selected_text"))
         } else {
-            Ok(None)
+            Err(HalError::NativeCallFailed(format!(
+                "AXSelectedText 返回错误: {}",
+                text_status
+            )))
         };
 
         CFRelease(focused_elem);

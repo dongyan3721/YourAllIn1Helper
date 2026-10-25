@@ -670,6 +670,8 @@
     }
   },
   "translator": {
+    "pendingOption": "This option is not implemented yet",
+    "sessionCredentials": "Keys are kept only in this session’s memory and must be entered again after restart. They are not written to configuration files or disk logs.",
     "title": "Global Selection Translator",
     "sourceText": "Source",
     "targetText": "Translation",

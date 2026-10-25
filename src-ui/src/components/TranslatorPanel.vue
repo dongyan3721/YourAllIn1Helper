@@ -119,7 +119,7 @@
             </button>
           </div>
           <p class="form-hint">
-            * 密钥仅加密保存在内存安全会话中，绝不写入本地配置文件或磁盘日志。
+            {{ t('translator.sessionCredentials') }}
           </p>
         </div>
 
@@ -127,16 +127,18 @@
         <h3 class="settings-section-title" style="margin-top: 18px;">常规偏好</h3>
         <div class="form-group">
           <label class="checkbox-label">
-            <input v-model="config.auto_copy_result" type="checkbox" @change="saveConfig" />
+            <input :checked="false" type="checkbox" disabled :title="t('translator.pendingOption')" />
             <span>{{ t('translator.autoCopy') }}</span>
           </label>
         </div>
         <div class="form-group">
           <label class="checkbox-label">
-            <input v-model="config.history_enabled" type="checkbox" @change="saveConfig" />
+            <input :checked="false" type="checkbox" disabled :title="t('translator.pendingOption')" />
             <span>{{ t('translator.history') }}</span>
           </label>
         </div>
+
+        <p class="form-hint">{{ t('translator.pendingOption') }}</p>
 
         <!-- 自定义大模型服务源 -->
         <div class="custom-providers-section">
@@ -215,7 +217,11 @@ const newCustom = ref({
 
 const providers = ref<ProviderMeta[]>([]);
 let unlistenStream: (() => void) | null = null;
-let currentRequestId = 0;
+let currentRequestId = -1;
+let submission = 0;
+let earlyEvents: any[] = [];
+let awaitingRequest = false;
+let disposed = false;
 
 const activeProviderTitle = computed(() => {
   const p = providers.value.find((item) => item.id === config.value.default_provider_id);
@@ -251,6 +257,11 @@ async function handleTranslate() {
   isTranslating.value = true;
   translatedOutput.value = '';
 
+  const generation = ++submission;
+  awaitingRequest = true;
+  earlyEvents = [];
+  currentRequestId = -1;
+
   try {
     const res = await invokeIpc('translator_translate', {
       text,
@@ -260,9 +271,17 @@ async function handleTranslate() {
       stream: true,
     });
     if (res?.request_id) {
+      if (generation !== submission) return;
       currentRequestId = res.request_id;
+      awaitingRequest = false;
+      const buffered = earlyEvents;
+      earlyEvents = [];
+      for (const payload of buffered) receiveStream(payload);
     }
   } catch (err: any) {
+    if (generation !== submission) return;
+    awaitingRequest = false;
+    earlyEvents = [];
     isTranslating.value = false;
     translatedOutput.value = `[翻译失败] ${err.message || err}`;
   }
@@ -324,31 +343,45 @@ async function copyOutput() {
   }
 }
 
+function receiveStream(payload: any) {
+  if (disposed) return;
+  if (awaitingRequest) {
+    earlyEvents.push(payload);
+    return;
+  }
+  if (!payload || payload.request_id !== currentRequestId) {
+    return;
+  }
+  const ev = payload.event;
+  if (ev.type === 'chunk') {
+    translatedOutput.value += ev.payload;
+  } else if (ev.type === 'done') {
+    translatedOutput.value = ev.payload;
+    isTranslating.value = false;
+  } else if (ev.type === 'error') {
+    isTranslating.value = false;
+    translatedOutput.value = `[错误] ${ev.payload}`;
+  }
+}
+
 onMounted(async () => {
   await loadData();
+  if (disposed) return;
 
   const eventApi = (window as any).__TAURI__?.event;
   if (eventApi?.listen) {
     unlistenStream = await eventApi.listen('translator://stream-chunk', (event: any) => {
       const payload = event.payload;
-      if (!payload || (currentRequestId > 0 && payload.request_id !== currentRequestId)) {
-        return;
-      }
-      const ev = payload.event;
-      if (ev.type === 'chunk') {
-        translatedOutput.value += ev.payload;
-      } else if (ev.type === 'done') {
-        translatedOutput.value = ev.payload;
-        isTranslating.value = false;
-      } else if (ev.type === 'error') {
-        isTranslating.value = false;
-        translatedOutput.value = `[错误] ${ev.payload}`;
-      }
+      receiveStream(payload);
     });
+    if (disposed) { unlistenStream?.(); return; }
   }
 });
 
 onUnmounted(() => {
+  disposed = true;
+  ++submission;
+  earlyEvents = [];
   if (unlistenStream) {
     unlistenStream();
     unlistenStream = null;

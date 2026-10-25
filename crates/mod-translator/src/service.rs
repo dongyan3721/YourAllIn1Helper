@@ -67,6 +67,13 @@ impl TranslatorService {
             .insert(provider.id().to_string(), provider);
     }
 
+    /// 配置替换时撤销已删除端点，保留官方内置适配器。
+    pub fn remove_custom_providers(&self) {
+        self.providers
+            .write()
+            .retain(|id, _| ["google", "deepl", "openai"].contains(&id.as_str()));
+    }
+
     /// 列出所有已注册提供商的基本元数据（ID、名称、是否需要 Key，不包含任何密钥明文）。
     pub fn list_providers_metadata(&self) -> Vec<serde_json::Value> {
         let providers = self.providers.read();
@@ -100,11 +107,12 @@ impl TranslatorService {
 
     /// 取消当前正在进行的翻译任务。
     pub fn cancel_current(&self) {
-        if let Some(task) = self.active_task.lock().take() {
+        // 与任务创建/登记共用同一把锁，取消不会漏掉尚未登记的新协程。
+        let mut active = self.active_task.lock();
+        self.current_request_id.fetch_add(1, Ordering::SeqCst);
+        if let Some(task) = active.take() {
             task.abort();
         }
-        // 递增 request_id，彻底隔离所有在网络队列中的迟到包
-        self.current_request_id.fetch_add(1, Ordering::SeqCst);
     }
 
     /// 发起翻译（支持流式响应），返回生成的单调请求 ID。
@@ -114,14 +122,27 @@ impl TranslatorService {
         req: TranslationRequest,
         event_sink: StreamEventSink,
     ) -> CoreResult<u64> {
+        self.start_translation(provider_id, req, event_sink)
+    }
+
+    /// 同步登记后台任务；无运行时则显式报错，避免同步 IPC panic。
+    pub fn start_translation(
+        &self,
+        provider_id: &str,
+        req: TranslationRequest,
+        event_sink: StreamEventSink,
+    ) -> CoreResult<u64> {
+        let runtime = tokio::runtime::Handle::try_current()
+            .map_err(|_| CoreError::Config("翻译调度需要宿主异步运行时".into()))?;
         // 1. 校验文本非空
         if req.text.trim().is_empty() {
             return Err(CoreError::Config("待翻译文本不能为空".to_string()));
         }
 
         // 2. 取消旧任务并生成新的 request_id
+        let mut active = self.active_task.lock();
         let req_id = self.current_request_id.fetch_add(1, Ordering::SeqCst) + 1;
-        if let Some(task) = self.active_task.lock().take() {
+        if let Some(task) = active.take() {
             task.abort();
         }
 
@@ -141,7 +162,7 @@ impl TranslatorService {
         // 桥接接收协程：严格检查迟到结果
         let sink_clone = event_sink.clone();
         let id_tracker_clone = current_id_tracker.clone();
-        let forwarder = tokio::spawn(async move {
+        let forwarder = runtime.spawn(async move {
             while let Some(event) = rx.recv().await {
                 // 如果当前全局 ID 已发生改变，说明已有新请求发起或被取消，丢弃迟到分片
                 if id_tracker_clone.load(Ordering::SeqCst) != req_id {
@@ -152,7 +173,7 @@ impl TranslatorService {
         });
 
         // 核心翻译协程
-        let handle = tokio::spawn(async move {
+        let handle = runtime.spawn(async move {
             let key_ref = api_key.as_deref();
             if req.stream {
                 let _ = provider.translate_stream(&client, &req, key_ref, tx).await;
@@ -175,7 +196,7 @@ impl TranslatorService {
             let _ = forwarder.await;
         });
 
-        *self.active_task.lock() = Some(handle);
+        *active = Some(handle);
 
         Ok(req_id)
     }

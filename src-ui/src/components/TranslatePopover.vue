@@ -142,7 +142,12 @@ const currentProviderName = computed(() => {
 });
 
 let unlistenStream: (() => void) | null = null;
-let activeRequestId = 0;
+let unlistenSelection: (() => void) | null = null;
+let activeRequestId = -1;
+let submission = 0;
+let earlyEvents: any[] = [];
+let awaitingRequest = false;
+let disposed = false;
 
 async function loadConfig() {
   try {
@@ -157,24 +162,21 @@ async function loadConfig() {
   }
 }
 
-async function extractAndTranslate() {
-  permissionDenied.value = false;
+async function consumeSelection() {
+  const sel = await invokeIpc('translator_take_selection');
+  if (!sel) return;
+  ++submission;
+  awaitingRequest = false;
+  earlyEvents = [];
+  activeRequestId = -1;
+  sourceText.value = sel.text || '';
+  translatedText.value = '';
+  isTranslating.value = false;
+  permissionDenied.value = !!sel.permission_denied;
+  permissionGuidance.value = sel.guidance || '';
   missingApiKey.value = false;
-
-  try {
-    const sel = await invokeIpc('translator_extract_selection');
-    if (sel?.permission_denied) {
-      permissionDenied.value = true;
-      permissionGuidance.value = sel.guidance || '';
-      return;
-    }
-    if (sel?.has_selection && sel.text) {
-      sourceText.value = sel.text;
-      await triggerTranslate();
-    }
-  } catch (err: any) {
-    console.error('取词异常:', err);
-  }
+  if (sel.unsupported) translatedText.value = t('translator.unsupported');
+  if (sourceText.value) await triggerTranslate();
 }
 
 async function triggerTranslate() {
@@ -185,6 +187,11 @@ async function triggerTranslate() {
   translatedText.value = '';
   missingApiKey.value = false;
 
+  const generation = ++submission;
+  awaitingRequest = true;
+  earlyEvents = [];
+  activeRequestId = -1;
+
   try {
     const res = await invokeIpc('translator_translate', {
       text,
@@ -194,9 +201,17 @@ async function triggerTranslate() {
       stream: true,
     });
     if (res?.request_id) {
+      if (generation !== submission) return;
       activeRequestId = res.request_id;
+      awaitingRequest = false;
+      const buffered = earlyEvents;
+      earlyEvents = [];
+      for (const payload of buffered) receiveStream(payload);
     }
   } catch (err: any) {
+    if (generation !== submission) return;
+    awaitingRequest = false;
+    earlyEvents = [];
     isTranslating.value = false;
     const msg = err.message || String(err);
     if (msg.includes('未配置') || msg.includes('API Key')) {
@@ -256,42 +271,63 @@ function handleKeydown(e: KeyboardEvent) {
   }
 }
 
+function receiveStream(payload: any) {
+  if (disposed) return;
+  if (awaitingRequest) {
+    earlyEvents.push(payload);
+    return;
+  }
+  if (!payload || payload.request_id !== activeRequestId) {
+    return; // 丢弃旧请求或迟到分片
+  }
+
+  const ev = payload.event;
+  if (ev.type === 'chunk') {
+    translatedText.value += ev.payload;
+  } else if (ev.type === 'done') {
+    translatedText.value = ev.payload;
+    isTranslating.value = false;
+  } else if (ev.type === 'error') {
+    isTranslating.value = false;
+    if (ev.payload.includes('未配置') || ev.payload.includes('API Key')) {
+      missingApiKey.value = true;
+    } else {
+      translatedText.value = `[错误] ${ev.payload}`;
+    }
+  }
+}
+
 onMounted(async () => {
   window.addEventListener('keydown', handleKeydown);
   await loadConfig();
+  if (disposed) return;
 
   // 监听 Tauri 原生流式事件
   const eventApi = (window as any).__TAURI__?.event;
   if (eventApi?.listen) {
     unlistenStream = await eventApi.listen('translator://stream-chunk', (event: { payload: StreamChunkEvent }) => {
       const payload = event.payload;
-      if (!payload || (activeRequestId > 0 && payload.request_id !== activeRequestId)) {
-        return; // 丢弃旧请求或迟到分片
-      }
-
-      const ev = payload.event;
-      if (ev.type === 'chunk') {
-        translatedText.value += ev.payload;
-      } else if (ev.type === 'done') {
-        translatedText.value = ev.payload;
-        isTranslating.value = false;
-      } else if (ev.type === 'error') {
-        isTranslating.value = false;
-        if (ev.payload.includes('未配置') || ev.payload.includes('API Key')) {
-          missingApiKey.value = true;
-        } else {
-          translatedText.value = `[错误] ${ev.payload}`;
-        }
-      }
+      receiveStream(payload);
     });
+    if (disposed) { unlistenStream?.(); return; }
   }
 
-  // 首次打开自动提取焦点选区并翻译
-  await extractAndTranslate();
+  if (eventApi?.listen) {
+    unlistenSelection = await eventApi.listen('translator://selection-ready', () => {
+      consumeSelection().catch(console.error);
+    });
+    if (disposed) { unlistenStream?.(); unlistenSelection?.(); return; }
+  }
+  // 使用快捷键抢焦前捕获的状态，绝不在气泡聚焦后重新读取第三方。
+  await consumeSelection();
 });
 
 onUnmounted(() => {
+  disposed = true;
+  ++submission;
+  earlyEvents = [];
   window.removeEventListener('keydown', handleKeydown);
+  unlistenSelection?.();
   if (unlistenStream) {
     unlistenStream();
     unlistenStream = null;
