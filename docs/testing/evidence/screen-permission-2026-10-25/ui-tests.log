@@ -1,0 +1,33 @@
+$ node --experimental-strip-types --disable-warning=ExperimentalWarning --test tests/unit/i18n.test.mjs tests/unit/ink.test.mjs tests/unit/screenshot.test.mjs tests/unit/translator.test.mjs tests/unit/vault.test.mjs
+✔ zh-CN, en-US, and ja-JP locale files have identical key schemas and non-empty translations (4.042917ms)
+✔ high-fidelity SVG product logo exists in both public and assets directories and contains valid vector geometry (0.185583ms)
+✔ InkHistoryManager maintains undo/redo stack properly (0.496ms)
+✔ LaserPointerManager automatically prunes points older than 2000ms (0.104084ms)
+✔ drag points normalize in any direction and selections serialize like SelectionBox (1.389ms)
+✔ intersect and clamp keep selections inside the frozen frame (0.329291ms)
+✔ eight handles resize the expected edges (0.486708ms)
+✔ dragging a handle past the opposite edge flips it and stays at least 1px (0.174917ms)
+✔ keyboard nudges move 1px and Shift resizes width/height within bounds (0.101792ms)
+✔ css to frame mapping handles Retina and non-uniform window sizes (0.192584ms)
+✔ hit test, drag threshold and toolbar placement (0.137875ms)
+✔ edit history supports undo, redo, update, remove and drops redo after new edits (0.196708ms)
+✔ counter numbers follow existing values, tiny drags are discarded, sizes scale with DPR (0.292375ms)
+✔ mosaic blocks are true averages of the frozen frame and clip at frame edges (0.341458ms)
+✔ color picker reads raw pixels and formats HEX/RGB like the backend expects (0.144834ms)
+✔ pin zoom stays within 10%-500%, opacity within 10%-100%, collapse uses mini block (0.163292ms)
+✔ M3 scroll utils: format pixel height and confidence percentage (15.324375ms)
+✔ M3 gif utils: format duration, file size and presets (1.307583ms)
+✔ TranslatePopover: buffers early events, isolates requests and ignores unsolicited events (35.288ms)
+✔ TranslatorPanel: buffers early events, isolates requests and ignores unsolicited events (12.899417ms)
+✔ VaultPanel clears every local secret on unmount and requests backend lock (39.104ms)
+✔ VaultPanel drops a late reveal result after lock or route cleanup (13.728459ms)
+✔ VaultPanel expires reveal and generated values with the same 15 second timer contract (10.736833ms)
+✔ VaultPanel never persists secrets or enables M2/clipboard IPC (0.621791ms)
+ℹ tests 24
+ℹ suites 0
+ℹ pass 24
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 289.861541

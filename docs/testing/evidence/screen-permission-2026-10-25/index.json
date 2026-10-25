@@ -1,0 +1,49 @@
+{
+  "date": "2026-10-25",
+  "files": [
+    {
+      "file": "01-certificate-build-authorized.png",
+      "sha256": "4c6dc5324043891a08562021327e763e83ad7e5ae4034a87e9cdf089e2d9bd06"
+    },
+    {
+      "file": "02-capture-session-started.png",
+      "sha256": "4ef3e039d7ee375008cbae5ac7d25651db78aa79235581fdb936655a92869388"
+    },
+    {
+      "file": "03-restarted-still-authorized.png",
+      "sha256": "4c6dc5324043891a08562021327e763e83ad7e5ae4034a87e9cdf089e2d9bd06"
+    },
+    {
+      "file": "04-repackaged-still-authorized.png",
+      "sha256": "4c6dc5324043891a08562021327e763e83ad7e5ae4034a87e9cdf089e2d9bd06"
+    },
+    {
+      "file": "build.json",
+      "sha256": "f2e9d75cdaa200ac42894c0b014c2875ba03f897e908522114b0b5be1ca1a1ee"
+    },
+    {
+      "file": "package.log",
+      "sha256": "c8909aedf3ac870ae4373ee773965a2204217fdf6e69065a7cc706e3e83d2a85"
+    },
+    {
+      "file": "rust-tests.log",
+      "sha256": "d522841ea501ad39d9525b1a341c02b1816f4a5fd4ffe513b521af82d5ba1e5c"
+    },
+    {
+      "file": "signing-continuity.json",
+      "sha256": "ead5fc0fe79c28c187d8581047ba7da62a82361eed701e1f84594242cb75a9c6"
+    },
+    {
+      "file": "signing-tests.log",
+      "sha256": "f8c340957116c8d46938d63eba8d8833e01bf12a5479fc637b3f05c6988b44ac"
+    },
+    {
+      "file": "ui-build.log",
+      "sha256": "d193cede9ea289d2b5ff7e5dc14c5324141d2fdb6bcea75badeb7d4d7e70aa5c"
+    },
+    {
+      "file": "ui-tests.log",
+      "sha256": "e06765c54c3bc75acf7ef128a821688a822f7569326e15c2efe484b661e2ee36"
+    }
+  ]
+}

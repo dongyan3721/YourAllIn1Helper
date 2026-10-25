@@ -1,0 +1,9 @@
+test_adhoc_or_identifier_only_signature_cannot_publish_manifest (test_macos_signing.SigningPolicyTests.test_adhoc_or_identifier_only_signature_cannot_publish_manifest) ... ok
+test_existing_identity_is_reused_without_regenerating_keys (test_macos_signing.SigningPolicyTests.test_existing_identity_is_reused_without_regenerating_keys) ... ok
+test_no_identity_and_explicit_adhoc_are_rejected (test_macos_signing.SigningPolicyTests.test_no_identity_and_explicit_adhoc_are_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.005s
+
+OK
+本项目已配置固定签名身份，保留现有证书；未重新生成。

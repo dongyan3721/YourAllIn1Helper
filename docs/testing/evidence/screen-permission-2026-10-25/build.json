@@ -1,0 +1,19 @@
+{
+  "bundle_id": "com.allinone.desktop",
+  "signing_identity": "271023D7C47579D97F8E05720C765A4AF682D336",
+  "designated_requirement": "designated => identifier \"com.allinone.desktop\" and certificate leaf = H\"271023d7c47579d97f8e05720c765a4af682d336\"",
+  "executable_sha256": "17a3f0b6eee1215ac7b5fe3d3f72dbe9222f63c64ab8c550ec988cc453331499",
+  "source_head": "195072fdc51438c7ba49bb776fe2afddbb1cb2f4",
+  "source_dirty": true,
+  "gui_process_verification": {
+    "old_pid": 23359,
+    "new_pid": 24329,
+    "new_process_started": "2026-10-25 19:32:27 Asia/Shanghai",
+    "permission": "granted",
+    "app": "/Users/santa_antilles/Desktop/your_all_in_one/dist/All-in-One Toolbox.app"
+  },
+  "earlier_gui_build": {
+    "executable_sha256": "571896d955813580791cccb96209266d4e03f8151ed9a1cfbfdb1293384ac84a",
+    "evidence": "01–03"
+  }
+}

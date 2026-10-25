@@ -1,0 +1,122 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.47s
+     Running unittests src/lib.rs (target/debug/deps/mod_screenshot-dde2a30a73cc14cb)
+
+running 39 tests
+test config::tests::hex_color_validation ... ok
+test config::tests::merge_rejects_non_object_and_wrong_types ... ok
+test config::tests::sanitize_repairs_invalid_values ... ok
+test config::tests::merge_keeps_untouched_and_unknown_fields ... ok
+test geometry::tests::frame_points_map_back_to_desktop_units_including_negative_origin ... ok
+test export::tests::timestamped_stem_uses_sortable_local_time ... ok
+test geometry::tests::negative_origin_secondary_display_is_relative_to_its_own_frame ... ok
+test geometry::tests::monitor_region_is_root_of_hierarchy ... ok
+test geometry::tests::normalize_crop_clips_overflow_and_rejects_outside_or_empty ... ok
+test geometry::tests::invalid_scale_factor_falls_back_to_frame_ratio_and_zero_size_is_rejected ... ok
+test geometry::tests::retina_frame_maps_points_to_double_pixels ... ok
+test export::tests::render_without_overlay_is_exact_crop ... ok
+test geometry::tests::windows_high_dpi_desktop_units_are_physical_pixels ... ok
+test export::tests::write_exclusive_never_overwrites_existing_files ... ok
+test geometry::tests::crop_rgba_copies_exact_rows_and_validates_bounds ... ok
+test gif::tests::test_gif_resolution_presets ... ok
+test export::tests::write_exclusive_creates_missing_directory_and_reports_unwritable_target ... ok
+test scroll::tests::test_scroll_duplicate_frame_and_zero_displacement ... ok
+test scroll::tests::test_scroll_low_confidence_stops_and_preserves_canvas ... ok
+test export::tests::overlay_is_alpha_blended_and_transparent_pixels_keep_base ... ok
+test export::tests::overlay_with_wrong_size_or_garbage_is_rejected ... ok
+test scroll::tests::test_scroll_length_and_memory_limit ... ok
+test scroll::tests::test_scroll_fixed_header_and_footer_detection_and_retention ... ok
+test session::tests::describe_reports_pixels_logical_size_and_honest_capabilities ... ok
+test session::tests::frontmost_window_wins_over_smaller_occluded_window ... ok
+test session::tests::projection_keeps_only_visible_top_level_windows_in_frame_pixels ... ok
+test session::tests::ui_chain_climbs_leaf_container_window_monitor_and_is_clipped_to_window ... ok
+test session::tests::visual_edge_fallback_snaps_to_card_inside_window_when_ui_chain_is_empty ... ok
+test session::tests::wheel_steps_climb_from_window_to_monitor_and_stop_at_root ... ok
+test tests::pick_monitor_prefers_requested_then_primary_then_first ... ok
+test tests::rgb_text_validation_accepts_only_color_values ... ok
+test session::tests::visual_edge_is_skipped_when_disabled_tiny_or_covering_the_window ... ok
+test export::tests::encoded_png_round_trips_pixels ... ok
+test tests::only_implemented_capture_shortcut_is_declared ... ok
+test scroll::tests::test_scroll_stitch_known_displacement_pixel_perfect ... ok
+test gif::tests::test_gif_encoder_round_trip_and_decode_validation ... ok
+test scroll::tests::test_scroll_session_cancellation_releases_all ... ok
+test gif::tests::test_gif_recording_session_cancellation_deletes_temp_file ... ok
+test gif::tests::test_gif_recording_session_completion_and_file_creation ... ok
+
+test result: ok. 39 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s
+
+     Running tests/lifecycle.rs (target/debug/deps/lifecycle-08ea551067f218aa)
+
+running 18 tests
+test permission_denied_reports_guidance_without_overlay_and_shortcut_opens_dashboard ... ok
+test copy_export_writes_selection_sized_image_and_finishes_session ... ok
+test copy_failure_keeps_session_and_reshows_overlay_for_retry ... ok
+test init_does_not_capture_or_create_windows ... ok
+test disabling_module_destroys_overlay_and_pins_and_reenable_works ... ok
+test frozen_frame_is_captured_before_hidden_overlay_is_created_and_shown_once ... ok
+test cancel_releases_frame_and_destroys_overlay_and_stale_cancel_is_ignored ... ok
+test ocr_recognizes_cropped_original_frame_without_ending_session ... ok
+test copy_color_accepts_only_color_text ... ok
+test ocr_without_provider_reports_unsupported_and_shortcut_sets_intent ... ok
+test save_export_never_overwrites_and_annotations_are_composited ... ok
+test pin_export_creates_resident_window_at_capture_position_and_close_frees_it ... ok
+test shortcut_conflict_on_enable_rolls_back_and_reports_error ... ok
+test ui_hierarchy_is_reported_honestly_and_used_only_when_trusted ... ok
+test smart_region_uses_frame_pixels_and_detector_failure_degrades_honestly ... ok
+test pin_window_failure_rolls_back_record_and_keeps_session ... ok
+test permission_polling_is_passive_and_revocation_blocks_next_capture ... ok
+test settings_and_switch_survive_restart_with_unknown_fields_preserved ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.34s
+
+     Running tests/m3_lifecycle.rs (target/debug/deps/m3_lifecycle-445fa02c174f9969)
+
+running 3 tests
+test test_shutdown_cancels_and_waits_for_workers ... ok
+test test_gif_full_lifecycle_and_file_creation ... ok
+test test_scroll_full_lifecycle_and_export_reusing_m1 ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.88s
+
+     Running unittests src/lib.rs (target/debug/deps/os_hal-aff45399ff7645e5)
+
+running 6 tests
+test tests::test_native_windows_list ... ignored, requires a logged-in desktop session
+test platform::usage::tests::polling_result_remains_authoritative_when_events_are_incomplete ... ok
+test platform::usage::tests::sleep_wake_requires_both_workspace_and_screen_wake ... ok
+test platform::usage::tests::system_events_pause_and_only_resume_after_confirmed_unlock ... ok
+test tests::test_selection_extractor_contracts ... ok
+test tests::test_mock_os_hal_window_topmost_and_paste ... ok
+
+test result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/capabilities.rs (target/debug/deps/capabilities-58aba36726e5f7c4)
+
+running 7 tests
+test macos_active_app_watcher_reports_real_state ... ignored, requires a live desktop session with available CGSession state; run explicitly for native QA
+test macos_ui_hierarchy_reports_real_chain_or_permission_denied ... ignored, 需要桌面会话；读取前台外部窗口的无障碍层级（只读），显式运行
+test macos_usage_event_monitor_start_stop_is_idempotent ... ignored, requires an AppKit process with a live desktop session; run explicitly for native QA
+test macos_external_topmost_reports_unsupported_without_touching_windows ... ok
+test macos_capture_permission_preflight_only_reports_granted_or_denied ... ok
+test macos_audio_activity_probe_returns_a_real_boolean ... ok
+test unimplemented_native_capabilities_do_not_return_mock_results ... ok
+
+test result: ok. 4 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.16s
+
+     Running tests/native_ocr.rs (target/debug/deps/native_ocr-fb4cd4d4dd6e7fa8)
+
+running 2 tests
+test vision_returns_empty_result_for_blank_image ... ok
+test vision_recognizes_rendered_text_with_pixel_coordinates ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 14.65s
+
+     Running tests/secure_services.rs (target/debug/deps/secure_services-0737ab3cb12a4148)
+
+running 5 tests
+test native_keychain_round_trip_uses_dedicated_test_item ... ignored, 写入并删除登录钥匙串中的专用测试条目，需显式运行
+test native_pasteboard_clears_only_unchanged_content ... ignored, 会覆盖真实系统剪贴板内容，需显式运行
+test clear_only_when_clipboard_still_holds_our_write ... ok
+test later_user_copy_is_never_cleared_even_with_identical_text ... ok
+test mock_secret_store_round_trip_and_unavailable_reporting ... ok
+
+test result: ok. 3 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s

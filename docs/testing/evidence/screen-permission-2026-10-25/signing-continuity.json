@@ -1,0 +1,11 @@
+{
+  "original": {
+    "requirement": "identifier \"com.allinone.desktop\" and certificate leaf = H\"271023d7c47579d97f8e05720c765a4af682d336\"",
+    "cdhash": "8d8165bc5e132c08d34f688bd2b1d0c2e34f6450"
+  },
+  "changed_build": {
+    "requirement": "identifier \"com.allinone.desktop\" and certificate leaf = H\"271023d7c47579d97f8e05720c765a4af682d336\"",
+    "cdhash": "7c098d3ba374bcc7eedee38b4d2bf15153ffa29b"
+  },
+  "result": "PASS: changed CDHash still matches original certificate-bound requirement"
+}

@@ -21,6 +21,12 @@ pub trait ScreenCapturer: Send + Sync + 'static {
     fn check_capture_permission(&self) -> HalResult<()> {
         Ok(())
     }
+
+    /// 由用户点击截图触发。macOS 会在此时弹出系统的屏幕录制授权；
+    /// 默认复用被动检查，保留显式测试适配器的拒绝行为。
+    fn request_capture_permission(&self) -> HalResult<()> {
+        self.check_capture_permission()
+    }
 }
 
 /// 2. Snipaste-style L1 (window tree) & L2 (UIAutomation / AXUIElement) region detector (`mod-screenshot`).

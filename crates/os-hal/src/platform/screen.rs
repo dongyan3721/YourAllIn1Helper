@@ -70,85 +70,13 @@ impl ScreenCapturer for NativeOsHal {
 
     #[cfg(target_os = "macos")]
     fn check_capture_permission(&self) -> HalResult<()> {
-        use objc2_core_graphics::CGPreflightScreenCaptureAccess;
-        // 仅预检，不调用 CGRequestScreenCaptureAccess，避免未经用户操作弹出系统授权。
-        // 独立启动的程序上，预检接口会在权限已经生效时仍返回 false；
-        // 这时其他应用的普通窗口标题已经能读到，按实际能力放行。
-        if CGPreflightScreenCaptureAccess() || macos_screen_recording_titles_visible() {
-            Ok(())
-        } else {
-            Err(HalError::PermissionDenied {
-                capability: "screen_recording",
-                guidance: "请在「系统设置 → 隐私与安全性 → 屏幕与系统录音」中允许「All-in-One Toolbox」。这是整个应用的权限，不需要单独授权内部文件。允许后请完全退出应用再打开。".to_string(),
-            })
-        }
+        super::screen_permission::check()
     }
-}
 
-/// 无录屏权限时，其他应用的普通窗口没有标题，只剩 Window Server 等系统窗口。
-/// 能读到其他应用的标题，说明录屏权限已经生效。
-#[cfg(target_os = "macos")]
-fn macos_screen_recording_titles_visible() -> bool {
-    use objc2_core_foundation::{CFDictionary, CFNumber, CFNumberType, CFString};
-    use objc2_core_graphics::{CGWindowListCopyWindowInfo, CGWindowListOption};
-    use std::ffi::c_void;
-
-    let own_pid = std::process::id() as i32;
-    unsafe {
-        let Some(windows) = CGWindowListCopyWindowInfo(
-            CGWindowListOption::OptionOnScreenOnly | CGWindowListOption::ExcludeDesktopElements,
-            0,
-        ) else {
-            return false;
-        };
-        for index in 0..windows.count() {
-            let dictionary = windows.value_at_index(index) as *const CFDictionary;
-            if dictionary.is_null() {
-                continue;
-            }
-            let dictionary = &*dictionary;
-            let read_number = |key: &str| -> Option<i32> {
-                let cf_key = CFString::from_str(key);
-                let value = dictionary.value(cf_key.as_ref() as *const CFString as *const c_void);
-                if value.is_null() {
-                    return None;
-                }
-                let mut number = 0;
-                (*(value as *const CFNumber))
-                    .value(CFNumberType::IntType, &mut number as *mut _ as *mut c_void)
-                    .then_some(number)
-            };
-            let read_string = |key: &str| -> Option<String> {
-                let cf_key = CFString::from_str(key);
-                let value = dictionary.value(cf_key.as_ref() as *const CFString as *const c_void);
-                if value.is_null() {
-                    return None;
-                }
-                Some((*(value as *const CFString)).to_string())
-            };
-            if read_number("kCGWindowOwnerPID") == Some(own_pid) {
-                continue;
-            }
-            // 普通应用窗口在第 0 层。菜单栏、桌面和程序坞不拿来当授权证据。
-            if read_number("kCGWindowLayer").unwrap_or(0) != 0 {
-                continue;
-            }
-            let owner = read_string("kCGWindowOwnerName").unwrap_or_default();
-            if owner == "Window Server"
-                || owner == "Dock"
-                || owner == "ControlCenter"
-                || owner == "NotificationCenter"
-                || owner == "loginwindow"
-                || owner == "Spotlight"
-            {
-                continue;
-            }
-            if read_string("kCGWindowName").is_some_and(|title| !title.trim().is_empty()) {
-                return true;
-            }
-        }
+    #[cfg(target_os = "macos")]
+    fn request_capture_permission(&self) -> HalResult<()> {
+        super::screen_permission::request()
     }
-    false
 }
 
 impl NativeOsHal {

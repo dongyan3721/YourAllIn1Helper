@@ -11,11 +11,11 @@
             {{ m.name }}{{ m.is_primary ? ` (${t('screenshot.panel.primary')})` : '' }}
           </option>
         </select>
-        <button class="macos-button" :disabled="busy || !status?.permission.granted" @click="startCapture('ocr')">
+        <button class="macos-button" :disabled="busy" @click="startCapture('ocr')">
           <Icons name="text" :size="12" />
           <span>{{ t('screenshot.panel.startOcrBtn') }}</span>
         </button>
-        <button class="macos-button primary" :disabled="busy || !status?.permission.granted" @click="startCapture('capture')">
+        <button class="macos-button primary" :disabled="busy" @click="startCapture('capture')">
           <Icons name="camera" :size="12" />
           <span>{{ t('screenshot.panel.startBtn') }}</span>
         </button>
@@ -36,8 +36,7 @@
             <strong>{{ t('screenshot.panel.permissionLabel') }}</strong>
             <span v-if="status?.permission.granted">{{ t('screenshot.panel.permissionGranted') }}</span>
             <template v-else>
-              <span class="warn">{{ status?.permission.message || t('screenshot.panel.permissionUnknown') }}</span>
-              <span v-if="status?.permission.guidance" class="hint">{{ status.permission.guidance }}</span>
+              <span class="warn">{{ status?.permission.guidance || status?.permission.message || t('screenshot.panel.permissionUnknown') }}</span>
             </template>
           </div>
         </div>

@@ -354,9 +354,9 @@ impl ScreenshotModule {
         hide_dashboard: bool,
         target_mode: Option<String>,
     ) -> Result<SessionInfo, ScreenshotFailure> {
-        // 1. 权限预检：缺权限时直接报告，不抓取「仅壁纸」的假画面。
+        // 用户显式触发时才申请；被动状态查询只预检，不截图或弹出授权框。
         self.capturer
-            .check_capture_permission()
+            .request_capture_permission()
             .map_err(|e| ScreenshotFailure::from_hal(&e))?;
 
         // 2. 选择显示器：指定 ID → 主屏 → 第一块。

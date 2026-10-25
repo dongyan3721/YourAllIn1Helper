@@ -5,6 +5,8 @@ mod regions;
 #[cfg(target_os = "macos")]
 mod regions_ax;
 mod screen;
+#[cfg(target_os = "macos")]
+mod screen_permission;
 mod secure;
 mod selection;
 mod services;

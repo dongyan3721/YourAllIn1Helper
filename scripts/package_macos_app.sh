@@ -9,6 +9,9 @@ cd "$ROOT_DIR"
 
 export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"
 
+# 构建前确认固定签名可用，避免编译完才发现无证书并退回临时身份。
+python3 "$ROOT_DIR/scripts/macos_signing.py" check
+
 echo "=========================================================="
 echo "[1/3] 构建现代工程化前端 (Vite + Vue 3 + TypeScript)..."
 echo "=========================================================="
@@ -22,27 +25,30 @@ echo "=========================================================="
 echo "=========================================================="
 echo "[3/3] 整理产物至 dist/ 目录便于直接分发与性能测试..."
 echo "=========================================================="
-mkdir -p "$ROOT_DIR/dist"
+mkdir -p "$ROOT_DIR/dist" "$ROOT_DIR/.runtime_data"
 
-# 查找生成的 .app 目录并同步至 dist/
+# 从正式配置定位唯一产物，避免 find/head 误选目录里遗留的旧名字 App。
 TAURI_BUNDLE_DIR="$ROOT_DIR/target/release/bundle/macos"
-if [ -d "$TAURI_BUNDLE_DIR" ]; then
-  APP_SRC="$(find "$TAURI_BUNDLE_DIR" -name "*.app" -maxdepth 1 | head -n 1)"
-  if [ -n "$APP_SRC" ]; then
-    APP_NAME="$(basename "$APP_SRC")"
-    rm -rf "$ROOT_DIR/dist/$APP_NAME"
-    cp -R "$APP_SRC" "$ROOT_DIR/dist/$APP_NAME"
-    # 录屏权限只认整个 App。临时签名的 Mach-O 身份和包不一致时，系统设置里的开关不会生效。
-    # 按 Info.plist 的 Bundle ID 重新签名，让「All-in-One Toolbox」这一项对应正在运行的应用。
-    DIST_APP="$ROOT_DIR/dist/$APP_NAME"
-    codesign --force --sign - "$DIST_APP/Contents/MacOS/all-in-one-desktop"
-    codesign --force --sign - "$DIST_APP"
-    codesign --verify --strict --verbose=2 "$DIST_APP"
-    echo "✅ 打包成功！应用已放置在："
-    echo "   $ROOT_DIR/dist/$APP_NAME"
-    echo ""
-    echo "可通过 Finder 打开，或直接在终端运行："
-    echo "   open \"$ROOT_DIR/dist/$APP_NAME\""
-  fi
+APP_NAME="$(python3 - "$ROOT_DIR/src-tauri/tauri.conf.json" <<'APP_NAME_PY'
+import json
+import sys
+from pathlib import Path
+print(json.loads(Path(sys.argv[1]).read_text())["productName"] + ".app")
+APP_NAME_PY
+)"
+APP_SRC="$TAURI_BUNDLE_DIR/$APP_NAME"
+if [ ! -d "$APP_SRC" ]; then
+  echo "找不到本次构建产物：$APP_SRC" >&2
+  exit 1
 fi
+# 先在隔离暂存目录完成签名与验证，再替换交付包；失败时保留旧 App。
+STAGING_DIR="$(mktemp -d "$ROOT_DIR/.runtime_data/package.XXXXXX")"
+trap 'rm -rf "$STAGING_DIR"' EXIT
+cp -R "$APP_SRC" "$STAGING_DIR/$APP_NAME"
+python3 "$ROOT_DIR/scripts/macos_signing.py" sign "$STAGING_DIR/$APP_NAME"
+rm -rf "$ROOT_DIR/dist/$APP_NAME"
+mv "$STAGING_DIR/$APP_NAME" "$ROOT_DIR/dist/$APP_NAME"
+mv "$STAGING_DIR/macos-build.json" "$ROOT_DIR/dist/macos-build.json"
+echo "✅ 打包成功！应用已放置在："
+echo "   $ROOT_DIR/dist/$APP_NAME"
 echo "=========================================================="

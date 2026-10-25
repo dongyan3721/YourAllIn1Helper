@@ -29,6 +29,7 @@ struct FakeScreen {
     log: EventLog,
     captures: AtomicUsize,
     deny_permission: AtomicBool,
+    permission_requests: AtomicUsize,
     fail_regions: AtomicBool,
     /// 模拟已授予辅助功能权限，L2 返回固定控件链。
     ui_trusted: AtomicBool,
@@ -40,6 +41,7 @@ impl FakeScreen {
             log,
             captures: AtomicUsize::new(0),
             deny_permission: AtomicBool::new(false),
+            permission_requests: AtomicUsize::new(0),
             fail_regions: AtomicBool::new(false),
             ui_trusted: AtomicBool::new(false),
         }
@@ -81,6 +83,11 @@ impl ScreenCapturer for FakeScreen {
 
     fn capture_region(&self, _bounds: SelectionBox) -> HalResult<CapturedFrame> {
         Err(HalError::Unsupported("not used by screenshot module"))
+    }
+
+    fn request_capture_permission(&self) -> HalResult<()> {
+        self.permission_requests.fetch_add(1, Ordering::SeqCst);
+        self.check_capture_permission()
     }
 
     fn check_capture_permission(&self) -> HalResult<()> {
@@ -991,4 +998,30 @@ fn ocr_without_provider_reports_unsupported_and_shortcut_sets_intent() {
             .intent,
         mod_screenshot::ocr::CaptureIntent::Capture
     );
+}
+
+/// 状态轮询不得申请权限；曾经成功后撤销必须再次拒绝，不能复用永久成功缓存。
+#[test]
+fn permission_polling_is_passive_and_revocation_blocks_next_capture() {
+    let h = harness();
+    assert!(h.module.status(h.kernel.context()).permission.granted);
+    assert_eq!(h.screen.permission_requests.load(Ordering::SeqCst), 0);
+    let session = h
+        .module
+        .start_capture(h.kernel.context(), None, false)
+        .unwrap();
+    assert_eq!(h.screen.permission_requests.load(Ordering::SeqCst), 1);
+    h.module
+        .cancel_capture(h.kernel.context(), Some(&session.session_id))
+        .unwrap();
+    h.screen.deny_permission.store(true, Ordering::SeqCst);
+    assert!(!h.module.status(h.kernel.context()).permission.granted);
+    assert_eq!(h.screen.permission_requests.load(Ordering::SeqCst), 1);
+    assert!(h
+        .module
+        .start_capture(h.kernel.context(), None, false)
+        .is_err());
+    assert_eq!(h.screen.captures.load(Ordering::SeqCst), 1);
+    assert_eq!(h.screen.permission_requests.load(Ordering::SeqCst), 2);
+    assert!(!h.module.has_active_session());
 }
