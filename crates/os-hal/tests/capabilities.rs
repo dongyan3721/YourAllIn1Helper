@@ -33,3 +33,16 @@ fn macos_external_topmost_reports_unsupported_without_touching_windows() {
         Err(HalError::Unsupported(_))
     ));
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_active_app_watcher_reports_real_state() {
+    use os_hal::ActiveAppWatcher;
+    let native = NativeOsHal::new();
+    let idle = native.system_idle_seconds().expect("idle detection");
+    assert!(idle < 86_400);
+    let _locked = native.is_screen_locked().expect("screen lock detection");
+    let app = native.current_active_app().expect("frontmost application");
+    assert!(!app.app_id.trim().is_empty());
+    assert!(!app.app_name.trim().is_empty());
+}

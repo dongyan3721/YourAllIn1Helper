@@ -58,6 +58,7 @@ fn upgrade_preserves_old_data_and_new_feature_switches_are_independent() {
             "clipboard",
             "screen_ink",
             "sticky_note",
+            "app_usage",
             "script_runner",
             "media_proc",
             "window_pin"

@@ -57,6 +57,7 @@ dependencies = [
  "base64 0.22.1",
  "block2",
  "image",
+ "mod-app-usage",
  "mod-clipboard",
  "mod-media-proc",
  "mod-screen-ink",
@@ -2885,6 +2886,23 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "mod-app-usage"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "app-core",
+ "chrono",
+ "os-hal",
+ "parking_lot",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tracing",
 ]
 
 [[package]]

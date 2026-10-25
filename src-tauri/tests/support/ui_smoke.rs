@@ -73,8 +73,8 @@ pub(super) fn run_ui_smoke_checks(app: AppHandle, keep_open: bool) {
                     .iter()
                     .filter(|m| m["available"] == true)
                     .count()
-                    == 6,
-                "six mounted feature modules"
+                    == 7,
+                "seven mounted feature modules"
             );
             host.kernel().trigger_action(ACTION_CLIPBOARD)?;
             anyhow::ensure!(

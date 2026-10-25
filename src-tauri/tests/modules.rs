@@ -28,7 +28,7 @@ fn catalog_has_ten_slots_and_unimplemented_blocks_cannot_be_enabled() {
     let modules = call(&host, "kernel_list_modules", json!({}));
     let modules = modules.as_array().unwrap();
     assert_eq!(modules.len(), 10);
-    assert_eq!(modules.iter().filter(|m| m["available"] == true).count(), 6);
+    assert_eq!(modules.iter().filter(|m| m["available"] == true).count(), 7);
     assert!(
         !host
             .invoke_ipc(
@@ -616,4 +616,77 @@ fn host_script_save_reports_and_rolls_back_native_hotkey_failure() {
     assert!(error.contains("系统全局快捷键更新失败"), "{error}");
     let scripts = call(&host, "script_list", json!({}));
     assert!(scripts.as_array().unwrap().is_empty());
+}
+
+#[test]
+fn app_usage_ipc_reports_capabilities_persists_config_and_blocks_when_disabled() {
+    let dir = tempfile::tempdir().unwrap();
+    let host = DesktopHost::bootstrap(dir.path(), true).unwrap();
+
+    let status = call(&host, "usage_get_status", json!({}));
+    assert_eq!(status["tracking"], true);
+    assert_eq!(status["capabilities"]["idle_detection"], true);
+    assert_eq!(status["capabilities"]["screen_lock_detection"], true);
+    assert_eq!(status["capabilities"]["audio_afk_exception"], false);
+    assert!(status["capabilities"]["limitations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|line| line.as_str().unwrap_or_default().contains("音频")));
+
+    let config = call(
+        &host,
+        "usage_update_config",
+        json!({"idle_threshold_secs": 120, "flush_interval_secs": 15, "keep_window_titles": false}),
+    );
+    assert_eq!(config["idle_threshold_secs"], 120);
+    assert_eq!(config["flush_interval_secs"], 15);
+    assert_eq!(config["keep_window_titles"], false);
+    assert_eq!(
+        host.kernel()
+            .context()
+            .config
+            .read()
+            .modules
+            .settings
+            .get("app_usage")
+            .unwrap()["idle_threshold_secs"],
+        120
+    );
+
+    let overview = call(
+        &host,
+        "usage_get_overview",
+        json!({"start_date": "2026-10-01", "end_date": "2026-10-25"}),
+    );
+    assert_eq!(overview["days"].as_array().unwrap().len(), 25);
+    assert_eq!(overview["total_seconds"], 0);
+    assert!(call(&host, "usage_get_apps", json!({}))
+        .as_array()
+        .unwrap()
+        .is_empty());
+
+    assert!(
+        !host
+            .invoke_ipc(
+                "usage_set_app_category",
+                json!({"app_id": "never.tracked", "category": "work"})
+            )
+            .ok
+    );
+
+    toggle(&host, "app_usage", false);
+    assert!(!host.invoke_ipc("usage_get_overview", json!({})).ok);
+    toggle(&host, "app_usage", true);
+    assert_eq!(call(&host, "usage_get_status", json!({}))["tracking"], true);
+    call(&host, "kernel_shutdown", json!({}));
+    drop(host);
+
+    // 配置写入 config.json，重启后仍保留；历史数据库由本测试之外的迁移测试覆盖。
+    let restarted = DesktopHost::bootstrap(dir.path(), true).unwrap();
+    let restored = call(&restarted, "usage_get_config", json!({}));
+    assert_eq!(restored["idle_threshold_secs"], 120);
+    assert_eq!(restored["flush_interval_secs"], 15);
+    assert_eq!(restored["keep_window_titles"], false);
+    call(&restarted, "kernel_shutdown", json!({}));
 }

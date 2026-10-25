@@ -1,5 +1,6 @@
 //! 具体功能的唯一装配点；注册表和 IPC 共享同一个模块实例。
 use super::*;
+use mod_app_usage::AppUsageModule;
 // 命名装配结果避免新增功能时依赖元组顺序，降低并行开发接入出错的机会。
 pub(super) struct Mounted {
     pub builder: AppKernelBuilder,
@@ -9,6 +10,7 @@ pub(super) struct Mounted {
     pub script_runner: Arc<ScriptRunnerModule>,
     pub screen_ink: Arc<ScreenInkModule>,
     pub media_proc: Arc<MediaProcModule>,
+    pub app_usage: Arc<AppUsageModule>,
 }
 pub(super) fn mount(
     builder: AppKernelBuilder,
@@ -27,13 +29,15 @@ pub(super) fn mount(
     ));
     let screen_ink = Arc::new(ScreenInkModule::new(hal.screen_capturer.clone()));
     let media_proc = Arc::new(MediaProcModule::new());
+    let app_usage = Arc::new(AppUsageModule::new(hal.active_app_watcher.clone()));
     let builder = builder
         .register_module_arc(clipboard.clone())?
         .register_module_arc(sticky_note.clone())?
         .register_module_arc(window_pin.clone())?
         .register_module_arc(script_runner.clone())?
         .register_module_arc(screen_ink.clone())?
-        .register_module_arc(media_proc.clone())?;
+        .register_module_arc(media_proc.clone())?
+        .register_module_arc(app_usage.clone())?;
     Ok(Mounted {
         builder,
         clipboard,
@@ -42,5 +46,6 @@ pub(super) fn mount(
         script_runner,
         screen_ink,
         media_proc,
+        app_usage,
     })
 }

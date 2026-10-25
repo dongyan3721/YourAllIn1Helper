@@ -1,0 +1,22 @@
+[package]
+name = "mod-app-usage"
+description = "Module 05: Foreground application usage tracking with stable app identifiers, idle/lock filtering, hourly aggregation and reports."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+app-core = { path = "../app-core" }
+os-hal = { path = "../os-hal" }
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+parking_lot.workspace = true
+tracing.workspace = true
+chrono.workspace = true
+rusqlite.workspace = true
+
+[dev-dependencies]
+tempfile = "3.10"

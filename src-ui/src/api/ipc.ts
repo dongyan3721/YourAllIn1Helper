@@ -282,3 +282,76 @@ export async function invokeIpc<T = any>(cmd: string, args: Record<string, any> 
 
   return resPayload.data as T;
 }
+
+/** 应用使用时长模块全局配置 */
+export interface AppUsageConfig {
+  idle_threshold_secs: number;
+  flush_interval_secs: number;
+  keep_window_titles: boolean;
+}
+
+/** 原生采样能力探测结果 */
+export interface AppUsageCapabilities {
+  active_app: boolean;
+  idle_detection: boolean;
+  screen_lock_detection: boolean;
+  audio_afk_exception: boolean;
+  limitations: string[];
+}
+
+export interface AppUsageStatus {
+  tracking: boolean;
+  sample_interval_ms: number;
+  capabilities: AppUsageCapabilities;
+  config: AppUsageConfig;
+}
+
+export interface AppUsageSummary {
+  app_id: string;
+  app_name: string;
+  category: string;
+  ignored: boolean;
+  active_seconds: number;
+}
+
+export interface DailyUsage {
+  date: string;
+  active_seconds: number;
+}
+
+export interface CategoryUsage {
+  category: string;
+  active_seconds: number;
+}
+
+export interface UsageOverview {
+  start_date: string;
+  end_date: string;
+  total_seconds: number;
+  days: DailyUsage[];
+  apps: AppUsageSummary[];
+  categories: CategoryUsage[];
+}
+
+export interface HourlyUsage {
+  hour: number;
+  active_seconds: number;
+  apps: AppUsageSummary[];
+}
+
+export interface HourlyBreakdown {
+  date: string;
+  total_seconds: number;
+  hours: HourlyUsage[];
+}
+
+export interface TrackedApp {
+  app_id: string;
+  app_name: string;
+  executable_path: string | null;
+  category: string;
+  ignored: boolean;
+  first_seen_at: number;
+  last_seen_at: number;
+  total_seconds: number;
+}
