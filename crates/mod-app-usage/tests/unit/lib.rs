@@ -417,6 +417,26 @@ fn capabilities_report_audio_limit_when_probe_is_unsupported() {
 }
 
 #[test]
+fn audio_probe_failure_keeps_plain_idle_pause() {
+    let dir = temp_dir("audio-unavailable");
+    let ctx = context(dir.path(), true);
+    let watcher = Arc::new(FakeWatcher::new("com.example.player", "Player"));
+    watcher.set_idle(301);
+    watcher.set_audio_playing(true);
+    watcher.set_audio_supported(false);
+    let clock = Arc::new(FakeClock::at(chrono::Utc::now().timestamp_millis()));
+    let module = AppUsageModule::with_clock(watcher, clock.clone());
+
+    module.sample_now(&ctx).unwrap();
+    run_seconds(&module, &ctx, &clock, 10);
+    module.flush_pending(&ctx).unwrap();
+    assert_eq!(total_seconds(&ctx), 0);
+    let caps = module.capabilities();
+    assert!(!caps.audio_afk_exception);
+    assert!(caps.limitations.iter().any(|line| line.contains("音频")));
+}
+
+#[test]
 fn audio_playback_keeps_idle_time_active() {
     let dir = temp_dir("audio-afk");
     let ctx = context(dir.path(), true);

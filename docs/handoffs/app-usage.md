@@ -216,9 +216,9 @@ GUI 用例见 [`docs/testing/GUI_TEST_APP_USAGE.md`](../testing/GUI_TEST_APP_USA
 | 命令 | 结果 |
 | --- | --- |
 | `cargo fmt --all -- --check` | 通过，无差异 |
-| `cargo test -p mod-app-usage --offline` | 27 passed；新增音频 AFK、锁屏优先、关闭例外、事件启停、会话列表与旧配置兼容 |
+| `cargo test -p mod-app-usage --offline` | 28 passed；新增音频 AFK、锁屏优先、关闭例外、探测失败暂停、事件启停、会话列表与旧配置兼容 |
 | `cargo test -p os-hal --offline` | lib 5 passed / 1 ignored；capabilities 4 passed / 2 ignored；非 ignored 的 CoreAudio 真实探测通过 |
-| `cargo test --workspace --offline --all-targets` | 176 passed，0 failed，3 ignored |
+| `cargo test --workspace --offline --all-targets` | 177 passed，0 failed，3 ignored |
 | `pnpm --dir src-ui run build` | 通过（`vue-tsc --noEmit` + Vite；仅有既有 >500 kB chunk 提示） |
 | `pnpm --dir src-ui test` | 18 passed（含三语言字典同构） |
 | `cargo test -p os-hal --offline --test capabilities macos_usage_event_monitor_start_stop_is_idempotent -- --ignored` | 1 passed（本机桌面会话，验证 start/stop 幂等；不替代实体锁屏验收） |
