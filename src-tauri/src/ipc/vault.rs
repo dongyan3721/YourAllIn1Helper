@@ -58,6 +58,33 @@ fn vault_error(error: mod_password_vault::VaultError) -> String {
     error.to_string()
 }
 
+/// 用共享租约挡住剪贴板历史，30 秒后仅当内容仍是这次写入时才清除。
+fn copy_secret_with_lease(
+    ctx: &app_core::ModuleContext,
+    secret: &str,
+) -> Result<(), String> {
+    let lease = ctx.event_bus.acquire_clipboard_suppression(
+        "password_vault",
+        "secret_copy",
+        std::time::Duration::from_secs(35),
+    );
+    let mut clipboard = arboard::Clipboard::new().map_err(|error| error.to_string())?;
+    clipboard
+        .set_text(secret)
+        .map_err(|error| error.to_string())?;
+    let expected = secret.to_string();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(30));
+        if let Ok(mut board) = arboard::Clipboard::new() {
+            if board.get_text().ok().as_deref() == Some(expected.as_str()) {
+                let _ = board.clear();
+            }
+        }
+        drop(lease);
+    });
+    Ok(())
+}
+
 fn to_json(value: impl Serialize) -> Result<Value, String> {
     serde_json::to_value(value).map_err(|error| error.to_string())
 }
@@ -118,6 +145,15 @@ impl DesktopHost {
                     .await
                     .map_err(vault_error)?;
                 to_json(password)
+            }
+            "vault_copy_password" => {
+                let args = parse::<EntryArgs>(args)?;
+                let password = service
+                    .reveal_password(ctx.clone(), &args.id)
+                    .await
+                    .map_err(vault_error)?;
+                copy_secret_with_lease(&ctx, password.as_str())?;
+                Ok(json!({ "copied": true, "clear_after_secs": 30 }))
             }
             "vault_upsert_entry" => {
                 let args = parse::<UpsertArgs>(args)?;

@@ -190,6 +190,19 @@ async fn test_missing_credentials_realistically_notified() {
     }
 }
 
+#[test]
+fn openai_gateway_base_url_is_completed_to_chat_completions() {
+    use crate::provider::openai::normalize_openai_endpoint;
+    assert_eq!(
+        normalize_openai_endpoint("https://api.siliconflow.cn/v1"),
+        "https://api.siliconflow.cn/v1/chat/completions"
+    );
+    assert_eq!(
+        normalize_openai_endpoint("https://api.siliconflow.cn/v1/chat/completions/"),
+        "https://api.siliconflow.cn/v1/chat/completions"
+    );
+}
+
 #[tokio::test]
 async fn test_sequence_ordering_and_late_result_discard() {
     let creds = Arc::new(SessionCredentialStore::new());

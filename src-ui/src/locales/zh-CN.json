@@ -606,7 +606,7 @@
     },
     "panel": {
       "title": "增强截图与贴图",
-      "subtitle": "M1：冻结截图 → 选区 → 标注 → 保存/复制 → 独立贴图。OCR、长截图、GIF 属于后续阶段。",
+      "subtitle": "冻结截图、选区、标注、保存/复制、贴图、文字识别、滚动长截图和 GIF 已可用。自定义 ONNX 模型仍未实现。",
       "primary": "主屏",
       "startBtn": "开始截图",
       "permissionLabel": "屏幕录制权限",
@@ -644,7 +644,7 @@
       "wheelExpand": "滚轮/Tab 切换区域层级",
       "manualSelection": "允许拖拽自由框选",
       "capabilityTitle": "能力与阶段",
-      "capReady": "M1 可用",
+      "capReady": "可用",
       "capPending": "待开发",
       "cap": {
         "capture": "冻结截图",
@@ -662,9 +662,9 @@
         "ocr": "OCR 文字识别",
         "ocrDesc": "macOS Vision 离线识别选区原图文字（中/英/日/韩），可编辑后复制；Windows.Media.Ocr 未接入",
         "scroll": "滚动长截图",
-        "scrollDesc": "计划 M3",
+        "scrollDesc": "框选后滚动页面，按画面位移拼接成长图。重复画面和固定页眉页脚会处理；对不齐时停止并保留已拼部分",
         "gif": "GIF 录制",
-        "gifDesc": "计划 M3",
+        "gifDesc": "框选区域后按设定分辨率和帧率录制，保存为可播放的 GIF。取消时删除未完成文件",
         "onnx": "自定义 ONNX 模型",
         "onnxDesc": "自定义 det/rec 模型与 GPU→NPU→CPU 执行提供器回退、180 秒闲置释放尚未实现"
       },
@@ -820,6 +820,8 @@
     "generate": "生成密码",
     "generated": "生成结果（15 秒后清除）",
     "useGenerated": "填入编辑表单",
+    "copy": "复制密码",
+    "copied": "已复制，30 秒后从剪贴板清除",
     "copyDisabled": "秘密复制禁用：共享剪贴板租约尚未完成安全审查",
     "biometricDisabled": "生物识别禁用：真实设备钥匙保护属于 M2",
     "lockedNotice": "密码本已锁定，本地敏感状态已清理",

@@ -67,7 +67,7 @@
             <button class="vault-button" @click="cancelEdit">{{ vaultText('cancel') }}</button>
             <button v-if="form.id" class="vault-button danger" :disabled="busy" @click="deleteEntry">{{ vaultText('delete') }}</button>
           </div>
-          <button class="vault-button" disabled :title="vaultText('copyDisabled')">{{ vaultText('copyDisabled') }}</button>
+          <button class="vault-button" :disabled="busy || !form.id" @click="copyPassword">{{ vaultText('copy') }}</button>
         </section>
 
         <section v-else-if="revealedPassword" class="vault-card vault-reveal">
@@ -331,6 +331,21 @@ async function deleteEntry() {
     cancelEdit();
     busy.value = false;
     await refreshEntries();
+  } catch (reason) {
+    if (!disposed && operation === operationEpoch) reportError(reason);
+  } finally {
+    if (!disposed && operation === operationEpoch) busy.value = false;
+  }
+}
+
+async function copyPassword() {
+  if (!form.value.id) return;
+  const operation = currentOperation();
+  busy.value = true;
+  try {
+    await invokeIpc('vault_copy_password', { id: form.value.id });
+    if (!isCurrent(operation)) return;
+    notice.value = vaultText('copied');
   } catch (reason) {
     if (!disposed && operation === operationEpoch) reportError(reason);
   } finally {

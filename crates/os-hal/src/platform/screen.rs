@@ -77,14 +77,9 @@ impl ScreenCapturer for NativeOsHal {
         if CGPreflightScreenCaptureAccess() || macos_screen_recording_titles_visible() {
             Ok(())
         } else {
-            let path = std::env::current_exe()
-                .map(|path| path.display().to_string())
-                .unwrap_or_else(|_| "all-in-one-desktop".to_string());
             Err(HalError::PermissionDenied {
                 capability: "screen_recording",
-                guidance: format!(
-                    "请在「系统设置 → 隐私与安全性 → 屏幕与系统录音」中允许这个程序：{path}。允许后必须完全退出并重新打开。终端、Cursor 或旧的测试 App 上的开关不会作用到这个程序"
-                ),
+                guidance: "请在「系统设置 → 隐私与安全性 → 屏幕与系统录音」中允许「All-in-One Toolbox」。这是整个应用的权限，不需要单独授权内部文件。允许后请完全退出应用再打开。".to_string(),
             })
         }
     }

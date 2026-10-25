@@ -61,7 +61,7 @@ impl VaultState {
             epoch: self.epoch,
             auto_lock_seconds: AUTO_LOCK_SECONDS,
             biometric_available: false,
-            secret_copy_available: false,
+            secret_copy_available: true,
             capability_error: self.capability_error.clone(),
         }
     }

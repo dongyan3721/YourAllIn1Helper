@@ -606,7 +606,7 @@
     },
     "panel": {
       "title": "Screenshot & Pin",
-      "subtitle": "M1: frozen capture → selection → annotate → save/copy → pinned image. OCR, scrolling capture and GIF come in later milestones.",
+      "subtitle": "Frozen capture, selection, annotation, save/copy, pins, text recognition, scrolling capture and GIF are available. Custom ONNX models are not.",
       "primary": "primary",
       "startBtn": "Capture",
       "permissionLabel": "Screen recording permission",
@@ -644,7 +644,7 @@
       "wheelExpand": "Wheel/Tab switches region level",
       "manualSelection": "Allow free drag selection",
       "capabilityTitle": "Capabilities and milestones",
-      "capReady": "M1 ready",
+      "capReady": "Available",
       "capPending": "Planned",
       "cap": {
         "capture": "Frozen capture",
@@ -662,9 +662,9 @@
         "ocr": "OCR",
         "ocrDesc": "macOS Vision recognizes text in the original selection offline (Chinese/English/Japanese/Korean), editable before copying; Windows.Media.Ocr not connected",
         "scroll": "Scrolling capture",
-        "scrollDesc": "Planned for M3",
+        "scrollDesc": "Scroll the page after selecting a region. Repeated frames and fixed headers or footers are handled; a poor match stops and keeps the stitched part",
         "gif": "GIF recording",
-        "gifDesc": "Planned for M3",
+        "gifDesc": "Record the selection at the chosen resolution and frame rate into a playable GIF. Cancel deletes the unfinished file",
         "onnx": "Custom ONNX model",
         "onnxDesc": "Custom det/rec models with GPU→NPU→CPU execution provider fallback and 180-second idle release are not implemented yet"
       },
@@ -820,6 +820,8 @@
     "generate": "Generate password",
     "generated": "Generated result (clears after 15 seconds)",
     "useGenerated": "Use in edit form",
+    "copy": "Copy password",
+    "copied": "Copied. It will be cleared from the clipboard after 30 seconds",
     "copyDisabled": "Secret copy disabled: shared clipboard lease review is incomplete",
     "biometricDisabled": "Biometrics disabled: real device key protection belongs to M2",
     "lockedNotice": "Vault locked; local sensitive state cleared",

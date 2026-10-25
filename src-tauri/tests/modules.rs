@@ -75,10 +75,13 @@ async fn vault_async_ipc_enforces_lock_and_module_switch() {
         assert!(response.error.unwrap().contains("locked"));
     }
     let copy = host
-        .invoke_vault_ipc("vault_copy_password", json!({}))
+        .invoke_vault_ipc(
+            "vault_copy_password",
+            json!({"id": "00000000-0000-0000-0000-000000000001"}),
+        )
         .await;
     assert!(!copy.ok);
-    assert!(copy.error.unwrap().contains("disabled"));
+    assert!(copy.error.unwrap().contains("locked"));
 
     toggle(&host, "password_vault", false);
     let disabled = host.invoke_vault_ipc("vault_get_status", json!({})).await;

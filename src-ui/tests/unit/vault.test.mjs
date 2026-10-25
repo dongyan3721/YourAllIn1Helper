@@ -105,7 +105,8 @@ test('VaultPanel expires reveal and generated values with the same 15 second tim
 
 test('VaultPanel never persists secrets or enables M2/clipboard IPC', async () => {
   const source = await readFile(componentUrl, 'utf8');
-  assert.doesNotMatch(source, /localStorage|sessionStorage|vault_copy_password|vault_unlock_biometric/);
+  assert.doesNotMatch(source, /localStorage|sessionStorage|vault_unlock_biometric/);
+  assert.match(source, /vault_copy_password/);
   assert.match(source, /pagehide/);
   assert.match(source, /visibilitychange/);
   assert.match(source, /onUnmounted/);

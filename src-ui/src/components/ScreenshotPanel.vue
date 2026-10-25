@@ -177,8 +177,8 @@
 
 <script setup lang="ts">
 /**
- * 主控台「增强截图」页：真实权限/快捷键状态、开始截图、贴图管理与设置；
- * 后续阶段能力（OCR、控件级智能选区、长截图、GIF）明确标注为待开发。
+ * 主控台「增强截图」页：真实权限/快捷键状态、开始截图、贴图管理与设置。
+ * 自定义 ONNX 模型仍未实现，能力表里保持待开发。
  */
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import Icons from './Icons.vue';
@@ -216,9 +216,9 @@ const capabilityRows = [
   { key: 'pin', ready: true },
   { key: 'uiElements', ready: true },
   { key: 'ocr', ready: true },
+  { key: 'scroll', ready: true },
+  { key: 'gif', ready: true },
   { key: 'onnx', ready: false },
-  { key: 'scroll', ready: false },
-  { key: 'gif', ready: false },
 ];
 const guideKeys = ['select', 'smart', 'adjust', 'tools', 'export', 'color', 'ocr', 'pin'];
 

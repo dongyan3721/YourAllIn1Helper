@@ -23,6 +23,17 @@ pub fn is_loopback_url(url: &reqwest::Url) -> bool {
     }
 }
 
+/// 用户可填写网关根地址或完整对话地址。
+/// `https://api.example.com/v1` 会补成 `.../v1/chat/completions`。
+pub fn normalize_openai_endpoint(raw: &str) -> String {
+    let trimmed = raw.trim().trim_end_matches('/');
+    if trimmed.ends_with("/chat/completions") {
+        trimmed.to_string()
+    } else {
+        format!("{trimmed}/chat/completions")
+    }
+}
+
 pub struct OpenAIProvider {
     id: String,
     name: String,
@@ -58,7 +69,7 @@ impl OpenAIProvider {
         Self {
             id: id.into(),
             name: name.into(),
-            endpoint: endpoint.into(),
+            endpoint: normalize_openai_endpoint(&endpoint.into()),
             model: model.unwrap_or_else(|| "gpt-4o-mini".to_string()),
             temperature: temperature.unwrap_or(0.3),
         }

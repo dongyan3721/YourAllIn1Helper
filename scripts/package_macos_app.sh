@@ -32,6 +32,12 @@ if [ -d "$TAURI_BUNDLE_DIR" ]; then
     APP_NAME="$(basename "$APP_SRC")"
     rm -rf "$ROOT_DIR/dist/$APP_NAME"
     cp -R "$APP_SRC" "$ROOT_DIR/dist/$APP_NAME"
+    # 录屏权限只认整个 App。临时签名的 Mach-O 身份和包不一致时，系统设置里的开关不会生效。
+    # 按 Info.plist 的 Bundle ID 重新签名，让「All-in-One Toolbox」这一项对应正在运行的应用。
+    DIST_APP="$ROOT_DIR/dist/$APP_NAME"
+    codesign --force --sign - "$DIST_APP/Contents/MacOS/all-in-one-desktop"
+    codesign --force --sign - "$DIST_APP"
+    codesign --verify --strict --verbose=2 "$DIST_APP"
     echo "✅ 打包成功！应用已放置在："
     echo "   $ROOT_DIR/dist/$APP_NAME"
     echo ""
