@@ -90,6 +90,84 @@ impl DesktopHost {
                 "overlay": ctx.config.read().screenshot.clone(),
             })),
             "screenshot_update_settings" => self.update_screenshot_settings(&args),
+            // ── M3: 滚动长截图 ──
+            "screenshot_scroll_start" => {
+                let session_id = str_arg(&args, "session_id")?;
+                let sel_val = args
+                    .get("selection")
+                    .ok_or_else(|| CoreError::Config("缺少 selection 参数".into()))?;
+                let selection: SelectionBox = serde_json::from_value(sel_val.clone())
+                    .map_err(|e| CoreError::Config(format!("选区参数格式无效: {}", e)))?;
+                Ok(serde_json::to_value(
+                    shot.start_scroll(ctx, session_id, selection)?,
+                )?)
+            }
+            "screenshot_scroll_stop" => Ok(serde_json::to_value(shot.stop_scroll(ctx)?)?),
+            "screenshot_scroll_cancel" => Ok(json!({ "cancelled": shot.cancel_scroll(ctx)? })),
+            "screenshot_scroll_status" => Ok(serde_json::to_value(shot.scroll_status())?),
+            "screenshot_scroll_set_auto" => {
+                let enabled = args
+                    .get("enabled")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                shot.set_scroll_auto(enabled)?;
+                Ok(json!({ "ok": true }))
+            }
+            "screenshot_scroll_info" => Ok(serde_json::to_value(shot.stitched_image_info()?)?),
+            "screenshot_scroll_export" => {
+                let action_str = str_arg(&args, "action")?;
+                let action = match action_str {
+                    "save" => ExportAction::Save,
+                    "copy" => ExportAction::Copy,
+                    "pin" => ExportAction::Pin,
+                    other => return Err(CoreError::Config(format!("未知导出操作: {}", other))),
+                };
+                Ok(serde_json::to_value(shot.export_scroll(ctx, action)?)?)
+            }
+            // ── M3: GIF 录制 ──
+            "screenshot_gif_start" => {
+                let session_id = str_arg(&args, "session_id")?;
+                let sel_val = args
+                    .get("selection")
+                    .ok_or_else(|| CoreError::Config("缺少 selection 参数".into()))?;
+                let selection: SelectionBox = serde_json::from_value(sel_val.clone())
+                    .map_err(|e| CoreError::Config(format!("选区参数格式无效: {}", e)))?;
+                let mut config = mod_screenshot::gif::GifRecordingConfig::default();
+                if let Some(preset_str) = args.get("preset").and_then(Value::as_str) {
+                    config.resolution_preset = match preset_str {
+                        "1080p" => mod_screenshot::gif::GifResolutionPreset::P1080,
+                        "720p" => mod_screenshot::gif::GifResolutionPreset::P720,
+                        "480p" => mod_screenshot::gif::GifResolutionPreset::P480,
+                        "custom" => {
+                            let cw = args
+                                .get("custom_width")
+                                .and_then(Value::as_u64)
+                                .unwrap_or(400) as u32;
+                            let ch = args
+                                .get("custom_height")
+                                .and_then(Value::as_u64)
+                                .unwrap_or(300) as u32;
+                            mod_screenshot::gif::GifResolutionPreset::Custom {
+                                width: cw,
+                                height: ch,
+                            }
+                        }
+                        _ => mod_screenshot::gif::GifResolutionPreset::Original,
+                    };
+                }
+                if let Some(fps_val) = args.get("fps").and_then(Value::as_u64) {
+                    config.framerate = mod_screenshot::gif::GifFramerate::from_u32(fps_val as u32);
+                }
+                if let Some(max_dur) = args.get("max_duration_secs").and_then(Value::as_u64) {
+                    config.max_duration_secs = max_dur;
+                }
+                Ok(serde_json::to_value(
+                    shot.start_gif(ctx, session_id, selection, config)?,
+                )?)
+            }
+            "screenshot_gif_stop" => Ok(serde_json::to_value(shot.stop_gif(ctx)?)?),
+            "screenshot_gif_cancel" => Ok(json!({ "cancelled": shot.cancel_gif(ctx)? })),
+            "screenshot_gif_status" => Ok(serde_json::to_value(shot.gif_status())?),
             _ => Err(CoreError::Config(format!(
                 "Unknown screenshot command: {}",
                 cmd
@@ -169,5 +247,12 @@ impl DesktopHost {
                 action,
             )
         })
+    }
+
+    /// 长截图拼接产物原始 RGBA（二进制 IPC）。
+    pub fn screenshot_scroll_image_bytes(&self) -> CoreResult<Vec<u8>> {
+        self.kernel
+            .registry()
+            .with_enabled(MODULE_ID, || self.screenshot.stitched_image_bytes())
     }
 }

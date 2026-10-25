@@ -28,6 +28,7 @@ pub(super) fn mount(
         hal.region_detector.clone(),
         Arc::new(mod_screenshot::clipboard::UnavailableClipboard),
     ));
+    screenshot.set_input_simulator(hal.input_simulator.clone());
     let clipboard = Arc::new(ClipboardModule::new(hal.input_simulator.clone()));
     let sticky_note = Arc::new(StickyNoteModule::new());
     let window_pin = Arc::new(WindowPinModule::new(hal.window_controller.clone()));
