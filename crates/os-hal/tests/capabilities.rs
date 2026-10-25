@@ -9,15 +9,30 @@ fn unimplemented_native_capabilities_do_not_return_mock_results() {
         Err(HalError::Unsupported(_))
     ));
     // 原生选区需要显式桌面验收，自动测试不得读取用户真实选区。
-    assert!(matches!(
-        native.recognize_rgba(&os_hal::CapturedFrame {
-            width: 1,
-            height: 1,
+    let blank = os_hal::CapturedFrame {
+        width: 1,
+        height: 1,
+        scale_factor_milli: 1000,
+        rgba_bytes: vec![0; 4],
+    };
+    let ocr = native.recognize_rgba(&blank);
+    if cfg!(target_os = "macos") {
+        // macOS 已接入 Vision：空白图只能得到空结果或真实错误，绝不能出现示例文本。
+        if let Ok(result) = ocr {
+            assert!(result.full_text.is_empty() && result.lines.is_empty());
+        }
+    } else {
+        assert!(matches!(ocr, Err(HalError::Unsupported(_))));
+    }
+    // 尺寸与缓冲区不一致必须拒绝，不能读越界内存。
+    assert!(native
+        .recognize_rgba(&os_hal::CapturedFrame {
+            width: 4,
+            height: 4,
             scale_factor_milli: 1000,
             rgba_bytes: vec![0; 4],
-        }),
-        Err(HalError::Unsupported(_))
-    ));
+        })
+        .is_err());
 }
 #[cfg(target_os = "macos")]
 #[test]
@@ -89,4 +104,39 @@ fn macos_usage_event_monitor_start_stop_is_idempotent() {
         .expect("start monitor twice");
     native.stop_usage_event_monitor();
     native.stop_usage_event_monitor();
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "需要桌面会话；读取前台外部窗口的无障碍层级（只读），显式运行"]
+fn macos_ui_hierarchy_reports_real_chain_or_permission_denied() {
+    use os_hal::{RegionDetector, WindowController};
+    let native = NativeOsHal::new();
+    let Some(window) = native
+        .list_external_windows()
+        .unwrap_or_default()
+        .into_iter()
+        .find(|w| w.width > 100 && w.height > 100)
+    else {
+        return;
+    };
+    let (x, y) = (
+        window.x + window.width as i32 / 2,
+        window.y + window.height as i32 / 2,
+    );
+    match native.query_ui_hierarchy_at_point(x, y) {
+        Ok(chain) => {
+            println!(
+                "AX chain at ({x},{y}) in {}: {:?}",
+                window.process_name, chain
+            );
+            for r in &chain {
+                assert!(r.width >= 4 && r.height >= 4);
+            }
+        }
+        Err(HalError::PermissionDenied { capability, .. }) => {
+            assert_eq!(capability, "accessibility")
+        }
+        Err(other) => panic!("unexpected AX error: {other}"),
+    }
 }

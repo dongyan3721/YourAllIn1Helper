@@ -242,12 +242,13 @@ pub fn infer_visual_edge_box_rgba(
         return None;
     }
 
+    // 加权和最大 255×256，超出 i16 范围，必须在 i32 中计算（结果仍为 0–255）。
     let luma_at = |x: u32, y: u32| -> i16 {
         let idx = ((y as usize) * (img_width as usize) + (x as usize)) * 4;
-        let r = rgba[idx] as i16;
-        let g = rgba[idx + 1] as i16;
-        let b = rgba[idx + 2] as i16;
-        (r * 77 + g * 150 + b * 29) >> 8
+        let r = rgba[idx] as i32;
+        let g = rgba[idx + 1] as i32;
+        let b = rgba[idx + 2] as i32;
+        ((r * 77 + g * 150 + b * 29) >> 8) as i16
     };
 
     let thresh = contrast_threshold as i16;

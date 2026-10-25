@@ -191,3 +191,21 @@ fn test_kernel_bootstrap_zero_webview_and_shortcut_dispatch() {
 
     kernel.shutdown().unwrap();
 }
+
+#[test]
+fn visual_edge_box_handles_full_white_pixels_without_overflow() {
+    // 白色卡片位于黑底中央：旧实现以 i16 计算亮度，255×150 溢出导致调试构建 panic。
+    let (w, h) = (64u32, 48u32);
+    let mut rgba = vec![0u8; (w * h * 4) as usize];
+    for y in 10..30 {
+        for x in 20..50 {
+            let i = ((y * w + x) * 4) as usize;
+            rgba[i..i + 4].copy_from_slice(&[255, 255, 255, 255]);
+        }
+    }
+    let found = crate::infer_visual_edge_box_rgba(&rgba, w, h, 30, 20, 28).unwrap();
+    assert_eq!(
+        (found.x, found.y, found.width, found.height),
+        (20, 10, 30, 20)
+    );
+}

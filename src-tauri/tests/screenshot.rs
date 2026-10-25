@@ -232,3 +232,50 @@ fn settings_update_is_atomic_persistent_and_keeps_unknown_fields() {
     assert_eq!(config["overlay"]["show_magnifier"], false);
     host.kernel().shutdown().unwrap();
 }
+
+#[test]
+fn ocr_ipc_uses_injected_provider_and_intent_round_trips() {
+    let dir = tempfile::tempdir().unwrap();
+    let host = DesktopHost::bootstrap(dir.path(), true).unwrap();
+    let info = call(&host, "screenshot_start_capture", json!({"intent": "ocr"}));
+    assert_eq!(info["intent"], "ocr");
+    let session_id = info["session_id"].as_str().unwrap().to_string();
+    assert_eq!(
+        call(&host, "screenshot_get_session", json!({}))["intent"],
+        "ocr"
+    );
+    // 无桌面测试显式注入 MockOsHal，OCR 结果来自测试适配器。
+    let out = call(
+        &host,
+        "screenshot_ocr",
+        json!({"session_id": session_id, "selection": {"x": 0, "y": 0, "width": 8, "height": 8}}),
+    );
+    assert_eq!(
+        (out["width"].as_u64(), out["height"].as_u64()),
+        (Some(8), Some(8))
+    );
+    assert!(host.screenshot().has_active_session());
+    // 未注入系统剪贴板：复制文字如实失败。
+    assert!(
+        !host
+            .invoke_ipc("screenshot_copy_text", json!({"text": "abc"}))
+            .ok
+    );
+    assert!(
+        !host
+            .invoke_ipc("screenshot_ocr", json!({"session_id": session_id}))
+            .ok
+    );
+    call(
+        &host,
+        "kernel_set_module_enabled",
+        json!({"module_id": "screenshot", "enabled": false}),
+    );
+    assert!(!host
+        .invoke_ipc(
+            "screenshot_ocr",
+            json!({"session_id": session_id, "selection": {"x": 0, "y": 0, "width": 8, "height": 8}})
+        )
+        .ok);
+    host.kernel().shutdown().unwrap();
+}

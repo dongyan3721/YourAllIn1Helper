@@ -3,8 +3,8 @@
 //! 流程：
 //! 1. 快捷键或主面板触发后先做屏幕录制权限预检，再经注入的 `ScreenCapturer` 抓取真实冻结帧；
 //!    冻结帧完成后才创建（隐藏的）`capture-overlay`，前端绘制完成后再显示，桌面不会先露出遮罩。
-//! 2. 窗口级智能区域来自注入的 `RegionDetector`（L1），层级求解复用 `app_core` 的算法；
-//!    控件级（L2）与视觉候选（L3）在 M1 如实报告为不可用。
+//! 2. 窗口级智能区域来自注入的 `RegionDetector`（L1），控件级（L2）在已授权时查询无障碍树；
+//!    视觉候选（L3）仍按边缘检测给出，识别文字走注入的 `OcrProvider`。
 //! 3. 前端只把选区坐标与标注层 PNG 交回后端；裁剪、合成、编码、落盘、复制都在后端完成，
 //!    冻结帧原始像素不回传。
 //! 4. 贴图 `pin-img-{id}` 只在窗口存在时保留 PNG；关闭、停用、退出都销毁窗口并释放内存。
@@ -17,6 +17,7 @@ pub mod error;
 pub mod export;
 pub mod geometry;
 pub mod gif;
+pub mod ocr;
 pub mod pins;
 pub mod scroll;
 pub mod session;
@@ -28,7 +29,7 @@ use clipboard::ScreenshotClipboard;
 use config::ScreenshotSettings;
 use error::{internal, ScreenshotFailure};
 use export::ExportAction;
-use os_hal::{DisplayMonitorInfo, HalError, RegionDetector, ScreenCapturer};
+use os_hal::{DisplayMonitorInfo, HalError, OcrProvider, RegionDetector, ScreenCapturer};
 use parking_lot::{Mutex, RwLock};
 use pins::{is_valid_pin_id, pin_label, PinRecord, PinStore, PinSummary};
 use serde::{Deserialize, Serialize};
@@ -55,6 +56,8 @@ pub const ACTION_CAPTURE: &str = "screenshot:capture";
 pub const ACTION_SCROLL: &str = "screenshot:scroll";
 /// GIF 录制快捷键动作。
 pub const ACTION_GIF: &str = "screenshot:gif";
+/// 截图并识别文字快捷键动作。
+pub const ACTION_OCR: &str = "screenshot:ocr";
 /// 截图遮罩窗口标签。
 pub const OVERLAY_LABEL: &str = "capture-overlay";
 /// 长截图/GIF 控制条浮动窗口标签。
@@ -139,6 +142,10 @@ pub struct ScreenshotModule {
     last_stitched: RwLock<Option<scroll::StitchedImage>>,
     active_gif: RwLock<Option<Arc<gif::GifRecordingSession>>>,
     last_gif_status: RwLock<Option<gif::GifRecordingStatus>>,
+    /// 选区文字识别能力（未注入时如实不可用）。
+    ocr: Arc<dyn OcrProvider>,
+    /// 当前会话的触发意图，随会话描述下发前端。
+    intent: RwLock<ocr::CaptureIntent>,
 }
 
 /// 抓帧期间临时隐藏主面板，作用域结束（含提前返回）时恢复显示。
@@ -193,7 +200,15 @@ impl ScreenshotModule {
             last_stitched: RwLock::new(None),
             active_gif: RwLock::new(None),
             last_gif_status: RwLock::new(None),
+            ocr: Arc::new(ocr::UnavailableOcr),
+            intent: RwLock::new(ocr::CaptureIntent::Capture),
         }
+    }
+
+    /// 注入 OCR 能力（构造器风格，保持 `new` 签名稳定）。
+    pub fn with_ocr(mut self, provider: Arc<dyn OcrProvider>) -> Self {
+        self.ocr = provider;
+        self
     }
 
     /// 替换剪贴板端口（生产宿主在 Tauri 启动后注入系统剪贴板）。
@@ -264,7 +279,13 @@ impl ScreenshotModule {
         monitor_id: Option<u32>,
         hide_dashboard: bool,
     ) -> CoreResult<SessionInfo> {
-        self.start_capture_with_mode(ctx, monitor_id, hide_dashboard, None)
+        self.start_capture_with(
+            ctx,
+            monitor_id,
+            hide_dashboard,
+            None,
+            ocr::CaptureIntent::Capture,
+        )
     }
 
     /// 携带预设目标模式启动截图（如 "scroll"、"gif"）。
@@ -275,15 +296,46 @@ impl ScreenshotModule {
         hide_dashboard: bool,
         target_mode: Option<String>,
     ) -> CoreResult<SessionInfo> {
+        self.start_capture_with(
+            ctx,
+            monitor_id,
+            hide_dashboard,
+            target_mode,
+            ocr::CaptureIntent::Capture,
+        )
+    }
+
+    /// 以指定意图开始截图（例如「截图并识别文字」）。
+    pub fn start_capture_with_intent(
+        &self,
+        ctx: &ModuleContext,
+        monitor_id: Option<u32>,
+        hide_dashboard: bool,
+        intent: ocr::CaptureIntent,
+    ) -> CoreResult<SessionInfo> {
+        self.start_capture_with(ctx, monitor_id, hide_dashboard, None, intent)
+    }
+
+    fn start_capture_with(
+        &self,
+        ctx: &ModuleContext,
+        monitor_id: Option<u32>,
+        hide_dashboard: bool,
+        target_mode: Option<String>,
+        intent: ocr::CaptureIntent,
+    ) -> CoreResult<SessionInfo> {
         let _gate = self
             .gate
             .try_lock()
             .ok_or_else(|| internal("上一次截图仍在处理中，请稍后再试"))?;
+        // 取得会话门后才切换意图，被拒绝的重复触发不会影响进行中的会话。
+        *self.intent.write() = intent;
         if let Err(error) = self.finish_session_locked(ctx) {
             warn!(%error, "Failed to fully close previous capture overlay");
         }
         match self.begin_session(ctx, monitor_id, hide_dashboard, target_mode) {
-            Ok(info) => {
+            Ok(mut info) => {
+                info.intent = intent;
                 *self.last_error.write() = None;
                 Ok(info)
             }
@@ -347,8 +399,8 @@ impl ScreenshotModule {
         // 4. 窗口级智能区域：探测失败只降级为手动选区，并如实记录原因。
         let settings = self.settings(ctx);
         let overlay_settings = self.overlay_settings(ctx, &settings);
-        let (detected, window_state) = if overlay_settings.smart_regions {
-            match self.regions.detect_hierarchical_regions() {
+        let (detected, capabilities) = if overlay_settings.smart_regions {
+            let (detected, window_state) = match self.regions.detect_hierarchical_regions() {
                 Ok(regions) => (regions, CapabilityState::Available),
                 Err(error) => (
                     Vec::new(),
@@ -356,18 +408,27 @@ impl ScreenshotModule {
                         reason: error.to_string(),
                     },
                 ),
-            }
+            };
+            // L2 只预检权限，不弹授权；不可用时如实记录原因，继续使用 L1/L3。
+            let ui_state = match self.regions.check_ui_hierarchy_permission() {
+                Ok(()) => CapabilityState::Available,
+                Err(HalError::PermissionDenied { guidance, .. }) => {
+                    CapabilityState::Unavailable { reason: guidance }
+                }
+                Err(error) => CapabilityState::Unavailable {
+                    reason: error.to_string(),
+                },
+            };
+            (
+                detected,
+                RegionCapabilities::new(window_state, ui_state, CapabilityState::Available),
+            )
         } else {
-            (Vec::new(), CapabilityState::Disabled)
+            (Vec::new(), RegionCapabilities::disabled())
         };
         let session = Arc::new(
-            CaptureSession::new(
-                monitor,
-                frame,
-                detected,
-                RegionCapabilities::m1(window_state),
-            )
-            .with_target_mode(target_mode),
+            CaptureSession::new(monitor, frame, detected, capabilities)
+                .with_target_mode(target_mode),
         );
 
         // 5. 记录会话后再创建隐藏遮罩；创建失败时丢弃会话，冻结帧随之释放。
@@ -426,7 +487,9 @@ impl ScreenshotModule {
                 .ok_or_else(|| internal("当前没有进行中的截图"))?,
         };
         let settings = self.settings(ctx);
-        Ok(session.describe(self.overlay_settings(ctx, &settings)))
+        let mut info = session.describe(self.overlay_settings(ctx, &settings));
+        info.intent = *self.intent.read();
+        Ok(info)
     }
 
     /// 冻结帧原始 RGBA 字节（经二进制 IPC 返回前端，复制一次，不做 JSON/base64 编码）。
@@ -442,9 +505,66 @@ impl ScreenshotModule {
         y: i32,
         level_steps: usize,
     ) -> CoreResult<Option<app_core::DetectedRegionRect>> {
-        Ok(self
-            .current_session(session_id)?
-            .resolve_region(x, y, level_steps.min(8)))
+        let session = self.current_session(session_id)?;
+        // L2：只在光标处有外部窗口且已授权时查询无障碍树；查询失败退回 L1/L3，不中断交互。
+        let chain =
+            if session.capabilities.ui_available() && session.front_window_at(x, y).is_some() {
+                let (dx, dy) = session.monitor.frame_point_to_desktop(x, y);
+                self.regions
+                    .query_ui_hierarchy_at_point(dx, dy)
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+        Ok(session.resolve_region_with_ui(x, y, level_steps.min(8), &chain))
+    }
+
+    /// 识别选区文字（冻结帧原图，不含标注）；不结束会话。
+    pub fn recognize_text(
+        &self,
+        session_id: &str,
+        selection: SelectionBox,
+    ) -> CoreResult<ocr::OcrOutcome> {
+        let session = self.current_session(session_id)?;
+        let selection =
+            geometry::normalize_crop(&selection, session.frame.width, session.frame.height)?;
+        if selection.width as u64 * selection.height as u64 > ocr::MAX_OCR_PIXELS {
+            return Err(internal("选区过大，请缩小后再识别文字"));
+        }
+        let rgba = geometry::crop_rgba(
+            &session.frame.rgba_bytes,
+            session.frame.width,
+            session.frame.height,
+            &selection,
+        )?;
+        let frame = os_hal::CapturedFrame {
+            width: selection.width,
+            height: selection.height,
+            scale_factor_milli: session.frame.scale_factor_milli,
+            rgba_bytes: rgba,
+        };
+        let result = self
+            .ocr
+            .recognize_rgba(&frame)
+            .map_err(|e| ScreenshotFailure::from_hal(&e).to_core_error())?;
+        Ok(ocr::OcrOutcome::from_result(
+            result,
+            selection.width,
+            selection.height,
+        ))
+    }
+
+    /// 复制识别出的文字（长度受限）。
+    pub fn copy_text(&self, text: &str) -> CoreResult<()> {
+        if text.trim().is_empty() {
+            return Err(internal("没有可复制的文字"));
+        }
+        if text.chars().count() > ocr::MAX_COPY_TEXT_CHARS {
+            return Err(internal("文字过长，无法复制"));
+        }
+        self.clipboard()
+            .write_text(text)
+            .map_err(|e| internal(format!("复制文字失败：{}", e)))
     }
 
     /// 前端已绘制冻结帧：显示遮罩窗口（仅首次）。
@@ -1210,12 +1330,18 @@ impl AppModule for ScreenshotModule {
         "增强截图与贴图"
     }
 
-    /// M1 与 M3 已实现的快捷键（区域截图、长截图、GIF）。OCR 快捷键待 M2 实现。
+    /// 已实现的快捷键：区域截图、长截图、GIF、截图识字。
     fn default_shortcuts(&self) -> Vec<ShortcutSpec> {
         vec![
             ShortcutSpec::new(MODULE_ID, ACTION_CAPTURE, "F1", "启动区域截图"),
             ShortcutSpec::new(MODULE_ID, ACTION_SCROLL, "Shift+F1", "启动滚动长截图"),
             ShortcutSpec::new(MODULE_ID, ACTION_GIF, "SecondaryMod+F1", "启动 GIF 录制"),
+            ShortcutSpec::new(
+                MODULE_ID,
+                ACTION_OCR,
+                "PrimaryMod+Shift+O",
+                "截图并识别文字",
+            ),
         ]
     }
 
@@ -1227,13 +1353,14 @@ impl AppModule for ScreenshotModule {
     }
 
     fn on_shortcut(&self, action_id: &str, ctx: &ModuleContext) -> CoreResult<()> {
-        let mode = match action_id {
-            ACTION_CAPTURE => Some("capture".to_string()),
-            ACTION_SCROLL => Some("scroll".to_string()),
-            ACTION_GIF => Some("gif".to_string()),
+        let (mode, intent) = match action_id {
+            ACTION_CAPTURE => (Some("capture".to_string()), ocr::CaptureIntent::Capture),
+            ACTION_SCROLL => (Some("scroll".to_string()), ocr::CaptureIntent::Capture),
+            ACTION_GIF => (Some("gif".to_string()), ocr::CaptureIntent::Capture),
+            ACTION_OCR => (None, ocr::CaptureIntent::Ocr),
             _ => return Ok(()),
         };
-        match self.start_capture_with_mode(ctx, None, false, mode) {
+        match self.start_capture_with(ctx, None, false, mode, intent) {
             Ok(_) => Ok(()),
             Err(error) => {
                 // 快捷键触发没有调用方界面：缺权限时打开主面板截图页展示处理步骤。

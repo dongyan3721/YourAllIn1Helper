@@ -35,6 +35,18 @@ export interface ScreenshotSessionInfo {
   };
   target_mode?: string | null;
   created_at: number;
+  /** 触发意图：`ocr` 时 Enter 识别文字而非复制图片。 */
+  intent: 'capture' | 'ocr';
+}
+
+/** 选区文字识别结果；行坐标为相对选区左上角的帧像素。 */
+export interface OcrOutcome {
+  backend: string;
+  text: string;
+  lines: Array<{ text: string; confidence: number; x: number; y: number; width: number; height: number }>;
+  elapsed_ms: number;
+  width: number;
+  height: number;
 }
 
 export interface DetectedRegion extends Rect {
@@ -212,10 +224,14 @@ export const screenshotApi = {
   cancel: (sessionId?: string) =>
     invokeIpc<{ cancelled: boolean }>('screenshot_cancel', sessionId ? { session_id: sessionId } : {}),
   copyColor: (text: string) => invokeIpc('screenshot_copy_color', { text }),
+  ocr: (sessionId: string, selection: Rect) =>
+    invokeIpc<OcrOutcome>('screenshot_ocr', { session_id: sessionId, selection }),
+  copyText: (text: string) => invokeIpc('screenshot_copy_text', { text }),
   status: () => invokeIpc<ScreenshotStatus>('screenshot_get_status'),
-  start: (monitorId?: number | null) =>
+  start: (monitorId?: number | null, intent: 'capture' | 'ocr' = 'capture') =>
     invokeIpc<ScreenshotSessionInfo>('screenshot_start_capture', {
       hide_dashboard: true,
+      intent,
       ...(monitorId != null ? { monitor_id: monitorId } : {}),
     }),
   listMonitors: () => invokeIpc<MonitorInfo[]>('screenshot_list_monitors'),

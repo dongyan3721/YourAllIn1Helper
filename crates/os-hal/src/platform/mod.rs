@@ -1,6 +1,9 @@
 //! 原生适配器装配入口；业务模块只依赖 Trait，不依赖这里的具体实现。
 mod input;
+mod ocr;
 mod regions;
+#[cfg(target_os = "macos")]
+mod regions_ax;
 mod screen;
 mod secure;
 mod selection;

@@ -39,6 +39,17 @@ objc2-core-graphics = "0.3.2"
 objc2-foundation = "0.3.2"
 # 登录钥匙串通用密码项（翻译 API Key 等凭据）；版本与 native-tls 已锁定的一致，无新增下载。
 security-framework = "3.7"
+# 系统原生 OCR（VNRecognizeTextRequest）；仅启用文字识别所需特性。
+objc2-vision = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "objc2-core-foundation",
+    "objc2-core-graphics",
+    "VNObservation",
+    "VNRecognizeTextRequest",
+    "VNRequest",
+    "VNRequestHandler",
+    "VNTypes",
+] }
 
 [dev-dependencies]
 tempfile = "3.10"

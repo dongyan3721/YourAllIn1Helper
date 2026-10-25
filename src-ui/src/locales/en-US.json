@@ -658,13 +658,15 @@
         "pin": "Pinned image",
         "pinDesc": "Separate topmost window: drag, wheel zoom 10%–500%, Shift+wheel opacity, double-click to collapse, close releases memory",
         "uiElements": "Control / visual smart selection",
-        "uiElementsDesc": "Accessibility tree (L2) and visual edge candidates (L3) are not connected yet; planned for M2",
+        "uiElementsDesc": "Cycles control → parent container → window → screen under the cursor (macOS accessibility tree, needs Accessibility permission; falls back to window level and says so when not granted); visual edges infer card areas when no control info exists",
         "ocr": "OCR",
-        "ocrDesc": "System OCR and custom ONNX models, planned for M2",
+        "ocrDesc": "macOS Vision recognizes text in the original selection offline (Chinese/English/Japanese/Korean), editable before copying; Windows.Media.Ocr not connected",
         "scroll": "Scrolling capture",
         "scrollDesc": "Planned for M3",
         "gif": "GIF recording",
-        "gifDesc": "Planned for M3"
+        "gifDesc": "Planned for M3",
+        "onnx": "Custom ONNX model",
+        "onnxDesc": "Custom det/rec models with GPU→NPU→CPU execution provider fallback and 180-second idle release are not implemented yet"
       },
       "guideTitle": "How to use",
       "guide": {
@@ -674,14 +676,16 @@
         "tools": "Keys 1–5 pick rectangle/arrow/mosaic/counter/text; ⌘/Ctrl+Z undo, ⌘/Ctrl+Shift+Z redo",
         "export": "Enter, ⌘/Ctrl+C or double-click copies; ⌘/Ctrl+S saves (never overwrites); F3 pins; Esc cancels",
         "color": "The magnifier follows the cursor, WASD or arrows move one pixel; C copies HEX, Shift+C copies RGB",
-        "pin": "Pins: drag to move, wheel to zoom, Shift+wheel for opacity, double-click to collapse, right-click keeps the toolbar, Esc closes"
+        "pin": "Pins: drag to move, wheel to zoom, Shift+wheel for opacity, double-click to collapse, right-click keeps the toolbar, Esc closes",
+        "ocr": "⌘/Ctrl+Shift+O or \"Capture text\" enters text mode, press Enter after selecting; the toolbar OCR button works anytime, Esc closes the result panel first"
       },
       "resultPin": "Pinned to screen ({size})",
       "resultCopy": "Copied as image ({size})",
       "resultSave": "Saved ({size}): {path}",
       "resultCopyFailed": "Copy failed: {error}",
       "resultAlsoCopied": "also copied",
-      "settingsSaved": "Capture settings saved"
+      "settingsSaved": "Capture settings saved",
+      "startOcrBtn": "Capture text"
     },
     "scroll": {
       "start": "Scroll",
@@ -719,6 +723,17 @@
       "preset720p": "720p",
       "preset480p": "480p",
       "fpsLabel": "{fps} FPS"
+    },
+    "ocr": {
+      "button": "Recognize text in selection (OCR)",
+      "busy": "Recognizing…",
+      "title": "Recognized text",
+      "meta": "{lines} lines · {ms} ms",
+      "empty": "No text recognized",
+      "copy": "Copy text",
+      "copied": "Recognized text copied",
+      "close": "Close",
+      "intentHint": "Select an area and press Enter to recognize text"
     }
   },
   "translator": {
