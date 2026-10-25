@@ -158,6 +158,7 @@ GUI 用例见 [`docs/testing/GUI_TEST_APP_USAGE.md`](../testing/GUI_TEST_APP_USA
   - `94c4e74` feat(app-usage): add audio AFK exception and daily session list
   - `4646ddc` docs(app-usage): record round 3 event, audio and session changes
   - `dd4b455` test(app-usage): cover audio probe failure idle pause
+  - `2ce8630` fix(app-usage): hide session titles immediately after privacy change
   - 本文档最终更新提交见本文件所在提交
 - 只写入本 worktree；未修改主目录、其他成员目录、截图/翻译/密码本目录；未改全局权限、代理或模型。
 
