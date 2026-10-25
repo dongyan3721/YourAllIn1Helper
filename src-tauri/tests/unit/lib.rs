@@ -11,7 +11,7 @@ fn test_desktop_host_ipc_full_workflow() {
     assert!(status.ok);
     let data = status.data.unwrap();
     assert_eq!(data["active_window_count"], 0);
-    assert_eq!(data["modules"].as_array().unwrap().len(), 7);
+    assert_eq!(data["modules"].as_array().unwrap().len(), 9);
 
     // 2. Trigger Clipboard shortcut -> opens `clipboard-popup` (1 active WebView)
     let trig = host.invoke_ipc(
@@ -73,4 +73,68 @@ fn test_desktop_host_ipc_full_workflow() {
             .len(),
         0
     );
+}
+
+#[test]
+fn test_translator_ipc_workflow_and_disabled_rejection() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let host = DesktopHost::bootstrap(temp_dir.path(), true).unwrap();
+
+    // 1. 读取配置
+    let cfg_resp = host.invoke_ipc("translator_get_config", json!({}));
+    assert!(cfg_resp.ok);
+    let cfg = cfg_resp.data.unwrap();
+    assert_eq!(cfg["default_provider_id"], "google");
+    assert_eq!(cfg["target_lang"], "zh-CN");
+
+    // 2. 列出提供商
+    let prov_resp = host.invoke_ipc("translator_list_providers", json!({}));
+    assert!(prov_resp.ok);
+    let providers = prov_resp.data.unwrap().as_array().unwrap().clone();
+    assert!(providers.iter().any(|p| p["id"] == "google"));
+    assert!(providers.iter().any(|p| p["id"] == "deepl"));
+    assert!(providers.iter().any(|p| p["id"] == "openai"));
+
+    // 3. 设置凭据
+    let key_resp = host.invoke_ipc(
+        "translator_set_api_key",
+        json!({ "provider_id": "google", "api_key": "test-key-abc" }),
+    );
+    assert!(key_resp.ok);
+
+    // 4. 再次列出提供商，验证 has_api_key 变为 true，且绝不包含明文 api_key 字段
+    let prov_resp2 = host.invoke_ipc("translator_list_providers", json!({}));
+    assert!(prov_resp2.ok);
+    let google_meta = prov_resp2
+        .data
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"] == "google")
+        .cloned()
+        .unwrap();
+    assert_eq!(google_meta["has_api_key"], true);
+    assert!(google_meta.get("api_key").is_none());
+
+    // 5. 提取选区（MockOsHal 预置文本）
+    let sel_resp = host.invoke_ipc("translator_extract_selection", json!({}));
+    assert!(sel_resp.ok);
+    let sel_data = sel_resp.data.unwrap();
+    assert_eq!(sel_data["has_selection"], true);
+    assert_eq!(sel_data["text"], "Hello All-in-One");
+
+    // 6. 禁用模块：拦截所有 translator_ IPC 调用
+    let dis_resp = host.invoke_ipc(
+        "kernel_set_module_enabled",
+        json!({ "module_id": "translator", "enabled": false }),
+    );
+    assert!(dis_resp.ok);
+
+    let rej_resp = host.invoke_ipc("translator_get_config", json!({}));
+    assert!(!rej_resp.ok);
+    assert!(rej_resp
+        .error
+        .unwrap()
+        .contains("Module 'translator' is disabled"));
 }

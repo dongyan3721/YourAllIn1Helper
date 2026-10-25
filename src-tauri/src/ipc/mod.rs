@@ -7,6 +7,7 @@ mod screen_ink;
 mod screenshot;
 mod script;
 mod sticky_note;
+mod translator;
 mod usage;
 mod window_pin;
 impl DesktopHost {
@@ -31,6 +32,8 @@ impl DesktopHost {
                 ("app_usage", Self::dispatch_usage)
             } else if cmd.starts_with("screenshot_") {
                 ("screenshot", Self::dispatch_screenshot)
+            } else if cmd.starts_with("translator_") {
+                ("translator", Self::dispatch_translator)
             } else {
                 return Err(CoreError::Config(format!("Unknown IPC command: {}", cmd)));
             };

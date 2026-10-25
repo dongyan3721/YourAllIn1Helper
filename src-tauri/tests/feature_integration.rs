@@ -61,6 +61,7 @@ fn upgrade_preserves_old_data_and_new_feature_switches_are_independent() {
             "sticky_note",
             "app_usage",
             "script_runner",
+            "translator",
             "media_proc",
             "window_pin"
         ]

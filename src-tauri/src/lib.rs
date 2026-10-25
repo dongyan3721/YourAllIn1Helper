@@ -23,6 +23,7 @@ use mod_script_runner::events::ScriptEventSink;
 use mod_script_runner::hotkey::ScriptHotkeySync;
 use mod_script_runner::ScriptRunnerModule;
 use mod_sticky_note::{StickyNoteModule, StickyNoteWindowStateUpdate};
+use mod_translator::TranslatorModule;
 use mod_window_pin::WindowPinModule;
 use os_hal::{ExternalWindowInfo, MockOsHal, NativeOsHal, OsHalBundle};
 use serde::{Deserialize, Serialize};
@@ -94,6 +95,7 @@ pub struct DesktopHost {
     screen_ink: Arc<ScreenInkModule>,
     media_proc: Arc<MediaProcModule>,
     app_usage: Arc<AppUsageModule>,
+    translator: Arc<TranslatorModule>,
     os_hal: OsHalBundle,
     mock_hal: Option<MockOsHal>,
     /// 系统全局快捷键注册失败记录（action_id → 错误），供界面如实显示未生效的快捷键。
@@ -233,6 +235,7 @@ impl DesktopHost {
             screen_ink,
             media_proc,
             app_usage,
+            translator,
         } = modules::mount(
             builder,
             &os_hal,
@@ -250,6 +253,7 @@ impl DesktopHost {
             screen_ink,
             media_proc,
             app_usage,
+            translator,
             os_hal,
             mock_hal,
             native_shortcut_failures: parking_lot::RwLock::new(HashMap::new()),

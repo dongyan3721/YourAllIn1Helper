@@ -16,7 +16,8 @@
     "screen_ink": "03. Screen Ink",
     "media": "08. Media",
     "usage": "05. Usage",
-    "screenshot": "01. Screenshot"
+    "screenshot": "01. Screenshot",
+    "translator": "07. Translator"
   },
   "theme": {
     "selectAccentTooltip": "Select system accent color",
@@ -666,5 +667,48 @@
       "resultAlsoCopied": "also copied",
       "settingsSaved": "Capture settings saved"
     }
+  },
+  "translator": {
+    "title": "Global Selection Translator",
+    "sourceText": "Source",
+    "targetText": "Translation",
+    "translating": "Translating...",
+    "retranslate": "Re-translate",
+    "copy": "Copy Translation",
+    "copied": "Copied",
+    "noSelection": "No text selected in external application. Select text and press shortcut or type above.",
+    "permissionDenied": "Accessibility Permission Required",
+    "permissionGuidance": "Please grant Accessibility permission in System Settings -> Privacy & Security -> Accessibility.",
+    "unsupported": "The focused control does not support native accessibility text extraction.",
+    "missingApiKey": "API Key not configured. Please configure credentials in Dashboard settings.",
+    "openSettings": "Open Settings",
+    "provider": "Provider",
+    "providerGoogle": "Google Translate (Official API)",
+    "providerDeepL": "DeepL (Official API)",
+    "providerOpenAI": "OpenAI / Compatible LLM",
+    "apiKey": "API Key",
+    "apiKeyPlaceholder": "Enter API Key (stored in secure memory only)",
+    "saveApiKey": "Save Key",
+    "apiKeyConfigured": "Configured",
+    "apiKeyNotConfigured": "Not Configured",
+    "targetLang": "Target Language",
+    "sourceLang": "Source Language",
+    "autoDetect": "Auto Detect",
+    "langZh": "Chinese",
+    "langEn": "English",
+    "langJa": "Japanese",
+    "autoCopy": "Auto-copy translation to clipboard",
+    "history": "Retain local translation history (disabled by default)",
+    "hotkey": "Global Selection Hotkey",
+    "customProviders": "Custom LLM Providers",
+    "addProvider": "Add Provider",
+    "endpointUrl": "Endpoint URL",
+    "modelName": "Model Name",
+    "save": "Save Settings",
+    "saved": "Settings Saved",
+    "cancel": "Cancel",
+    "pin": "Pin Window",
+    "unpin": "Unpin Window",
+    "close": "Close"
   }
 }

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "translator-events",
+  "description": "允许划词翻译气泡与主控台窗口订阅和清理翻译流式事件，不扩大核心权限。",
+  "windows": ["dashboard", "translate-popover"],
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"]
+}

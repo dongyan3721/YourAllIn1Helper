@@ -64,6 +64,7 @@ dependencies = [
  "mod-screenshot",
  "mod-script-runner",
  "mod-sticky-note",
+ "mod-translator",
  "mod-window-pin",
  "objc2",
  "objc2-app-kit",
@@ -3008,6 +3009,25 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 1.0.69",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "mod-translator"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "app-core",
+ "chrono",
+ "os-hal",
+ "parking_lot",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
  "tracing",
  "uuid",
 ]

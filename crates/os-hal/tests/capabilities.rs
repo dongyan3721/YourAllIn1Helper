@@ -8,10 +8,16 @@ fn unimplemented_native_capabilities_do_not_return_mock_results() {
         native.verify_identity("test"),
         Err(HalError::Unsupported(_))
     ));
-    assert!(matches!(
-        native.extract_selected_text(),
-        Err(HalError::Unsupported(_))
-    ));
+    // 选区提取已实现原生适配器，但在无桌面权限/无焦点时返回 PermissionDenied 或 Unsupported，禁止返回 Mock 数据
+    let selection_res = native.extract_selected_text();
+    assert!(
+        matches!(
+            selection_res,
+            Err(HalError::PermissionDenied { .. }) | Err(HalError::Unsupported(_)) | Ok(None)
+        ),
+        "Native selection extractor must return real status (PermissionDenied/Unsupported/None), not mock data: {:?}",
+        selection_res
+    );
     assert!(matches!(
         native.recognize_rgba(&os_hal::CapturedFrame {
             width: 1,

@@ -27,6 +27,7 @@ mod-sticky-note = { path = "../crates/mod-sticky-note" }
 mod-window-pin = { path = "../crates/mod-window-pin" }
 mod-script-runner = { path = "../crates/mod-script-runner" }
 mod-app-usage = { path = "../crates/mod-app-usage" }
+mod-translator = { path = "../crates/mod-translator" }
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true

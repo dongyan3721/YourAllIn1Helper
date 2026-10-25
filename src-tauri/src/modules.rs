@@ -12,6 +12,7 @@ pub(super) struct Mounted {
     pub screen_ink: Arc<ScreenInkModule>,
     pub media_proc: Arc<MediaProcModule>,
     pub app_usage: Arc<AppUsageModule>,
+    pub translator: Arc<TranslatorModule>,
 }
 pub(super) fn mount(
     builder: AppKernelBuilder,
@@ -37,6 +38,7 @@ pub(super) fn mount(
     let screen_ink = Arc::new(ScreenInkModule::new(hal.screen_capturer.clone()));
     let media_proc = Arc::new(MediaProcModule::new());
     let app_usage = Arc::new(AppUsageModule::new(hal.active_app_watcher.clone()));
+    let translator = Arc::new(TranslatorModule::new(hal.selection_extractor.clone()));
     let builder = builder
         .register_module_arc(screenshot.clone())?
         .register_module_arc(clipboard.clone())?
@@ -45,7 +47,8 @@ pub(super) fn mount(
         .register_module_arc(script_runner.clone())?
         .register_module_arc(screen_ink.clone())?
         .register_module_arc(media_proc.clone())?
-        .register_module_arc(app_usage.clone())?;
+        .register_module_arc(app_usage.clone())?
+        .register_module_arc(translator.clone())?;
     Ok(Mounted {
         builder,
         screenshot,
@@ -56,5 +59,6 @@ pub(super) fn mount(
         screen_ink,
         media_proc,
         app_usage,
+        translator,
     })
 }
