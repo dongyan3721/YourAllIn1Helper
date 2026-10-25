@@ -535,6 +535,10 @@
       <section v-else-if="currentTab === 'usage'" class="tab-pane">
         <AppUsagePanel />
       </section>
+      <!-- 增强截图与贴图 (01 mod-screenshot) -->
+      <section v-else-if="currentTab === 'screenshot'" class="tab-pane">
+        <ScreenshotPanel />
+      </section>
     </main>
   </div>
 </template>
@@ -555,6 +559,7 @@ import ModuleManager from './ModuleManager.vue';
 import ScriptRunnerPanel from './ScriptRunnerPanel.vue';
 import MediaPanel from './MediaPanel.vue';
 import AppUsagePanel from './AppUsagePanel.vue';
+import ScreenshotPanel from './ScreenshotPanel.vue';
 import {
   currentThemeMode,
   currentAccent,
@@ -575,6 +580,7 @@ import {
 /** 选项卡配置列表（绑定多语言字典键） */
 const tabs = [
   { id: 'overview', labelKey: 'tabs.overview', icon: 'dashboard' },
+  { id: 'screenshot', module: 'screenshot', labelKey: 'tabs.screenshot', icon: 'camera' },
   { id: 'clipboard', module: 'clipboard', labelKey: 'tabs.clipboard', icon: 'clipboard' },
   { id: 'screen_ink', module: 'screen_ink', labelKey: 'tabs.screen_ink', icon: 'brush' },
   { id: 'sticky', module: 'sticky_note', labelKey: 'tabs.sticky', icon: 'sticky' },
@@ -834,7 +840,14 @@ function formatDateTime(ts: number) {
 
 function applyDashboardRoute(route: string | null) {
   const normalized = route?.replace(/^dashboard\//, '/').replace(/^\/?/, '/');
-  const requested = normalized === '/media' ? 'media' : normalized === '/overview' ? 'overview' : null;
+  const requested =
+    normalized === '/media'
+      ? 'media'
+      : normalized === '/screenshot'
+      ? 'screenshot'
+      : normalized === '/overview'
+      ? 'overview'
+      : null;
   if (requested && visibleTabs.value.some((tab) => tab.id === requested)) currentTab.value = requested;
 }
 

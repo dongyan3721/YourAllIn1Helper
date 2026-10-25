@@ -61,6 +61,7 @@ dependencies = [
  "mod-clipboard",
  "mod-media-proc",
  "mod-screen-ink",
+ "mod-screenshot",
  "mod-script-runner",
  "mod-sticky-note",
  "mod-window-pin",
@@ -2959,6 +2960,23 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tracing",
+]
+
+[[package]]
+name = "mod-screenshot"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "app-core",
+ "chrono",
+ "image",
+ "os-hal",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

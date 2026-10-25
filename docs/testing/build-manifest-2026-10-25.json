@@ -1,0 +1,12 @@
+{
+  "prepared_at": "2026-10-25T02:51:34.207660+08:00",
+  "app": "/Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/team/cursor-screenshot/dist/All-in-One Toolbox.app",
+  "qa_app": "/Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/team/cursor-screenshot/.runtime_data/gui-qa/All-in-One Toolbox QA.app",
+  "data_dir": "/Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/team/cursor-screenshot/.runtime_data/gui-qa-20261025",
+  "executable_sha256": "2605f1ae77b5b962bd445ba59ff1ad04e51ba56a3715a8c17e1202f41ccb9e17",
+  "source_head": "b66909b13d38c3c6067db306b98e6283b59aaf06",
+  "source_dirty": false,
+  "os": "macOS 27.0, arm64",
+  "signing": "local unsigned build (--no-sign)",
+  "gui_cases": 20
+}

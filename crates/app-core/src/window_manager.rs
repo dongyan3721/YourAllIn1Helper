@@ -48,7 +48,8 @@ pub struct WindowSpec {
 }
 
 impl WindowSpec {
-    /// Preset for Module 01: Fullscreen transparent screenshot & Snipaste smart-region overlay.
+    /// Preset for Module 01: Fullscreen screenshot & Snipaste smart-region overlay.
+    /// 冻结帧完整覆盖窗口，因此使用不透明背景；宿主先隐藏创建，前端绘制帧后再显示，避免闪出桌面。
     pub fn capture_overlay(x: f64, y: f64, width: f64, height: f64) -> Self {
         Self {
             label: "capture-overlay".to_string(),
@@ -62,7 +63,7 @@ impl WindowSpec {
             min_height: None,
             resizable: false,
             decorations: false,
-            transparent: true,
+            transparent: false,
             always_on_top: true,
             skip_taskbar: true,
             focus: true,
@@ -74,6 +75,7 @@ impl WindowSpec {
     }
 
     /// Preset for Module 01: Snipaste pinned floating image window (`pin-img-{id}`).
+    /// 尺寸由贴图缩放比例决定（滚轮 10%–500%），禁止边框拖拽以免图像比例失真。
     pub fn pin_image(pin_id: &str, x: f64, y: f64, width: f64, height: f64) -> Self {
         Self {
             label: format!("pin-img-{}", pin_id),
@@ -83,9 +85,9 @@ impl WindowSpec {
             y: Some(y),
             width,
             height,
-            min_width: Some(32.0),
-            min_height: Some(32.0),
-            resizable: true,
+            min_width: Some(16.0),
+            min_height: Some(16.0),
+            resizable: false,
             decorations: false,
             transparent: true,
             always_on_top: true,

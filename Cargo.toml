@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/app-core",
     "crates/os-hal",
+    "crates/mod-screenshot",
     "crates/mod-clipboard",
     "crates/mod-screen-ink",
     "crates/mod-media-proc",

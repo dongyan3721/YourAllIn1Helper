@@ -21,6 +21,10 @@
     <!-- 桌面屏幕注释独立工具栏视图 -->
     <ScreenInkToolbar v-else-if="nativeWindowType === 'screen-ink-toolbar'" />
 
+    <!-- 增强截图：冻结帧遮罩与独立贴图 -->
+    <CaptureOverlay v-else-if="nativeWindowType === 'capture-overlay'" />
+    <PinImage v-else-if="nativeWindowType === 'pin-image'" />
+
     <!-- 默认主控台视图 -->
     <Dashboard v-else />
   </div>
@@ -36,6 +40,8 @@ import PinMirror from './components/PinMirror.vue';
 import PinBadge from './components/PinBadge.vue';
 import ScreenInkCanvas from './components/ScreenInkCanvas.vue';
 import ScreenInkToolbar from './components/ScreenInkToolbar.vue';
+import CaptureOverlay from './components/CaptureOverlay.vue';
+import PinImage from './components/PinImage.vue';
 import { initTheme } from './utils/theme';
 import { initI18n } from './utils/i18n';
 
@@ -58,6 +64,8 @@ const nativeWindowType = ref(
     ? 'pin-badge'
     : rawWindow.startsWith('pin-mirror')
     ? 'pin-mirror'
+    : rawWindow.startsWith('pin-img-')
+    ? 'pin-image'
     : rawWindow
 );
 const nativeStickyId = ref(

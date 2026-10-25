@@ -15,6 +15,12 @@ pub trait ScreenCapturer: Send + Sync + 'static {
     fn capture_monitor(&self, monitor_id: Option<u32>) -> HalResult<CapturedFrame>;
     /// Captures a sub-rectangle of the screen in physical coordinates.
     fn capture_region(&self, bounds: SelectionBox) -> HalResult<CapturedFrame>;
+    /// 抓屏前的权限预检：只检查、不申请，也不修改系统安全设置。
+    /// 没有独立屏幕录制授权概念的平台（如 Windows 桌面会话）保持默认 `Ok`；
+    /// macOS 未授权时系统仍会返回仅含壁纸的画面，因此必须显式预检并返回 `PermissionDenied`。
+    fn check_capture_permission(&self) -> HalResult<()> {
+        Ok(())
+    }
 }
 
 /// 2. Snipaste-style L1 (window tree) & L2 (UIAutomation / AXUIElement) region detector (`mod-screenshot`).

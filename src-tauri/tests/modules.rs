@@ -33,7 +33,7 @@ fn catalog_has_ten_slots_and_unimplemented_blocks_cannot_be_enabled() {
         !host
             .invoke_ipc(
                 "kernel_set_module_enabled",
-                json!({"module_id": "screenshot", "enabled": true})
+                json!({"module_id": "translator", "enabled": true})
             )
             .ok
     );

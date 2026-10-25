@@ -1,6 +1,6 @@
 # 功能积木接入约定
 
-本次改造沿用 PROJECT_PLAN.md 的微内核和 OS HAL 分层。十个功能槽位统一列在 `crates/app-core/src/catalog.rs`；当前实际挂载 02、03、04、06、08、09，其余四项显示「待开发」，不创建空壳模块冒充已实现能力。
+本次改造沿用 PROJECT_PLAN.md 的微内核和 OS HAL 分层。十个功能槽位统一列在 `crates/app-core/src/catalog.rs`；当前实际挂载 01（M1：截图/标注/保存复制/贴图）、02、03、04、06、08、09，其余三项显示「待开发」，不创建空壳模块冒充已实现能力。
 
 ## 职责与目录
 
@@ -17,6 +17,7 @@
 | `crates/mod-*/src/` | 功能自身的领域逻辑 |
 | `src-tauri/src/modules.rs` | 主程序唯一的具体功能装配点；命名字段返回同一组模块 Arc |
 | `src-tauri/src/ipc/` | 按功能分离的 IPC 适配及统一开关检查 |
+| `src-tauri/src/screenshot_binary.rs` | 大数据二进制 IPC：冻结帧/贴图以 `tauri::ipc::Response` 原始字节返回，标注层以原始请求体上传；同样经 `with_enabled` 检查 |
 | `*/tests/unit/` | 从业务源码搬出的单元测试，保留访问私有实现的能力 |
 | `*/tests/*.rs` | 对公共接口的集成与生命周期测试 |
 | `src-tauri/tests/support/` | 显式运行的无桌面及桌面烟测支持代码 |

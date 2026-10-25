@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "screenshot-pins",
+  "description": "仅允许贴图窗口拖动自身与按缩放比例调整自身尺寸；截图遮罩不需要任何窗口或事件权限，不授予文件、剪贴板或系统操作权限。",
+  "windows": ["pin-img-*"],
+  "permissions": ["core:window:allow-start-dragging", "core:window:allow-set-size"]
+}

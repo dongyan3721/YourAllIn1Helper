@@ -17,6 +17,7 @@ use mod_app_usage::AppUsageModule;
 use mod_clipboard::ClipboardModule;
 use mod_media_proc::MediaProcModule;
 use mod_screen_ink::ScreenInkModule;
+use mod_screenshot::ScreenshotModule;
 use mod_script_runner::env::ScriptEnvironment;
 use mod_script_runner::events::ScriptEventSink;
 use mod_script_runner::hotkey::ScriptHotkeySync;
@@ -27,6 +28,7 @@ use os_hal::{ExternalWindowInfo, MockOsHal, NativeOsHal, OsHalBundle};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
+    collections::HashMap,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -37,6 +39,9 @@ mod ipc;
 mod legacy_http;
 mod modules;
 mod native_dialog;
+mod screenshot_binary;
+mod screenshot_clipboard;
+mod screenshot_window;
 mod script_env;
 mod script_events;
 mod script_hotkeys;
@@ -81,6 +86,7 @@ impl IpcResponse {
 /// Assembled desktop host holding the running `AppKernel` and mounted feature module handles.
 pub struct DesktopHost {
     kernel: AppKernel,
+    screenshot: Arc<ScreenshotModule>,
     clipboard: Arc<ClipboardModule>,
     sticky_note: Arc<StickyNoteModule>,
     window_pin: Arc<WindowPinModule>,
@@ -90,6 +96,8 @@ pub struct DesktopHost {
     app_usage: Arc<AppUsageModule>,
     os_hal: OsHalBundle,
     mock_hal: Option<MockOsHal>,
+    /// 系统全局快捷键注册失败记录（action_id → 错误），供界面如实显示未生效的快捷键。
+    native_shortcut_failures: parking_lot::RwLock<HashMap<String, String>>,
 }
 
 impl DesktopHost {
@@ -217,6 +225,7 @@ impl DesktopHost {
             .with_window_backend(window_backend);
         let modules::Mounted {
             builder,
+            screenshot,
             clipboard,
             sticky_note,
             window_pin,
@@ -233,6 +242,7 @@ impl DesktopHost {
         )?;
         Ok(Self {
             kernel: builder.bootstrap()?,
+            screenshot,
             clipboard,
             sticky_note,
             window_pin,
@@ -242,12 +252,28 @@ impl DesktopHost {
             app_usage,
             os_hal,
             mock_hal,
+            native_shortcut_failures: parking_lot::RwLock::new(HashMap::new()),
         })
     }
 
     /// Returns a reference to the underlying `AppKernel`.
     pub fn kernel(&self) -> &AppKernel {
         &self.kernel
+    }
+
+    /// 增强截图模块实例（与注册表中挂载的是同一个 Arc）。
+    pub fn screenshot(&self) -> &Arc<ScreenshotModule> {
+        &self.screenshot
+    }
+
+    /// 用本轮系统注册结果替换失败记录。
+    pub(crate) fn set_native_shortcut_failures(&self, failures: HashMap<String, String>) {
+        *self.native_shortcut_failures.write() = failures;
+    }
+
+    /// 某个动作的系统快捷键注册错误；`None` 表示未失败（或尚未进行系统注册）。
+    pub fn native_shortcut_error(&self, action_id: &str) -> Option<String> {
+        self.native_shortcut_failures.read().get(action_id).cloned()
     }
 
     /// Dispatches a typed IPC command from the frontend (`src-ui`) or integration tests.
