@@ -102,6 +102,15 @@
           <Icons name="redo" :size="16" />
         </button>
         <span class="sep"></span>
+        <button
+          class="tool-btn text-btn ocr-btn"
+          :class="{ active: !!ocrResult }"
+          :title="t('screenshot.ocr.button')"
+          :disabled="exporting || ocrBusy"
+          @click="runOcr"
+        >
+          {{ ocrBusy ? t('screenshot.ocr.busy') : 'OCR' }}
+        </button>
         <button class="tool-btn" :title="t('screenshot.overlay.pin') + ' (F3)'" :disabled="exporting" @click="doExport('pin')">
           <Icons name="pin" :size="16" />
         </button>
@@ -155,6 +164,34 @@
       </div>
     </div>
 
+    <!-- OCR 结果：文字可编辑后复制；行框绘制在选区上 -->
+    <div
+      v-if="ocrResult"
+      class="ocr-panel"
+      @pointerdown.stop
+      @pointerup.stop
+      @dblclick.stop
+      @wheel.stop
+      @contextmenu.stop.prevent
+    >
+      <div class="ocr-head">
+        <strong>{{ t('screenshot.ocr.title') }}</strong>
+        <span class="ocr-meta">{{ t('screenshot.ocr.meta', { lines: ocrResult.lines.length, ms: ocrResult.elapsed_ms }) }}</span>
+      </div>
+      <textarea
+        v-if="ocrResult.text"
+        v-model="ocrText"
+        class="ocr-text"
+        spellcheck="false"
+        @keydown.stop="onOcrKeydown"
+      ></textarea>
+      <p v-else class="ocr-empty">{{ t('screenshot.ocr.empty') }}</p>
+      <div class="ocr-actions">
+        <button class="tool-btn text-btn" :disabled="!ocrText.trim()" @click="copyOcrText">{{ t('screenshot.ocr.copy') }}</button>
+        <button class="tool-btn text-btn" @click="closeOcr">{{ t('screenshot.ocr.close') }}</button>
+      </div>
+    </div>
+
     <div v-if="toast" class="capture-toast" :class="toast.kind">{{ toast.text }}</div>
   </div>
 </template>
@@ -166,7 +203,7 @@
  * 坐标统一为帧像素（与后端冻结帧物理像素一致）；DOM 元素位置由帧像素按 CSS 比例换算。
  * 冻结帧以二进制 IPC 获取后直接构造 ImageData，标注层渲染为选区大小的 PNG 交回后端合成。
  */
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, shallowRef } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from 'vue';
 import Icons from './Icons.vue';
 import { t } from '../utils/i18n';
 import {
@@ -175,6 +212,7 @@ import {
   screenshotApi,
   type DetectedRegion,
   type ExportAction,
+  type OcrOutcome,
   type ScreenshotSessionInfo,
 } from '../api/screenshot';
 import {
@@ -261,9 +299,22 @@ const history = new EditHistory();
 const historyVersion = ref(0);
 const draft = shallowRef<Annotation | null>(null);
 const textEditor = ref<{ at: Point; value: string; size: number; color: string } | null>(null);
+/** 最近一次 OCR 结果及其对应的选区（选区变化后结果失效）。 */
+const ocrResult = shallowRef<(OcrOutcome & { selection: Rect }) | null>(null);
+const ocrText = ref('');
+const ocrBusy = ref(false);
 const probe = ref<Point>({ x: 0, y: 0 });
 const mosaicCache: MosaicCache = new Map();
 const toolbarSize = reactive({ width: 380, height: 44 });
+
+// 选区变化后旧 OCR 结果不再对应当前内容，自动关闭。
+watch(selection, (next) => {
+  const ocr = ocrResult.value;
+  if (ocr && (!next || !sameRect(ocr.selection, next))) {
+    ocrResult.value = null;
+    ocrText.value = '';
+  }
+});
 
 let levelSteps = 0;
 let levelAnchorCss: Point | null = null;
@@ -280,11 +331,13 @@ const frameSize = computed(() => toFrameSize(strokeWidth.value, session.value?.d
 const selectionCss = computed(() => (selection.value ? frameRectToCss(selection.value, scale.value) : null));
 const hoverCss = computed(() => (hoverRegion.value ? frameRectToCss(hoverRegion.value, scale.value) : null));
 
-const idleHint = computed(() =>
-  session.value?.settings.smart_regions && session.value.window_region_count > 0
-    ? t('screenshot.overlay.hintSmart')
-    : t('screenshot.overlay.hintManual')
-);
+const idleHint = computed(() => {
+  const base =
+    session.value?.settings.smart_regions && session.value.window_region_count > 0
+      ? t('screenshot.overlay.hintSmart')
+      : t('screenshot.overlay.hintManual');
+  return session.value?.intent === 'ocr' ? `${t('screenshot.ocr.intentHint')} · ${base}` : base;
+});
 
 const cursorClass = computed(() => {
   if (spaceHeld.value && selection.value) return 'cursor-grab';
@@ -381,6 +434,15 @@ function renderUi() {
     ctx.rect(sel.x, sel.y, sel.width, sel.height);
     ctx.clip();
     renderAnnotations(ctx, history.items, frame, mosaicCache);
+    // OCR 行框：结果仍对应当前选区时才绘制。
+    const ocr = ocrResult.value;
+    if (ocr && sameRect(ocr.selection, sel)) {
+      ctx.strokeStyle = 'rgba(255, 204, 0, 0.95)';
+      ctx.lineWidth = Math.max(1, Math.round(scale.value.sx));
+      for (const line of ocr.lines) {
+        ctx.strokeRect(sel.x + line.x, sel.y + line.y, line.width, line.height);
+      }
+    }
     if (draft.value) renderAnnotations(ctx, [draft.value], frame, new Map());
     ctx.restore();
   }
@@ -569,7 +631,57 @@ function onContextMenu() {
 
 function onDoubleClick(e: MouseEvent) {
   if (!selection.value || tool.value || !containsPoint(selection.value, framePoint(e))) return;
-  void doExport('copy');
+  if (session.value?.intent === 'ocr') void runOcr();
+  else void doExport('copy');
+}
+
+// ───────────────────────────── OCR ─────────────────────────────
+
+function sameRect(a: Rect, b: Rect): boolean {
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+}
+
+/** 识别当前选区文字（后端裁剪冻结帧原图，不含标注层）。 */
+async function runOcr() {
+  const sel = selection.value;
+  if (!sel || !session.value || ocrBusy.value) return;
+  ocrBusy.value = true;
+  try {
+    const outcome = await screenshotApi.ocr(session.value.session_id, sel);
+    ocrResult.value = { ...outcome, selection: { ...sel } };
+    ocrText.value = outcome.text;
+    requestRender();
+  } catch (err: any) {
+    showToast(err?.message || String(err), 'error');
+  } finally {
+    ocrBusy.value = false;
+  }
+}
+
+async function copyOcrText() {
+  try {
+    await screenshotApi.copyText(ocrText.value);
+    showToast(t('screenshot.ocr.copied'), 'info');
+  } catch (err: any) {
+    showToast(err?.message || String(err), 'error');
+  }
+}
+
+function closeOcr() {
+  ocrResult.value = null;
+  ocrText.value = '';
+  requestRender();
+  rootEl.value?.focus();
+}
+
+function onOcrKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    closeOcr();
+  } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    e.preventDefault();
+    void copyOcrText();
+  }
 }
 
 // ───────────────────────────── 标注 ─────────────────────────────
@@ -753,7 +865,9 @@ function onKeyDown(e: KeyboardEvent) {
   const key = e.key;
   if (key === 'Escape') {
     e.preventDefault();
-    void cancelCapture();
+    // 先关闭 OCR 结果面板，再次 Esc 才退出截图。
+    if (ocrResult.value) closeOcr();
+    else void cancelCapture();
     return;
   }
   if (exporting.value) return;
@@ -776,6 +890,11 @@ function onKeyDown(e: KeyboardEvent) {
   if (mod && (key === 's' || key === 'S')) {
     e.preventDefault();
     void doExport('save');
+    return;
+  }
+  if (key === 'Enter' && session.value?.intent === 'ocr') {
+    e.preventDefault();
+    void runOcr();
     return;
   }
   if ((mod && (key === 'c' || key === 'C')) || key === 'Enter') {
@@ -1077,6 +1196,50 @@ onUnmounted(() => {
   border: 1px solid rgba(255, 255, 255, 0.6);
 }
 .mag-hint { color: #a1a1a6; font-size: 10px; }
+
+.ocr-panel {
+  position: absolute;
+  top: 56px;
+  right: 16px;
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 360px;
+  max-height: 60vh;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(36, 36, 38, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  color: #f5f5f7;
+  font-size: 12px;
+  cursor: default;
+}
+.ocr-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.ocr-meta { color: #a1a1a6; font-size: 11px; }
+.ocr-text {
+  min-height: 120px;
+  max-height: 40vh;
+  resize: vertical;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(0, 0, 0, 0.35);
+  color: #f5f5f7;
+  font-size: 13px;
+  line-height: 1.5;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.ocr-empty { margin: 0; color: #a1a1a6; }
+.ocr-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.ocr-btn { font-size: 11px; font-weight: 600; }
 
 .capture-toast {
   bottom: 28px;

@@ -11,7 +11,11 @@
             {{ m.name }}{{ m.is_primary ? ` (${t('screenshot.panel.primary')})` : '' }}
           </option>
         </select>
-        <button class="macos-button primary" :disabled="busy || !status?.permission.granted" @click="startCapture">
+        <button class="macos-button" :disabled="busy || !status?.permission.granted" @click="startCapture('ocr')">
+          <Icons name="text" :size="12" />
+          <span>{{ t('screenshot.panel.startOcrBtn') }}</span>
+        </button>
+        <button class="macos-button primary" :disabled="busy || !status?.permission.granted" @click="startCapture('capture')">
           <Icons name="camera" :size="12" />
           <span>{{ t('screenshot.panel.startBtn') }}</span>
         </button>
@@ -210,12 +214,13 @@ const capabilityRows = [
   { key: 'windowRegions', ready: true },
   { key: 'annotate', ready: true },
   { key: 'pin', ready: true },
-  { key: 'uiElements', ready: false },
-  { key: 'ocr', ready: false },
+  { key: 'uiElements', ready: true },
+  { key: 'ocr', ready: true },
+  { key: 'onnx', ready: false },
   { key: 'scroll', ready: false },
   { key: 'gif', ready: false },
 ];
-const guideKeys = ['select', 'smart', 'adjust', 'tools', 'export', 'color', 'pin'];
+const guideKeys = ['select', 'smart', 'adjust', 'tools', 'export', 'color', 'ocr', 'pin'];
 
 function formatTime(ms: number) {
   const d = new Date(ms);
@@ -251,10 +256,10 @@ async function loadConfig() {
   }
 }
 
-async function startCapture() {
+async function startCapture(intent: 'capture' | 'ocr') {
   busy.value = true;
   try {
-    await screenshotApi.start(monitors.value.length > 1 ? monitorId.value : null);
+    await screenshotApi.start(monitors.value.length > 1 ? monitorId.value : null, intent);
   } catch (err: any) {
     notice.value = { text: err?.message || String(err), kind: 'error' };
   } finally {

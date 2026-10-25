@@ -658,13 +658,15 @@
         "pin": "画面貼り付け",
         "pinDesc": "独立した最前面ウィンドウ：ドラッグ、ホイールで 10%–500% 拡縮、Shift+ホイールで不透明度、ダブルクリックで折りたたみ、閉じるとメモリ解放",
         "uiElements": "コントロール / 視覚的スマート選択",
-        "uiElementsDesc": "アクセシビリティツリー（L2）と視覚エッジ候補（L3）は未接続。M2 で予定",
+        "uiElementsDesc": "カーソル下のコントロール → 親コンテナ → ウィンドウ → 全画面を順に切替（macOS アクセシビリティツリー、「アクセシビリティ」権限が必要。未許可時はその旨を表示してウィンドウ単位に戻る）。コントロール情報がない場合は視覚エッジでカード領域を推定",
         "ocr": "OCR 文字認識",
-        "ocrDesc": "システム OCR とカスタム ONNX モデル、M2 で予定",
+        "ocrDesc": "macOS Vision が選択範囲の元画像の文字をオフライン認識（中・英・日・韓）、編集してコピー可能。Windows.Media.Ocr は未接続",
         "scroll": "スクロール撮影",
         "scrollDesc": "M3 で予定",
         "gif": "GIF 録画",
-        "gifDesc": "M3 で予定"
+        "gifDesc": "M3 で予定",
+        "onnx": "カスタム ONNX モデル",
+        "onnxDesc": "カスタム det/rec モデル、GPU→NPU→CPU 実行プロバイダーのフォールバック、180 秒アイドル解放は未実装"
       },
       "guideTitle": "操作方法",
       "guide": {
@@ -674,14 +676,27 @@
         "tools": "数字キー 1–5 で矩形/矢印/モザイク/番号/テキスト。⌘/Ctrl+Z で元に戻す、⌘/Ctrl+Shift+Z でやり直す",
         "export": "Enter、⌘/Ctrl+C または選択範囲のダブルクリックでコピー。⌘/Ctrl+S で保存（上書きしない）。F3 で貼り付け。Esc でキャンセル",
         "color": "拡大鏡はカーソルに追従し、WASD または矢印キーで 1 ピクセルずつ移動。C で HEX、Shift+C で RGB をコピー",
-        "pin": "貼り付け：ドラッグで移動、ホイールで拡縮、Shift+ホイールで不透明度、ダブルクリックで折りたたみ、右クリックでツールバー固定、Esc で閉じる"
+        "pin": "貼り付け：ドラッグで移動、ホイールで拡縮、Shift+ホイールで不透明度、ダブルクリックで折りたたみ、右クリックでツールバー固定、Esc で閉じる",
+        "ocr": "⌘/Ctrl+Shift+O または「撮影して文字認識」で文字認識モード、選択後に Enter。ツールバーの OCR ボタンはいつでも使用可、Esc はまず結果パネルを閉じる"
       },
       "resultPin": "画面に貼り付けました（{size}）",
       "resultCopy": "画像としてコピーしました（{size}）",
       "resultSave": "保存しました（{size}）：{path}",
       "resultCopyFailed": "コピーに失敗しました：{error}",
       "resultAlsoCopied": "コピーも完了",
-      "settingsSaved": "撮影設定を保存しました"
+      "settingsSaved": "撮影設定を保存しました",
+      "startOcrBtn": "撮影して文字認識"
+    },
+    "ocr": {
+      "button": "選択範囲の文字を認識（OCR）",
+      "busy": "認識中…",
+      "title": "認識結果",
+      "meta": "{lines} 行 · {ms} ミリ秒",
+      "empty": "文字が認識されませんでした",
+      "copy": "文字をコピー",
+      "copied": "認識した文字をコピーしました",
+      "close": "閉じる",
+      "intentHint": "範囲を選んで Enter で文字を認識"
     }
   },
   "translator": {
