@@ -6,11 +6,11 @@
 
 | 功能 | 拟负责人 | 分支 | 本轮状态 |
 | --- | --- | --- | --- |
-| 01 增强截图与贴图 | Cursor / Claude Opus 5.5 | `codex/feature-screenshot` | M1 已派发；已执行目录/分支/HEAD 检查并读取设计文档，开发进行中 |
-| 05 应用使用时长 | OpenCode / DeepSeek V4.1 Flash 1017 | `codex/feature-app-usage` | M1+M2 已派发，目录/分支核验通过，已执行原生 API 资料与源码检查 |
-| 07 全局划词翻译 | Antigravity / Gemini 3.8 Flash | `codex/feature-translator` | M1 已派发，目录/分支核验通过，已读取任务和宿主接入源码 |
-| 10 生物识别密码本 | WorkBuddy / Kimi K3.1 Pro | `codex/feature-password-vault` | M0 已派发，目录/分支核验通过，设计文档准备中；审查后再实现 |
-| 公共契约与最终集成 | OpenAI Codex | 独立集成分支 | 审查、冲突处理、共享能力、打包与 GUI 验收 |
+| 01 增强截图与贴图 | Cursor / Claude Opus 5.5 | `codex/feature-screenshot` | M1 已集成并修正关闭竞态；GUI 权限预检通过，完整截图交互待验收 |
+| 05 应用使用时长 | OpenCode / DeepSeek V4.1 Flash 1017 | `codex/feature-app-usage` | M1+M2 已集成，真实 GUI 已计时；锁屏/睡眠与音频例外待验收/实现 |
+| 07 全局划词翻译 | Antigravity / Gemini 3.8 Flash | `codex/feature-translator` | M1 已集成，修复 TLS/事件时序；权限及缺凭据路径已测，真实 API 未验收 |
+| 10 生物识别密码本 | WorkBuddy / Kimi K3.1 Pro | `codex/feature-password-vault` | M0 已交付并通过有条件设计审查；M1/M2 无实现，仍不挂载 |
+| 公共契约与最终集成 | OpenAI Codex | 独立集成分支 | 集成与审查修正已完成，工作区/前端/原生烟测通过，GUI 部分验收（见本轮报告） |
 
 用户随后授权其他三项一并派发，现四位均已启动。模型是用户指定配置，实际界面/会话不符时必须先校正；遇额度阻塞记录真实状态，不擅自改模型或购买额度。
 
@@ -118,3 +118,8 @@
 - Codex 按“05 → 01 M1 → 07 → 10”逐项集成；01 后续阶段可独立迭代。密码本需额外密钥设计审查；不能仅凭测试全绿投入真实秘密。
 - 每个阶段检查开关、禁用 IPC、配置持久化、升级保留数据、任务取消、窗口层级、权限拒绝。严格前端构建、模块及工作区测试通过后打 App，用隔离数据做实际 GUI；物理快捷键、Windows、多显示器未测须单列。
 - 不承诺固定完工时点；按设计、首个可用闭环、完整功能、集成验收四种状态报告进度，避免把“已写代码”当成“已交付”。
+
+
+## 本轮收口
+当前挂载九个模块。具体提交、166 项 Rust 测试、18 项前端测试、GUI 证据与未测项见 [集成报告](../testing/ROUND2_INTEGRATION_REPORT_2026-10-25.md)。
+共享剪贴板租约仍是后续工作，未将模拟复制/秘密复制作为本轮交付。密码本下一步以 [M0 审查意见](../design/password-vault-m0-review.md) 为约束启动 M1，生物识别留待 M2 独立审查。

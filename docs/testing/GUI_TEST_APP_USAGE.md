@@ -33,3 +33,5 @@
 - `crates/os-hal/tests/capabilities.rs`：真实 macOS 前台应用、空闲秒数与锁屏查询返回成功（未实际锁屏）。
 - `src-tauri/tests/modules.rs`：`usage_*` IPC、配置持久化、停用后拒绝调用。
 - `src-ui`：严格 TypeScript build、三语言字典同构测试。
+
+本轮集成后的实际执行结果以 [2026-10-25 集成报告](ROUND2_INTEGRATION_REPORT_2026-10-25.md) 为准；本文件原有未执行项不因此自动改为通过。

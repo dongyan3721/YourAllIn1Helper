@@ -1,0 +1,27 @@
+$ node --experimental-strip-types --disable-warning=ExperimentalWarning --test tests/unit/i18n.test.mjs tests/unit/ink.test.mjs tests/unit/screenshot.test.mjs tests/unit/translator.test.mjs
+✔ zh-CN, en-US, and ja-JP locale files have identical key schemas and non-empty translations (2.135208ms)
+✔ high-fidelity SVG product logo exists in both public and assets directories and contains valid vector geometry (0.20275ms)
+✔ InkHistoryManager maintains undo/redo stack properly (0.383875ms)
+✔ LaserPointerManager automatically prunes points older than 2000ms (0.091708ms)
+✔ drag points normalize in any direction and selections serialize like SelectionBox (1.25825ms)
+✔ intersect and clamp keep selections inside the frozen frame (0.197625ms)
+✔ eight handles resize the expected edges (0.261ms)
+✔ dragging a handle past the opposite edge flips it and stays at least 1px (0.135542ms)
+✔ keyboard nudges move 1px and Shift resizes width/height within bounds (0.088542ms)
+✔ css to frame mapping handles Retina and non-uniform window sizes (0.176291ms)
+✔ hit test, drag threshold and toolbar placement (0.134958ms)
+✔ edit history supports undo, redo, update, remove and drops redo after new edits (0.201583ms)
+✔ counter numbers follow existing values, tiny drags are discarded, sizes scale with DPR (0.287ms)
+✔ mosaic blocks are true averages of the frozen frame and clip at frame edges (0.333291ms)
+✔ color picker reads raw pixels and formats HEX/RGB like the backend expects (0.178583ms)
+✔ pin zoom stays within 10%-500%, opacity within 10%-100%, collapse uses mini block (0.295667ms)
+✔ TranslatePopover: buffers early events, isolates requests and ignores unsolicited events (32.155333ms)
+✔ TranslatorPanel: buffers early events, isolates requests and ignores unsolicited events (8.408875ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 245.912625

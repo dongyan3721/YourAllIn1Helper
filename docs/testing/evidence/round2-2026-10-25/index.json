@@ -1,0 +1,58 @@
+{
+  "date": "2026-10-25",
+  "build_manifest": "../../round2-build-2026-10-25.json",
+  "evidence": [
+    {
+      "file": "01-nine-module-catalog.png",
+      "sha256": "4e8215c57ce49cd4a6afe27f93edf6d7b450557dfa0c885ad38f1e4c03e82206"
+    },
+    {
+      "file": "02-native-usage-counting.png",
+      "sha256": "8a05976f238a679b2d76d1eed7e520bc369af046e02726af91a7b8d6acb6c3a5"
+    },
+    {
+      "file": "03-translator-missing-key.png",
+      "sha256": "09fdeb25e59520ba922be3dc1854b260fdf0a7ee32b4c9ab0660552beef34267"
+    },
+    {
+      "file": "04-popover-permission-guidance.png",
+      "sha256": "ba67c4caf7ed2fbcb2892c99db65809fe8a6703fea6ffcd3846a897f7dc2db3c"
+    },
+    {
+      "file": "05-screenshot-permission-preflight.png",
+      "sha256": "546e3bc0d6371ecc453307d799ce20b0de37d85624184a50a8003dc48136d516"
+    },
+    {
+      "file": "06-three-modules-disabled.png",
+      "sha256": "8dd0226ffeb2265ff35dcb65100ab8877250a43d911e27e9cd0a243d91142c38"
+    },
+    {
+      "file": "07-restart-preserves-disabled.png",
+      "sha256": "55dff5d76ba7c228f34df179efdc749722326b4d1f1d74d43cf3d232a61dfb35"
+    },
+    {
+      "file": "08-final-usage-history-and-empty-text.png",
+      "sha256": "a67d4488e49eea0be44bdb56f6f890188b935d9bbc1c4e3829f423099fe03273"
+    },
+    {
+      "file": "09-final-popover-empty-result.png",
+      "sha256": "ba67c4caf7ed2fbcb2892c99db65809fe8a6703fea6ffcd3846a897f7dc2db3c"
+    },
+    {
+      "file": "native-smoke.log",
+      "sha256": "958878f724df4a3b09ebd705d397906d95042f62493222f810f81fc8b2d8b7a0"
+    },
+    {
+      "file": "rust-tests.log",
+      "sha256": "fb32f11443f6e7b5d126756a60105552e4e9fc783a1a49a1a4b7de95514bef0c"
+    },
+    {
+      "file": "ui-build.log",
+      "sha256": "270710558d576f267c9242e271a125c19fb978742301409a3a3547055a86c23b"
+    },
+    {
+      "file": "ui-tests.log",
+      "sha256": "daf6cc7489e34cc2c0fbc7c8b9ee58225dcd95d86c6ba8fdf9c58d2c04a40aaa"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "app": "/Users/santa_antilles/Desktop/your_all_in_one/dist/All-in-One Toolbox.app",
+  "qa_app": "/Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/round2-qa/All-in-One Round2 QA.app",
+  "data_dir": "/Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/round2-qa-data",
+  "source_head": "eb393ac093cec2d2980c26c297a69148c30f6639",
+  "executable_sha256": "b1de0e7e7d1f4cd64fc56424437aa4d29ffc5c2050d22719640f6b35116e131a",
+  "qa_isolation": "clipboard/script/usage initially disabled; no daily DB or user API credentials",
+  "previous_builds": [
+    {
+      "source_head": "38622f3a89328a751d731e0e1cb3e562abee3c26",
+      "executable_sha256": "dfd41fb53645132244fdbf0789619f4e07b36cb3f56a6af7ffec174074c6242a",
+      "evidence": "01–06"
+    }
+  ],
+  "final_evidence": "07 onward; final build includes two GUI text corrections"
+}

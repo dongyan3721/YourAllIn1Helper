@@ -1,6 +1,6 @@
 # 功能积木接入约定
 
-本次改造沿用 PROJECT_PLAN.md 的微内核和 OS HAL 分层。十个功能槽位统一列在 `crates/app-core/src/catalog.rs`；当前实际挂载 01（M1：截图/标注/保存复制/贴图）、02、03、04、06、08、09，其余三项显示「待开发」，不创建空壳模块冒充已实现能力。
+本次改造沿用 PROJECT_PLAN.md 的微内核和 OS HAL 分层。十个功能槽位统一列在 `crates/app-core/src/catalog.rs`；当前实际挂载 01–09 共九个模块（01、07 为 M1，05 为首轮统计与报表），10 密码本仅完成 M0 设计审查并显示「待开发」，不创建空壳模块冒充已实现能力。
 
 ## 职责与目录
 
@@ -11,7 +11,7 @@
 | `crates/app-core/src/config/persistence.rs` | 文件读写、原子保存、v1 → v2 → v3 迁移 |
 | `crates/os-hal/src/traits.rs` | 业务可见的系统能力契约 |
 | `crates/os-hal/src/platform/mod.rs` | 原生适配器装配入口，不再堆叠功能实现 |
-| `crates/os-hal/src/platform/{screen,input,regions,services}.rs` | 按能力组织的原生实现 |
+| `crates/os-hal/src/platform/{screen,input,regions,services,selection,usage}.rs` | 按能力组织的原生实现 |
 | `crates/os-hal/src/platform/windows/` | 外部窗口能力和各操作系统实现 |
 | `crates/os-hal/src/mock.rs` | 显式注入的测试适配器；生产适配器不再回退到 Mock |
 | `crates/mod-*/src/` | 功能自身的领域逻辑 |
@@ -33,6 +33,7 @@
 - 停用不删除数据库表或用户记录；所有已挂载模块的迁移仍在启动时执行，以便后续启用和升级。
 - 启用失败会清理本次初始化和快捷键；配置保存失败不发布新的内存配置。原生快捷键注册失败时，桌面 IPC 尝试还原之前的模块状态并返回错误。
 - `on_init` 必须支持再次启用；`on_shutdown` 同时用于停用和退出，应可重复调用。后台任务必须可取消，持有的资源必须释放。生命周期钩子不要递归调用模块开关。
+- 停用失败通过专门的 on_shutdown_failed 钩子恢复；恢复失败保持禁用并报告错误，不直接重复初始化。应用退出在后台排空模块，保持原生事件循环可处理窗口销毁。
 - 后台任务经 `registry.with_enabled(id, || ...)` 进入业务操作；不要在闭包内部再嵌套获取同一注册表的活动锁。
 
 运行态开关存在实际应用数据目录下的 `config.json`，仓库的 `config/config.example.json` 仅为配置示例。修改磁盘文件在下次启动读取；界面开关即时生效。旧的 `clipboard.enabled` 保留为「自动捕获」设置，与整个剪贴板积木的总开关独立。
@@ -56,11 +57,11 @@
 3. 实现生命周期、迁移、快捷键；后台任务句柄归模块持有。配置类型和测试放各自文件。
 4. 在 `src-tauri/src/modules.rs` 构造实例并通过 `register_module_arc` 挂载。同一个 Arc 用于注册表和 IPC，避免运行两个实例。
 5. 在 `src-tauri/src/ipc/` 加适配器，并在路由中经 `with_enabled` 进入；前端根据目录状态显示入口。
-6. 为启停、资源清理、禁用时拒绝调用、设置持久化写测试。目录中已有的四个待开发槽位挂载后自动变为 available。
+6. 为启停、资源清理、禁用时拒绝调用、设置持久化写测试。目录中未挂载的槽位接入后自动变为 available。
 
 ## 平台边界
 
-macOS 对外部原窗口持续置顶不受当前实现支持：适配器明确返回 Unsupported，主控台禁用置顶操作并保留窗口枚举和激活。移除了私有 CGS 伪成功、AXRaise 抢焦点兜底，以及修改任意用户窗口的旧测试。OCR、选区文字提取、生物认证、空闲/锁屏检测尚未实现的原生适配器也明确返回 Unsupported，不返回测试数据。
+macOS 对外部原窗口持续置顶不受当前实现支持：适配器明确返回 Unsupported，主控台禁用置顶操作并保留窗口枚举和激活。移除了私有 CGS 伪成功、AXRaise 抢焦点兜底，以及修改任意用户窗口的旧测试。OCR、生物认证仍返回 Unsupported。划词读取已接入 macOS AX（需要无障碍权限），Windows UIAutomation 尚未实现。使用统计接入真实前台应用、空闲和会话状态；会话查询失败时暂停计费并报告原因，不按未锁屏继续累计。CLI 可能无法取得 CGSession，须结合实际 GUI 宿主测试。音频 AFK 例外尚未实现。
 
 ## 验证
 
