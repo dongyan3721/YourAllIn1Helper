@@ -555,6 +555,8 @@ async function saveSettings() {
     });
     Object.assign(settingsForm, config);
     await loadStatus();
+    // 关闭标题保存后立即按最新隐私设置重新拉取会话，隐藏已加载的历史标题。
+    await loadSessions();
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);
   }
