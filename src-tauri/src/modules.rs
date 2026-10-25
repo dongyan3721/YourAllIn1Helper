@@ -1,6 +1,7 @@
 //! 具体功能的唯一装配点；注册表和 IPC 共享同一个模块实例。
 use super::*;
 use mod_app_usage::AppUsageModule;
+use mod_password_vault::PasswordVaultModule;
 // 命名装配结果避免新增功能时依赖元组顺序，降低并行开发接入出错的机会。
 pub(super) struct Mounted {
     pub builder: AppKernelBuilder,
@@ -13,6 +14,7 @@ pub(super) struct Mounted {
     pub media_proc: Arc<MediaProcModule>,
     pub app_usage: Arc<AppUsageModule>,
     pub translator: Arc<TranslatorModule>,
+    pub password_vault: Arc<PasswordVaultModule>,
     pub translator_credentials: Arc<crate::secure_credentials::HostCredentialStore>,
 }
 pub(super) fn mount(
@@ -46,6 +48,7 @@ pub(super) fn mount(
         hal.selection_extractor.clone(),
         translator_credentials.clone(),
     ));
+    let password_vault = Arc::new(PasswordVaultModule::new(hal.active_app_watcher.clone()));
     let builder = builder
         .register_module_arc(screenshot.clone())?
         .register_module_arc(clipboard.clone())?
@@ -55,7 +58,8 @@ pub(super) fn mount(
         .register_module_arc(screen_ink.clone())?
         .register_module_arc(media_proc.clone())?
         .register_module_arc(app_usage.clone())?
-        .register_module_arc(translator.clone())?;
+        .register_module_arc(translator.clone())?
+        .register_module_arc(password_vault.clone())?;
     Ok(Mounted {
         builder,
         screenshot,
@@ -67,6 +71,7 @@ pub(super) fn mount(
         media_proc,
         app_usage,
         translator,
+        password_vault,
         translator_credentials,
     })
 }

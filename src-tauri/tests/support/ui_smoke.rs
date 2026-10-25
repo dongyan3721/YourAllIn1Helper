@@ -186,8 +186,8 @@ pub(super) fn run_ui_smoke_checks(app: AppHandle, keep_open: bool) {
                     .iter()
                     .filter(|m| m["available"] == true)
                     .count()
-                    == 9,
-                "nine mounted feature modules"
+                    == 10,
+                "ten mounted feature modules"
             );
             check_screenshot_lifecycle(&app, &host)?;
             host.kernel().trigger_action(ACTION_CLIPBOARD)?;

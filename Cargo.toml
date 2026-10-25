@@ -12,6 +12,7 @@ members = [
     "crates/mod-script-runner",
     "crates/mod-app-usage",
     "crates/mod-translator",
+    "crates/mod-password-vault",
     "src-tauri",
 ]
 

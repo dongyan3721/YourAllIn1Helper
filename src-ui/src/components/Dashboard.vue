@@ -526,6 +526,11 @@
         </div>
       </section>
 
+      <!-- Tab 10: 主密码加密密码本（M1 禁用复制与生物识别） -->
+      <section v-else-if="currentTab === 'vault'" class="tab-pane">
+        <VaultPanel />
+      </section>
+
       <!-- Tab 5: 基础多媒体处理 (08 mod-media-proc) -->
       <section v-else-if="currentTab === 'media'" class="tab-pane">
         <MediaPanel />
@@ -565,6 +570,7 @@ import MediaPanel from './MediaPanel.vue';
 import AppUsagePanel from './AppUsagePanel.vue';
 import ScreenshotPanel from './ScreenshotPanel.vue';
 import TranslatorPanel from './TranslatorPanel.vue';
+import VaultPanel from './VaultPanel.vue';
 import {
   currentThemeMode,
   currentAccent,
@@ -592,6 +598,7 @@ const tabs = [
   { id: 'usage', module: 'app_usage', labelKey: 'tabs.usage', icon: 'chart' },
   { id: 'scripts', module: 'script_runner', labelKey: 'tabs.scripts', icon: 'terminal' },
   { id: 'translator', module: 'translator', labelKey: 'tabs.translator', icon: 'translate' },
+  { id: 'vault', module: 'password_vault', labelKey: 'vault.tab', icon: 'dashboard' },
   { id: 'media', module: 'media_proc', labelKey: 'tabs.media', icon: 'photo' },
   { id: 'winpin', module: 'window_pin', labelKey: 'tabs.winpin', icon: 'pin' },
 ];
@@ -848,6 +855,8 @@ function applyDashboardRoute(route: string | null) {
   const requested =
     normalized === '/media'
       ? 'media'
+      : normalized === '/vault'
+      ? 'vault'
       : normalized === '/screenshot'
       ? 'screenshot'
       : normalized === '/overview'

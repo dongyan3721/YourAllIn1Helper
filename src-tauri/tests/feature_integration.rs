@@ -63,7 +63,8 @@ fn upgrade_preserves_old_data_and_new_feature_switches_are_independent() {
             "script_runner",
             "translator",
             "media_proc",
-            "window_pin"
+            "window_pin",
+            "password_vault"
         ]
     );
     assert_eq!(
