@@ -5,7 +5,7 @@
 ## 工作区
 
 - 专用 worktree：`/Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/team/antigravity-screenshot-m3`
-- 分支：`codex/feature-screenshot-m3`；基线 `2a0619f`（本地 master，已含截图 M1 及第二轮修正）。
+- 分支：`codex/feature-screenshot-m3`；已合并本地 `master` `53240cc`（截图 M1、第二轮修正、剪贴板 RAII 租约、应用统计第三轮）。开工前执行 `git rev-parse HEAD` 并以该提交为起点。M2 在 `codex/feature-screenshot`（`65ad4e1`），尚未进入 master。
 - 先执行 `pwd`、`git branch --show-current`、`git rev-parse HEAD` 并报告。只在本 worktree 写入与执行命令；不改主目录、其他成员目录（包括旧翻译 worktree），不 merge/push。使用本 worktree 独立 `target/` 与 `src-ui/node_modules`。
 
 ## 先读
