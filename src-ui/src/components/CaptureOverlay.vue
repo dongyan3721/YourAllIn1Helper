@@ -102,6 +102,31 @@
           <Icons name="redo" :size="16" />
         </button>
         <span class="sep"></span>
+        <button
+          class="tool-btn"
+          :class="{ active: showGifOptions }"
+          :title="`${t('screenshot.gif.start')} (⌥/Ctrl+F1)`"
+          :disabled="exporting"
+          @click="toggleGifOptions"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2">
+            <rect x="1.5" y="2.5" width="13" height="11" rx="2" />
+            <text x="8" y="10.5" text-anchor="middle" font-size="6.5" font-weight="800" fill="currentColor" stroke="none" font-family="system-ui, sans-serif">GIF</text>
+          </svg>
+        </button>
+        <button
+          class="tool-btn"
+          :title="`${t('screenshot.scroll.start')} (Shift+F1)`"
+          :disabled="exporting"
+          @click="startScrollCapture"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="2" width="10" height="12" rx="1.5" />
+            <path d="M8 5v6" />
+            <path d="M6 9l2 2 2-2" />
+          </svg>
+        </button>
+        <span class="sep"></span>
         <button class="tool-btn" :title="t('screenshot.overlay.pin') + ' (F3)'" :disabled="exporting" @click="doExport('pin')">
           <Icons name="pin" :size="16" />
         </button>
@@ -137,6 +162,34 @@
           @click="strokeWidth = w"
         >
           <span class="width-dot" :style="{ width: `${4 + w}px`, height: `${4 + w}px` }"></span>
+        </button>
+      </div>
+      <div v-if="showGifOptions" class="toolbar-row sub-row gif-options-row">
+        <span class="sub-label">{{ t('screenshot.gif.preset') }}:</span>
+        <button
+          v-for="p in GIF_PRESET_OPTIONS"
+          :key="p"
+          class="opt-btn"
+          :class="{ active: selectedGifPreset === p }"
+          @click="selectedGifPreset = p"
+        >
+          {{ t(`screenshot.gif.preset${p === 'original' ? 'Original' : p}`) }}
+        </button>
+        <span class="sep"></span>
+        <span class="sub-label">{{ t('screenshot.gif.fps') }}:</span>
+        <button
+          v-for="f in GIF_FPS_OPTIONS"
+          :key="f"
+          class="opt-btn"
+          :class="{ active: selectedGifFps === f }"
+          @click="selectedGifFps = f"
+        >
+          {{ f }}
+        </button>
+        <span class="sep"></span>
+        <button class="opt-btn record-action-btn" :disabled="exporting" @click="startGifRecording">
+          <span class="rec-dot"></span>
+          <span>{{ t('screenshot.gif.record') }}</span>
         </button>
       </div>
     </div>
@@ -175,6 +228,7 @@ import {
   screenshotApi,
   type DetectedRegion,
   type ExportAction,
+  type GifRecordingPreset,
   type ScreenshotSessionInfo,
 } from '../api/screenshot';
 import {
@@ -255,6 +309,11 @@ const hoverRegion = shallowRef<DetectedRegion | null>(null);
 const dragging = ref<DragState | null>(null);
 const spaceHeld = ref(false);
 const tool = ref<AnnotationTool | null>(null);
+const showGifOptions = ref(false);
+const GIF_PRESET_OPTIONS: GifRecordingPreset[] = ['original', '1080p', '720p', '480p'];
+const GIF_FPS_OPTIONS: Array<10 | 15 | 24 | 30> = [10, 15, 24, 30];
+const selectedGifPreset = ref<GifRecordingPreset>('original');
+const selectedGifFps = ref<10 | 15 | 24 | 30>(15);
 const color = ref(ANNOTATION_COLORS[0]);
 const strokeWidth = ref(STROKE_WIDTHS[1]);
 const history = new EditHistory();
@@ -677,6 +736,47 @@ async function measureToolbar() {
   }
 }
 
+function toggleGifOptions() {
+  if (textEditor.value) commitText();
+  showGifOptions.value = !showGifOptions.value;
+  void measureToolbar();
+}
+
+async function startScrollCapture() {
+  const sel = selection.value;
+  if (!sel || !session.value || exporting.value) {
+    showToast(t('screenshot.scroll.needSelection'), 'error');
+    return;
+  }
+  if (textEditor.value) commitText();
+  exporting.value = true;
+  try {
+    await screenshotApi.scrollStart(session.value.session_id, sel);
+  } catch (err: any) {
+    exporting.value = false;
+    showToast(err?.message || String(err), 'error');
+  }
+}
+
+async function startGifRecording() {
+  const sel = selection.value;
+  if (!sel || !session.value || exporting.value) {
+    showToast(t('screenshot.gif.needSelection'), 'error');
+    return;
+  }
+  if (textEditor.value) commitText();
+  exporting.value = true;
+  try {
+    await screenshotApi.gifStart(session.value.session_id, sel, {
+      preset: selectedGifPreset.value,
+      fps: selectedGifFps.value,
+    });
+  } catch (err: any) {
+    exporting.value = false;
+    showToast(err?.message || String(err), 'error');
+  }
+}
+
 // ───────────────────────────── 导出与取消 ─────────────────────────────
 
 /** 渲染选区大小的透明标注层 PNG；没有标注时返回 null，后端直接裁剪原图。 */
@@ -755,6 +855,18 @@ function onKeyDown(e: KeyboardEvent) {
     e.preventDefault();
     void cancelCapture();
     return;
+  }
+  if (key === 'F1') {
+    if (e.shiftKey) {
+      e.preventDefault();
+      void startScrollCapture();
+      return;
+    }
+    if (e.altKey || e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      toggleGifOptions();
+      return;
+    }
   }
   if (exporting.value) return;
   if (e.code === 'Space') {
@@ -868,6 +980,12 @@ onMounted(async () => {
     await nextFrame();
     await screenshotApi.overlayReady(info.session_id);
     rootEl.value?.focus();
+    if (info.target_mode === 'scroll') {
+      showToast(t('screenshot.scroll.selectHint'), 'info');
+    } else if (info.target_mode === 'gif') {
+      showGifOptions.value = true;
+      showToast(t('screenshot.gif.selectHint'), 'info');
+    }
   } catch (err: any) {
     loadError.value = err?.message || String(err);
     try {
@@ -1045,6 +1163,47 @@ onUnmounted(() => {
 }
 .width-btn.active { background: rgba(255, 255, 255, 0.16); }
 .width-dot { display: block; border-radius: 50%; background: #e5e5ea; }
+
+.sub-label {
+  font-size: 11px;
+  color: #a1a1a6;
+  margin: 0 4px;
+}
+.opt-btn {
+  padding: 2px 7px;
+  font-size: 11px;
+  border: none;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #e5e5ea;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.opt-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+.opt-btn.active {
+  background: #0a84ff;
+  color: #ffffff;
+  font-weight: 500;
+}
+.record-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(255, 69, 58, 0.18);
+  color: #ff453a;
+  font-weight: 600;
+}
+.record-action-btn:hover:not(:disabled) {
+  background: rgba(255, 69, 58, 0.32);
+}
+.rec-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ff453a;
+}
 
 .magnifier {
   width: 122px;

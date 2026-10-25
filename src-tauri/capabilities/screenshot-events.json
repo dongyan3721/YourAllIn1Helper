@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "screenshot-events",
+  "description": "允许主面板、截图遮罩、控制条与预览窗口监听截图/长截图/GIF 录制统计事件，不授予文件或系统操作权限。",
+  "windows": ["dashboard", "capture-overlay", "screenshot-control", "screenshot-preview"],
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"]
+}

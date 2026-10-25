@@ -131,6 +131,9 @@ impl WindowBackend for TauriWindowBackend {
             if spec.label == "screen-ink-toolbar" {
                 crate::ink_window::elevate_toolbar(&self.app, &window)?;
             }
+            if spec.label == mod_screenshot::CONTROL_LABEL {
+                crate::screenshot_window::present_capture_overlay(&self.app, &window)?;
+            }
             return Ok(());
         }
 
@@ -200,6 +203,14 @@ impl WindowBackend for TauriWindowBackend {
                 return Err(error);
             }
         }
+        if spec.label == mod_screenshot::CONTROL_LABEL {
+            if let Err(error) =
+                crate::screenshot_window::present_capture_overlay(&self.app, &window)
+            {
+                let _ = window.destroy();
+                return Err(error);
+            }
+        }
         Ok(())
     }
 
@@ -238,7 +249,10 @@ impl WindowBackend for TauriWindowBackend {
 
     fn set_window_visible(&self, label: &str, visible: bool) -> CoreResult<()> {
         if let Some(window) = self.app.get_webview_window(label) {
-            if visible && label == mod_screenshot::OVERLAY_LABEL {
+            if visible
+                && (label == mod_screenshot::OVERLAY_LABEL
+                    || label == mod_screenshot::CONTROL_LABEL)
+            {
                 return crate::screenshot_window::present_capture_overlay(&self.app, &window);
             }
             if visible {
@@ -322,6 +336,8 @@ async fn ipc(app: AppHandle, request: IpcRequest) -> IpcResponse {
             // 模块 on_shutdown 已经销毁；这里兜底清理窗口池之外残留的同名原生窗口。
             for (label, window) in app.webview_windows() {
                 if label == mod_screenshot::OVERLAY_LABEL
+                    || label == mod_screenshot::CONTROL_LABEL
+                    || label == mod_screenshot::PREVIEW_LABEL
                     || label.starts_with(mod_screenshot::pins::PIN_LABEL_PREFIX)
                 {
                     let _ = window.destroy();
@@ -889,7 +905,8 @@ pub fn run() {
             ipc,
             crate::screenshot_binary::screenshot_frame,
             crate::screenshot_binary::screenshot_pin_image,
-            crate::screenshot_binary::screenshot_export
+            crate::screenshot_binary::screenshot_export,
+            crate::screenshot_binary::screenshot_scroll_image
         ])
         .setup(move |app| {
             // 人工 GUI 回归可使用独立的数据目录，避免改动日常使用记录。
@@ -936,6 +953,10 @@ pub fn run() {
             host.screenshot.set_clipboard(Arc::new(
                 crate::screenshot_clipboard::ArboardScreenshotClipboard,
             ));
+            let app_handle_for_shot = app.handle().clone();
+            host.screenshot.set_event_sink(Arc::new(move |event, payload| {
+                let _ = app_handle_for_shot.emit(event, payload);
+            }));
             // 翻译 API Key 改存系统钥匙串；原生烟测保持会话内存，隔离 GUI 测试使用独立条目名。
             if !ui_smoke_test {
                 let service = if gui_test::data_dir().is_some() {
@@ -1023,6 +1044,12 @@ pub fn run() {
                         // 系统关闭贴图（如 Cmd+W）：销毁窗口并释放贴图 PNG。
                         let _ = pool.destroy_window(label);
                         host.screenshot.forget_pin(pin_id);
+                    } else if label == mod_screenshot::CONTROL_LABEL {
+                        let _ = host.screenshot.cancel_scroll(host.kernel().context());
+                        let _ = host.screenshot.cancel_gif(host.kernel().context());
+                        let _ = pool.destroy_window(label);
+                    } else if label == mod_screenshot::PREVIEW_LABEL {
+                        let _ = pool.destroy_window(label);
                     } else if label == mod_screenshot::OVERLAY_LABEL {
                         // 导出持有会话 gate，并可能等待主线程创建贴图或恢复遮罩层级。
                         // 原生 CloseRequested 在主线程派发，不能在这里等待同一把 gate。

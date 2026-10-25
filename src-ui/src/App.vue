@@ -24,6 +24,8 @@
     <!-- 增强截图：冻结帧遮罩与独立贴图 -->
     <CaptureOverlay v-else-if="nativeWindowType === 'capture-overlay'" />
     <PinImage v-else-if="nativeWindowType === 'pin-image'" />
+    <ScreenshotControl v-else-if="nativeWindowType === 'screenshot-control'" />
+    <ScreenshotPreview v-else-if="nativeWindowType === 'screenshot-preview'" />
     <!-- 全局划词翻译浮动气泡独立窗口视图 -->
     <TranslatePopover v-else-if="nativeWindowType === 'translate-popover'" />
 
@@ -44,6 +46,8 @@ import ScreenInkCanvas from './components/ScreenInkCanvas.vue';
 import ScreenInkToolbar from './components/ScreenInkToolbar.vue';
 import CaptureOverlay from './components/CaptureOverlay.vue';
 import PinImage from './components/PinImage.vue';
+import ScreenshotControl from './components/ScreenshotControl.vue';
+import ScreenshotPreview from './components/ScreenshotPreview.vue';
 import TranslatePopover from './components/TranslatePopover.vue';
 import { initTheme } from './utils/theme';
 import { initI18n } from './utils/i18n';

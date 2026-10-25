@@ -682,6 +682,43 @@
       "resultCopyFailed": "コピーに失敗しました：{error}",
       "resultAlsoCopied": "コピーも完了",
       "settingsSaved": "撮影設定を保存しました"
+    },
+    "scroll": {
+      "start": "スクロール",
+      "scrolling": "スクロール撮影中",
+      "height": "高さ",
+      "autoScroll": "自動スクロール",
+      "stopAuto": "自動停止",
+      "autoScrollTitle": "自動スクロール切替",
+      "finish": "完了",
+      "finishTitle": "長スクリーンショットを完了してプレビュー",
+      "cancelTitle": "長スクリーンショットをキャンセル",
+      "needSelection": "スクロール撮影する範囲を選択してください",
+      "selectHint": "範囲を選択して Enter またはクリックでスクロール撮影を開始",
+      "previewTitle": "長スクリーンショットプレビュー",
+      "loadingPreview": "プレビューを読み込み中…",
+      "lowConfidenceTip": "ズレ防止のため安全に停止しました",
+      "maxLengthTip": "最大長制限に達しました",
+      "copySuccess": "クリップボードにコピーしました",
+      "saveSuccess": "保存しました",
+      "pinSuccess": "画面に貼り付けました"
+    },
+    "gif": {
+      "start": "GIF 録画",
+      "frames": "フレーム",
+      "stop": "停止",
+      "stopTitle": "録画を停止して保存",
+      "cancelTitle": "録画をキャンセルして削除",
+      "needSelection": "GIF 録画する範囲を選択してください",
+      "selectHint": "録画範囲を選択し、フレームレートと解像度を設定してください",
+      "record": "録画開始",
+      "previewTitle": "GIF 録画完了",
+      "savedSuccess": "GIF が正常に保存されました",
+      "presetOriginal": "原寸",
+      "preset1080p": "1080p",
+      "preset720p": "720p",
+      "preset480p": "480p",
+      "fpsLabel": "{fps} FPS"
     }
   },
   "translator": {

@@ -93,3 +93,15 @@ pub(crate) async fn screenshot_export(
     let _ = app.emit("kernel://updated", serde_json::Value::Null);
     Ok(response)
 }
+
+#[tauri::command]
+pub(crate) async fn screenshot_scroll_image(
+    app: AppHandle,
+) -> Result<tauri::ipc::Response, String> {
+    let host = host(&app);
+    tauri::async_runtime::spawn_blocking(move || host.screenshot_scroll_image_bytes())
+        .await
+        .map_err(|e| e.to_string())?
+        .map(tauri::ipc::Response::new)
+        .map_err(|e| e.to_string())
+}
