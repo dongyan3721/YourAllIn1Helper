@@ -58,6 +58,7 @@ pub struct CaptureSession {
     /// 帧像素坐标的窗口区域，按 HAL 返回的前→后 Z 序排列。
     pub windows: Vec<DetectedRegionRect>,
     pub capabilities: RegionCapabilities,
+    pub target_mode: Option<String>,
     pub created_at: i64,
 }
 
@@ -75,8 +76,14 @@ impl CaptureSession {
             frame,
             windows,
             capabilities,
+            target_mode: None,
             created_at: chrono::Utc::now().timestamp_millis(),
         }
+    }
+
+    pub fn with_target_mode(mut self, mode: Option<String>) -> Self {
+        self.target_mode = mode;
+        self
     }
 
     /// 只保留顶层窗口，换算到帧像素并裁到本显示器；保持输入顺序（前→后）。
@@ -136,6 +143,7 @@ impl CaptureSession {
             monitor_name: self.monitor.name.clone(),
             window_region_count: self.windows.len(),
             capabilities: self.capabilities.clone(),
+            target_mode: self.target_mode.clone(),
             settings,
             created_at: self.created_at,
         }
@@ -176,6 +184,8 @@ pub struct SessionInfo {
     pub monitor_name: String,
     pub window_region_count: usize,
     pub capabilities: RegionCapabilities,
+    #[serde(default)]
+    pub target_mode: Option<String>,
     pub settings: OverlaySettings,
     pub created_at: i64,
 }

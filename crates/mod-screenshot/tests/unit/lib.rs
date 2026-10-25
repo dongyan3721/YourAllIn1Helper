@@ -41,8 +41,12 @@ fn only_implemented_capture_shortcut_is_declared() {
         Arc::new(clipboard::UnavailableClipboard),
     );
     let shortcuts = module.default_shortcuts();
-    assert_eq!(shortcuts.len(), 1);
+    assert_eq!(shortcuts.len(), 3);
     assert_eq!(shortcuts[0].action_id, ACTION_CAPTURE);
     assert_eq!(shortcuts[0].default_logical_hotkey, "F1");
+    assert_eq!(shortcuts[1].action_id, ACTION_SCROLL);
+    assert_eq!(shortcuts[1].default_logical_hotkey, "Shift+F1");
+    assert_eq!(shortcuts[2].action_id, ACTION_GIF);
+    assert_eq!(shortcuts[2].default_logical_hotkey, "SecondaryMod+F1");
     assert_eq!(module.id(), "screenshot");
 }

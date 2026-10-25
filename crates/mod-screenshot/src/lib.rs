@@ -16,7 +16,9 @@ pub mod config;
 pub mod error;
 pub mod export;
 pub mod geometry;
+pub mod gif;
 pub mod pins;
+pub mod scroll;
 pub mod session;
 
 use app_core::{
@@ -49,8 +51,16 @@ use tracing::{info, warn};
 pub const MODULE_ID: &str = "screenshot";
 /// 区域截图快捷键动作。
 pub const ACTION_CAPTURE: &str = "screenshot:capture";
+/// 滚动长截图快捷键动作。
+pub const ACTION_SCROLL: &str = "screenshot:scroll";
+/// GIF 录制快捷键动作。
+pub const ACTION_GIF: &str = "screenshot:gif";
 /// 截图遮罩窗口标签。
 pub const OVERLAY_LABEL: &str = "capture-overlay";
+/// 长截图/GIF 控制条浮动窗口标签。
+pub const CONTROL_LABEL: &str = "screenshot-control";
+/// 产物预览窗口标签。
+pub const PREVIEW_LABEL: &str = "screenshot-preview";
 const DASHBOARD_LABEL: &str = "dashboard";
 /// 隐藏主面板后等待窗口合成器刷新的时间。
 const HIDE_SETTLE_MS: u64 = 60;
@@ -115,6 +125,8 @@ pub struct ScreenshotModule {
     regions: Arc<dyn RegionDetector>,
     /// 宿主可在启动后替换为真实系统剪贴板；无桌面环境保持构造时注入的实现。
     clipboard: RwLock<Arc<dyn ScreenshotClipboard>>,
+    input_simulator: RwLock<Option<Arc<dyn os_hal::InputSimulator>>>,
+    event_sink: RwLock<Option<scroll::ScrollEventSink>>,
     /// 串行化会话的开始/导出/取消；开始截图只 `try_lock`，主线程快捷键永不阻塞等待。
     gate: Mutex<()>,
     session: RwLock<Option<SharedSession>>,
@@ -122,6 +134,11 @@ pub struct ScreenshotModule {
     pins: PinStore,
     last_export: RwLock<Option<ExportOutcome>>,
     last_error: RwLock<Option<ScreenshotFailure>>,
+    // M3: 滚动长截图与 GIF 会话
+    active_scroll: RwLock<Option<Arc<scroll::ScrollCaptureSession>>>,
+    last_stitched: RwLock<Option<scroll::StitchedImage>>,
+    active_gif: RwLock<Option<Arc<gif::GifRecordingSession>>>,
+    last_gif_status: RwLock<Option<gif::GifRecordingStatus>>,
 }
 
 /// 抓帧期间临时隐藏主面板，作用域结束（含提前返回）时恢复显示。
@@ -164,18 +181,34 @@ impl ScreenshotModule {
             capturer,
             regions,
             clipboard: RwLock::new(clipboard),
+            input_simulator: RwLock::new(None),
+            event_sink: RwLock::new(None),
             gate: Mutex::new(()),
             session: RwLock::new(None),
             overlay_visible: AtomicBool::new(false),
             pins: PinStore::default(),
             last_export: RwLock::new(None),
             last_error: RwLock::new(None),
+            active_scroll: RwLock::new(None),
+            last_stitched: RwLock::new(None),
+            active_gif: RwLock::new(None),
+            last_gif_status: RwLock::new(None),
         }
     }
 
     /// 替换剪贴板端口（生产宿主在 Tauri 启动后注入系统剪贴板）。
     pub fn set_clipboard(&self, clipboard: Arc<dyn ScreenshotClipboard>) {
         *self.clipboard.write() = clipboard;
+    }
+
+    /// 注入输入模拟器（供自动滚轮滚动）。
+    pub fn set_input_simulator(&self, simulator: Arc<dyn os_hal::InputSimulator>) {
+        *self.input_simulator.write() = Some(simulator);
+    }
+
+    /// 注入事件广播端点（供推流长截图与 GIF 录制事件）。
+    pub fn set_event_sink(&self, sink: scroll::ScrollEventSink) {
+        *self.event_sink.write() = Some(sink);
     }
 
     fn clipboard(&self) -> Arc<dyn ScreenshotClipboard> {
@@ -231,6 +264,17 @@ impl ScreenshotModule {
         monitor_id: Option<u32>,
         hide_dashboard: bool,
     ) -> CoreResult<SessionInfo> {
+        self.start_capture_with_mode(ctx, monitor_id, hide_dashboard, None)
+    }
+
+    /// 携带预设目标模式启动截图（如 "scroll"、"gif"）。
+    pub fn start_capture_with_mode(
+        &self,
+        ctx: &ModuleContext,
+        monitor_id: Option<u32>,
+        hide_dashboard: bool,
+        target_mode: Option<String>,
+    ) -> CoreResult<SessionInfo> {
         let _gate = self
             .gate
             .try_lock()
@@ -238,7 +282,7 @@ impl ScreenshotModule {
         if let Err(error) = self.finish_session_locked(ctx) {
             warn!(%error, "Failed to fully close previous capture overlay");
         }
-        match self.begin_session(ctx, monitor_id, hide_dashboard) {
+        match self.begin_session(ctx, monitor_id, hide_dashboard, target_mode) {
             Ok(info) => {
                 *self.last_error.write() = None;
                 Ok(info)
@@ -256,6 +300,7 @@ impl ScreenshotModule {
         ctx: &ModuleContext,
         monitor_id: Option<u32>,
         hide_dashboard: bool,
+        target_mode: Option<String>,
     ) -> Result<SessionInfo, ScreenshotFailure> {
         // 1. 权限预检：缺权限时直接报告，不抓取「仅壁纸」的假画面。
         self.capturer
@@ -315,12 +360,15 @@ impl ScreenshotModule {
         } else {
             (Vec::new(), CapabilityState::Disabled)
         };
-        let session = Arc::new(CaptureSession::new(
-            monitor,
-            frame,
-            detected,
-            RegionCapabilities::m1(window_state),
-        ));
+        let session = Arc::new(
+            CaptureSession::new(
+                monitor,
+                frame,
+                detected,
+                RegionCapabilities::m1(window_state),
+            )
+            .with_target_mode(target_mode),
+        );
 
         // 5. 记录会话后再创建隐藏遮罩；创建失败时丢弃会话，冻结帧随之释放。
         *self.session.write() = Some(session.clone());
@@ -650,6 +698,391 @@ impl ScreenshotModule {
         Ok(path.to_string_lossy().to_string())
     }
 
+    // ───────────────────────────── 滚动长截图 (M3) ─────────────────────────────
+
+    /// 开启滚动长截图：关闭遮罩，创建选区外部的浮动控制条窗口，并在后台以约 15 FPS 循环抓帧拼接。
+    pub fn start_scroll(
+        &self,
+        ctx: &ModuleContext,
+        session_id: &str,
+        selection: SelectionBox,
+    ) -> CoreResult<scroll::ScrollStatusBrief> {
+        let _session = self.current_session(session_id)?;
+
+        let control_w = 340.0;
+        let control_h = 52.0;
+        let cx = (selection.x as f64) + ((selection.width as f64) - control_w) / 2.0;
+        let cy = (selection.y as f64) + (selection.height as f64) + 12.0;
+
+        self.finish_session_locked(ctx)?;
+
+        let spec = WindowSpec {
+            label: CONTROL_LABEL.to_string(),
+            title: "Screenshot Control".to_string(),
+            route: "/screenshot-control?mode=scroll".to_string(),
+            x: Some(cx.max(0.0)),
+            y: Some(cy.max(0.0)),
+            width: control_w,
+            height: control_h,
+            min_width: Some(control_w),
+            min_height: Some(control_h),
+            resizable: false,
+            decorations: false,
+            transparent: true,
+            always_on_top: true,
+            skip_taskbar: true,
+            focus: false,
+            ignore_cursor_events: false,
+            policy: app_core::WindowLifecyclePolicy::Transient {
+                destroy_on_blur: false,
+            },
+        };
+        ctx.window_pool.open_window(spec)?;
+
+        let sim = self.input_simulator.read().clone();
+        let sink = self.event_sink.read().clone();
+        let scroll_session = scroll::ScrollCaptureSession::new(
+            session_id.to_string(),
+            selection,
+            self.capturer.clone(),
+            sim,
+            scroll::StitcherConfig::default(),
+            sink,
+        );
+        let status = scroll_session.status();
+        *self.active_scroll.write() = Some(scroll_session);
+        Ok(status)
+    }
+
+    /// 停止长截图并生成预览。
+    pub fn stop_scroll(&self, ctx: &ModuleContext) -> CoreResult<scroll::ScrollStatusBrief> {
+        let scroll_opt = self.active_scroll.write().take();
+        let scroll = scroll_opt.ok_or_else(|| internal("当前没有运行中的长截图"))?;
+        scroll.stop();
+        scroll.wait_finished(Duration::from_secs(2));
+
+        let _ = ctx.window_pool.destroy_window(CONTROL_LABEL);
+
+        let status = scroll.status();
+        if let Some(img) = scroll.take_stitched_image() {
+            *self.last_stitched.write() = Some(img);
+
+            let spec = WindowSpec {
+                label: PREVIEW_LABEL.to_string(),
+                title: "长截图预览".to_string(),
+                route: "/screenshot-preview?type=scroll".to_string(),
+                x: None,
+                y: None,
+                width: 760.0,
+                height: 840.0,
+                min_width: Some(400.0),
+                min_height: Some(400.0),
+                resizable: true,
+                decorations: true,
+                transparent: false,
+                always_on_top: true,
+                skip_taskbar: false,
+                focus: true,
+                ignore_cursor_events: false,
+                policy: app_core::WindowLifecyclePolicy::Transient {
+                    destroy_on_blur: false,
+                },
+            };
+            let _ = ctx.window_pool.open_window(spec);
+        }
+        Ok(status)
+    }
+
+    /// 取消长截图。
+    pub fn cancel_scroll(&self, ctx: &ModuleContext) -> CoreResult<bool> {
+        if let Some(scroll) = self.active_scroll.write().take() {
+            scroll.cancel();
+            scroll.wait_finished(Duration::from_secs(1));
+        }
+        *self.last_stitched.write() = None;
+        let _ = ctx.window_pool.destroy_window(CONTROL_LABEL);
+        let _ = ctx.window_pool.destroy_window(PREVIEW_LABEL);
+        Ok(true)
+    }
+
+    /// 当前长截图状态。
+    pub fn scroll_status(&self) -> Option<scroll::ScrollStatusBrief> {
+        self.active_scroll.read().as_ref().map(|s| s.status())
+    }
+
+    /// 开启/关闭长截图自动滚动。
+    pub fn set_scroll_auto(&self, enabled: bool) -> CoreResult<()> {
+        let guard = self.active_scroll.read();
+        let scroll = guard
+            .as_ref()
+            .ok_or_else(|| internal("当前没有运行中的长截图"))?;
+        scroll.set_auto_scroll(enabled);
+        Ok(())
+    }
+
+    /// 获取拼接完成的长截图原始像素字节流。
+    pub fn stitched_image_bytes(&self) -> CoreResult<Vec<u8>> {
+        let guard = self.last_stitched.read();
+        let img = guard
+            .as_ref()
+            .ok_or_else(|| internal("当前没有已拼接完成的长截图"))?;
+        Ok(img.rgba_bytes.clone())
+    }
+
+    /// 获取拼接完成的长截图摘要信息。
+    pub fn stitched_image_info(&self) -> CoreResult<scroll::ScrollStatusBrief> {
+        let guard = self.last_stitched.read();
+        let img = guard
+            .as_ref()
+            .ok_or_else(|| internal("当前没有已拼接完成的长截图"))?;
+        Ok(scroll::ScrollStatusBrief {
+            is_active: false,
+            width: img.width,
+            current_height: img.height,
+            frame_count: img.frame_count,
+            auto_scroll_enabled: false,
+            auto_scroll_error: None,
+            stop_reason: Some(img.stop_reason.clone()),
+        })
+    }
+
+    /// 导出拼接完成的长截图（复制 / 保存 / 贴图）。
+    pub fn export_scroll(
+        &self,
+        ctx: &ModuleContext,
+        action: ExportAction,
+    ) -> CoreResult<ExportOutcome> {
+        let guard = self.last_stitched.read();
+        let img = guard
+            .as_ref()
+            .ok_or_else(|| internal("没有可供导出的长截图"))?
+            .clone();
+        drop(guard);
+
+        let mut png_bytes = Vec::new();
+        let mut cursor = std::io::Cursor::new(&mut png_bytes);
+        let encoder = image::codecs::png::PngEncoder::new(&mut cursor);
+        image::ImageEncoder::write_image(
+            encoder,
+            &img.rgba_bytes,
+            img.width,
+            img.height,
+            image::ExtendedColorType::Rgba8,
+        )
+        .map_err(|e| internal(format!("长截图 PNG 编码失败：{}", e)))?;
+
+        let settings = self.settings(ctx);
+        let mut saved_path = None;
+        let mut copied = false;
+        let mut clipboard_error = None;
+        let mut pin = None;
+
+        match action {
+            ExportAction::Copy => {
+                if let Err(e) = self
+                    .clipboard()
+                    .write_image(img.width, img.height, &img.rgba_bytes)
+                {
+                    clipboard_error = Some(e.to_string());
+                } else {
+                    copied = true;
+                }
+            }
+            ExportAction::Save => {
+                let dir = self.save_directory(ctx, &settings);
+                let stem =
+                    export::timestamped_stem(&settings.file_name_prefix, chrono::Local::now());
+                match export::write_exclusive(&dir, &stem, &png_bytes) {
+                    Ok(path) => {
+                        saved_path = Some(path.to_string_lossy().to_string());
+                    }
+                    Err(e) => return Err(internal(format!("长截图保存失败：{}", e))),
+                }
+
+                if settings.copy_after_save {
+                    if let Err(e) =
+                        self.clipboard()
+                            .write_image(img.width, img.height, &img.rgba_bytes)
+                    {
+                        clipboard_error = Some(e.to_string());
+                    } else {
+                        copied = true;
+                    }
+                }
+            }
+            ExportAction::Pin => {
+                if self.pins.len() >= settings.max_pins {
+                    return Err(internal(format!(
+                        "贴图数量已达上限 {}，请先关闭部分贴图",
+                        settings.max_pins
+                    )));
+                }
+                let pin_id = uuid::Uuid::new_v4().simple().to_string();
+                let pin_w = (img.width.min(800)) as f64;
+                let pin_h = (img.height.min(800)) as f64;
+                let record = pins::PinRecord {
+                    id: pin_id.clone(),
+                    png: Arc::new(png_bytes),
+                    pixel_width: img.width,
+                    pixel_height: img.height,
+                    logical: geometry::LogicalRect {
+                        x: 100.0,
+                        y: 100.0,
+                        width: pin_w,
+                        height: pin_h,
+                    },
+                    opacity: settings.default_pin_opacity,
+                    created_at: chrono::Utc::now().timestamp_millis(),
+                };
+                let summary = record.summary();
+                let spec =
+                    WindowSpec::pin_image(&pin_id, 100.0, 100.0, pin_w.max(16.0), pin_h.max(16.0));
+                self.pins.insert(record);
+                if let Err(error) = ctx.window_pool.open_window(spec) {
+                    self.pins.remove(&pin_id);
+                    let _ = ctx.window_pool.destroy_window(&pins::pin_label(&pin_id));
+                    return Err(internal(format!("创建贴图窗口失败：{}", error)));
+                }
+                pin = Some(summary);
+            }
+        }
+
+        let _ = ctx.window_pool.destroy_window(PREVIEW_LABEL);
+
+        let outcome = ExportOutcome {
+            action,
+            width: img.width,
+            height: img.height,
+            saved_path,
+            copied,
+            clipboard_error,
+            pin,
+            at: chrono::Utc::now().timestamp_millis(),
+        };
+        *self.last_export.write() = Some(outcome.clone());
+        Ok(outcome)
+    }
+
+    // ───────────────────────────── GIF 录制 (M3) ─────────────────────────────
+
+    /// 开启 GIF 录制：关闭遮罩，创建控制条并在后台以指定帧率流式编码。
+    pub fn start_gif(
+        &self,
+        ctx: &ModuleContext,
+        session_id: &str,
+        selection: SelectionBox,
+        config: gif::GifRecordingConfig,
+    ) -> CoreResult<gif::GifRecordingStatus> {
+        let _session = self.current_session(session_id)?;
+
+        let control_w = 340.0;
+        let control_h = 52.0;
+        let cx = (selection.x as f64) + ((selection.width as f64) - control_w) / 2.0;
+        let cy = (selection.y as f64) + (selection.height as f64) + 12.0;
+
+        self.finish_session_locked(ctx)?;
+
+        let spec = WindowSpec {
+            label: CONTROL_LABEL.to_string(),
+            title: "GIF Control".to_string(),
+            route: "/screenshot-control?mode=gif".to_string(),
+            x: Some(cx.max(0.0)),
+            y: Some(cy.max(0.0)),
+            width: control_w,
+            height: control_h,
+            min_width: Some(control_w),
+            min_height: Some(control_h),
+            resizable: false,
+            decorations: false,
+            transparent: true,
+            always_on_top: true,
+            skip_taskbar: true,
+            focus: false,
+            ignore_cursor_events: false,
+            policy: app_core::WindowLifecyclePolicy::Transient {
+                destroy_on_blur: false,
+            },
+        };
+        ctx.window_pool.open_window(spec)?;
+
+        let settings = self.settings(ctx);
+        let save_dir = self.save_directory(ctx, &settings);
+        let sink = self.event_sink.read().clone();
+        let session = gif::GifRecordingSession::new(
+            session_id.to_string(),
+            selection,
+            save_dir,
+            settings.file_name_prefix,
+            config,
+            self.capturer.clone(),
+            sink,
+        )
+        .map_err(|e| internal(e.to_string()))?;
+
+        let status = session.status();
+        *self.active_gif.write() = Some(session);
+        Ok(status)
+    }
+
+    /// 停止 GIF 录制并保存最终文件。
+    pub fn stop_gif(&self, ctx: &ModuleContext) -> CoreResult<gif::GifRecordingStatus> {
+        let gif_opt = self.active_gif.write().take();
+        let session = gif_opt.ok_or_else(|| internal("当前没有运行中的 GIF 录制"))?;
+        session.stop();
+        session.wait_finished(Duration::from_secs(3));
+
+        let _ = ctx.window_pool.destroy_window(CONTROL_LABEL);
+
+        let status = session.status();
+        *self.last_gif_status.write() = Some(status.clone());
+
+        if status.saved_path.is_some() {
+            let spec = WindowSpec {
+                label: PREVIEW_LABEL.to_string(),
+                title: "GIF 录制预览".to_string(),
+                route: "/screenshot-preview?type=gif".to_string(),
+                x: None,
+                y: None,
+                width: 760.0,
+                height: 840.0,
+                min_width: Some(400.0),
+                min_height: Some(400.0),
+                resizable: true,
+                decorations: true,
+                transparent: false,
+                always_on_top: true,
+                skip_taskbar: false,
+                focus: true,
+                ignore_cursor_events: false,
+                policy: app_core::WindowLifecyclePolicy::Transient {
+                    destroy_on_blur: false,
+                },
+            };
+            let _ = ctx.window_pool.open_window(spec);
+        }
+        Ok(status)
+    }
+
+    /// 取消 GIF 录制并删除半成品文件。
+    pub fn cancel_gif(&self, ctx: &ModuleContext) -> CoreResult<bool> {
+        if let Some(session) = self.active_gif.write().take() {
+            session.cancel();
+            session.wait_finished(Duration::from_secs(2));
+        }
+        let _ = ctx.window_pool.destroy_window(CONTROL_LABEL);
+        let _ = ctx.window_pool.destroy_window(PREVIEW_LABEL);
+        Ok(true)
+    }
+
+    /// 当前 GIF 录制状态。
+    pub fn gif_status(&self) -> Option<gif::GifRecordingStatus> {
+        self.active_gif
+            .read()
+            .as_ref()
+            .map(|s| s.status())
+            .or_else(|| self.last_gif_status.read().clone())
+    }
+
     // ───────────────────────────── 其他 ─────────────────────────────
 
     /// 复制取色结果文本；只接受 `#RRGGBB` 或 `rgb(r, g, b)`，避免借道写入任意内容。
@@ -724,6 +1157,19 @@ impl ScreenshotModule {
         if gate.is_none() {
             warn!("Screenshot transaction still running during shutdown; forcing cleanup");
         }
+
+        // 取消并等待长截图与 GIF 后台线程退出
+        if let Some(scroll) = self.active_scroll.write().take() {
+            scroll.cancel();
+            scroll.wait_finished(Duration::from_millis(500));
+        }
+        if let Some(gif) = self.active_gif.write().take() {
+            gif.cancel();
+            gif.wait_finished(Duration::from_millis(500));
+        }
+        let _ = ctx.window_pool.destroy_window(CONTROL_LABEL);
+        let _ = ctx.window_pool.destroy_window(PREVIEW_LABEL);
+
         let session_result = self.finish_session_locked(ctx);
         let pins_result = self.close_all_pins(ctx);
         session_result?;
@@ -764,14 +1210,13 @@ impl AppModule for ScreenshotModule {
         "增强截图与贴图"
     }
 
-    /// M1 只注册已实现的区域截图；长截图、GIF、OCR 快捷键待对应阶段实现后再声明，避免占用无效按键。
+    /// M1 与 M3 已实现的快捷键（区域截图、长截图、GIF）。OCR 快捷键待 M2 实现。
     fn default_shortcuts(&self) -> Vec<ShortcutSpec> {
-        vec![ShortcutSpec::new(
-            MODULE_ID,
-            ACTION_CAPTURE,
-            "F1",
-            "启动区域截图",
-        )]
+        vec![
+            ShortcutSpec::new(MODULE_ID, ACTION_CAPTURE, "F1", "启动区域截图"),
+            ShortcutSpec::new(MODULE_ID, ACTION_SCROLL, "Shift+F1", "启动滚动长截图"),
+            ShortcutSpec::new(MODULE_ID, ACTION_GIF, "SecondaryMod+F1", "启动 GIF 录制"),
+        ]
     }
 
     fn on_init(&self, ctx: &ModuleContext) -> CoreResult<()> {
@@ -782,10 +1227,13 @@ impl AppModule for ScreenshotModule {
     }
 
     fn on_shortcut(&self, action_id: &str, ctx: &ModuleContext) -> CoreResult<()> {
-        if action_id != ACTION_CAPTURE {
-            return Ok(());
-        }
-        match self.start_capture(ctx, None, false) {
+        let mode = match action_id {
+            ACTION_CAPTURE => Some("capture".to_string()),
+            ACTION_SCROLL => Some("scroll".to_string()),
+            ACTION_GIF => Some("gif".to_string()),
+            _ => return Ok(()),
+        };
+        match self.start_capture_with_mode(ctx, None, false, mode) {
             Ok(_) => Ok(()),
             Err(error) => {
                 // 快捷键触发没有调用方界面：缺权限时打开主面板截图页展示处理步骤。

@@ -17,6 +17,8 @@ tracing.workspace = true
 chrono.workspace = true
 uuid.workspace = true
 image = { version = "0.25", default-features = false, features = ["png"] }
+gif = "0.14"
+color_quant = "1.1"
 
 [dev-dependencies]
 tempfile = "3.10"
