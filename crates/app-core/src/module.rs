@@ -102,6 +102,14 @@ pub trait AppModule: Send + Sync + 'static {
     fn on_shutdown(&self, _ctx: &ModuleContext) -> CoreResult<()> {
         Ok(())
     }
+
+    /// Restore operation after a failed disable. Initialization is not assumed
+    /// idempotent after partial shutdown; modules must opt in to recovery.
+    fn on_shutdown_failed(&self, _ctx: &ModuleContext) -> CoreResult<()> {
+        Err(CoreError::Config(
+            "Module cannot recover a partially failed shutdown".to_string(),
+        ))
+    }
 }
 
 /// Container that manages registration, initialization, shortcut routing, and reverse-order shutdown
@@ -337,8 +345,22 @@ impl ModuleRegistry {
             // 获取写锁会等待已有 IPC/后台操作结束，再阻止新操作进入。
             self.enabled.write().remove(id);
             if let Err(error) = module.on_shutdown(ctx) {
-                self.enabled.write().insert(id.to_string());
-                return Err(error);
+                match module.on_shutdown_failed(ctx) {
+                    Ok(()) => {
+                        self.enabled.write().insert(id.to_string());
+                        return Err(error);
+                    }
+                    Err(recovery) => {
+                        for spec in specs {
+                            ctx.shortcut_registry.unregister(&spec.action_id);
+                        }
+                        return Err(CoreError::ModuleLifecycle {
+                            module_id: id.to_string(),
+                            hook: "on_shutdown",
+                            reason: format!("{error}; recovery also failed: {recovery}"),
+                        });
+                    }
+                }
             }
             if let Err(error) = persist() {
                 let restarted = module.on_init(ctx);

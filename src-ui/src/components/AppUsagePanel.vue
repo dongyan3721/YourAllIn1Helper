@@ -9,8 +9,8 @@
           <span class="card-desc">{{ t('appUsage.desc') }}</span>
         </div>
         <div class="toolbar-actions">
-          <span class="status-pill" :class="{ open: status?.tracking }">
-            {{ status?.tracking ? t('appUsage.trackingOn') : t('appUsage.trackingOff') }}
+          <span class="status-pill" :class="{ open: status?.tracking && canCount }">
+            {{ status?.tracking && canCount ? t('appUsage.trackingOn') : t('appUsage.trackingOff') }}
           </span>
           <button class="macos-button" @click="loadAll" :disabled="loading">
             <Icons name="refresh" size="12" />
@@ -21,6 +21,9 @@
 
       <p v-if="status && !status.capabilities.audio_afk_exception" class="usage-limit">
         {{ t('appUsage.audioLimit') }}
+      </p>
+      <p v-if="status && !canCount" class="usage-limit" role="status">
+        {{ t('appUsage.unavailableState') }}
       </p>
 
       <div class="usage-range-bar">
@@ -245,6 +248,9 @@ import Icons from './Icons.vue';
 const error = ref('');
 const loading = ref(false);
 const status = ref<AppUsageStatus | null>(null);
+const canCount = computed(() => status.value?.capabilities.active_app
+  && status.value?.capabilities.idle_detection
+  && status.value?.capabilities.screen_lock_detection);
 const overview = ref<UsageOverview | null>(null);
 const hourly = ref<HourlyBreakdown | null>(null);
 const apps = ref<TrackedApp[]>([]);

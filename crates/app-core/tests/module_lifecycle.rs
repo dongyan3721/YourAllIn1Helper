@@ -189,3 +189,84 @@ fn disable_waits_for_inflight_work_then_rejects_new_work() {
     disable.join().unwrap();
     assert!(kernel.registry().with_enabled("block", || Ok(())).is_err());
 }
+
+struct FailedShutdown {
+    running: Arc<std::sync::atomic::AtomicBool>,
+    recover_fails: bool,
+}
+
+impl AppModule for FailedShutdown {
+    fn id(&self) -> &'static str {
+        "failed_shutdown"
+    }
+    fn name(&self) -> &'static str {
+        "failed_shutdown"
+    }
+    fn default_shortcuts(&self) -> Vec<ShortcutSpec> {
+        vec![ShortcutSpec::new(
+            "failed_shutdown",
+            "failed_shutdown:run",
+            "F2",
+            "run",
+        )]
+    }
+    fn on_init(&self, _: &ModuleContext) -> CoreResult<()> {
+        self.running.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+    fn on_shutdown(&self, _: &ModuleContext) -> CoreResult<()> {
+        self.running.store(false, Ordering::SeqCst);
+        Err(CoreError::Config("flush failed".into()))
+    }
+    fn on_shutdown_failed(&self, _: &ModuleContext) -> CoreResult<()> {
+        if self.recover_fails {
+            Err(CoreError::Config("restart failed".into()))
+        } else {
+            self.running.store(true, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+}
+
+#[test]
+fn failed_disable_only_restores_enabled_state_after_confirmed_recovery() {
+    for recover_fails in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let running = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let kernel = AppKernelBuilder::new(dir.path())
+            .with_in_memory_db(true)
+            .register_module(FailedShutdown {
+                running: running.clone(),
+                recover_fails,
+            })
+            .unwrap()
+            .bootstrap()
+            .unwrap();
+        let error = kernel
+            .set_module_enabled("failed_shutdown", false)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("flush failed"));
+        assert_eq!(error.contains("restart failed"), recover_fails);
+        assert_eq!(running.load(Ordering::SeqCst), !recover_fails);
+        assert_eq!(
+            kernel.registry().is_enabled("failed_shutdown"),
+            !recover_fails
+        );
+        assert_eq!(
+            kernel
+                .context()
+                .shortcut_registry
+                .get_by_action("failed_shutdown:run")
+                .is_some(),
+            !recover_fails
+        );
+        assert_eq!(
+            kernel
+                .registry()
+                .with_enabled("failed_shutdown", || Ok(()))
+                .is_ok(),
+            !recover_fails
+        );
+    }
+}

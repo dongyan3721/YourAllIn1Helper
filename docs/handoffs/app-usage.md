@@ -134,3 +134,15 @@ GUI 用例见 [`docs/testing/GUI_TEST_APP_USAGE.md`](../testing/GUI_TEST_APP_USA
 - 只做本地提交，未 merge / push。
 - 合并时以 `src-tauri/src/modules.rs` 的命名装配、`ipc/mod.rs` 的单行路由和 `Dashboard.vue` 的 tabs 数组为重点，避免与其他并行功能冲突。
 - 模块可用数由目录实际挂载生成，现为 7 个可用槽位；`feature_integration` 与 `ui_smoke` 的断言已同步更新。
+
+## 8. 集成审查修复（OpenAI Codex）
+
+- 关闭标题保存时串行等待正在进行的采样/刷写，并清除活动会话、待写应用与失败待重试会话中的标题，避免设置成功后继续写入旧标题。
+- 小时增量与会话共用原子事务；数据库错误向上传播并保留两者重试，避免会话写入失败却报告成功。重复停止也会重试；重新启动不会清空待写数据。
+- 核心新增可选 `AppModule::on_shutdown_failed` 恢复钩子。关闭失败只在恢复成功后重新开放 IPC；恢复失败保留禁用状态、注销快捷键，并返回两个故障原因。usage 钩子恢复真实采样线程，其他模块不默认重跑可能非幂等的 `on_init`。
+- 接受范围内的墙钟漂移只影响日期归属，小时桶的累计总时长按单调时钟分配。非整小时时区现在在本地小时/午夜切分。
+- macOS 无法取得当前会话字典时返回真实错误，不再将未知状态当作成功检测到未锁屏。锁屏或空闲查询不可用时计时器暂停，不再把失败当作活跃。
+- 原内联配置、存储、计时测试迁至 `tests/unit/{config,store,tracker}.rs`；可靠性回归独立放在 `tests/unit/reliability.rs`，配置与业务文件不再包含测试实现。
+- 定向验证使用本工作区 `.runtime_data/target-app-usage`：usage 21 项、核心生命周期 5 项通过。原有累计测试起点对齐整秒，去掉随机毫秒起点跨小时造成的整数秒桶舍入抖动。
+- 本轮 HAL 实测发现当前进程无法取得 macOS 会话字典，另一次调用也未取得前台应用；旧测试的锁屏“成功”来自 `None => false`。原生能力 smoke 保持严格成功断言，本轮结果为 2 通过、1 失败；该失败是当前进程环境不可用的真实证据，不能作为锁屏检测成功证据。面板会显示本地化的暂停原因。公开函数为 `CGSessionCopyCurrentDictionary`，不是原报告误写的私有 `CGSSessionCopyCurrentDictionary`；真实 AppKit 宿主的检测仍需 GUI 阶段验证。
+- 未补齐既有计划缺项：音频 AFK 例外、Windows 编译/实机验证、GUI 与真实锁屏/睡眠证据、会话列表 UI。整数秒报表仍对每个桶的不足一秒部分取整。

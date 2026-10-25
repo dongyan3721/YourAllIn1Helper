@@ -77,7 +77,11 @@ impl NativeOsHal {
                     (*(value as *const CFBoolean)).value()
                 }
             },
-            None => false,
+            None => {
+                return Err(HalError::NativeCallFailed(
+                    "CGSessionCopyCurrentDictionary returned no session".to_string(),
+                ));
+            }
         };
         Ok(display_asleep || session_locked)
     }
