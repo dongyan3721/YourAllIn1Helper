@@ -19,8 +19,13 @@
         </div>
       </div>
 
-      <p v-if="status && !status.capabilities.audio_afk_exception" class="usage-limit">
-        {{ t('appUsage.audioLimit') }}
+      <p
+        v-if="status"
+        class="usage-limit"
+        :class="{ available: audioAvailable }"
+        role="status"
+      >
+        {{ audioStatusText }}
       </p>
       <p v-if="status && !canCount" class="usage-limit" role="status">
         {{ t('appUsage.unavailableState') }}
@@ -152,6 +157,73 @@
     <div class="section-card">
       <div class="card-header-bar">
         <div>
+          <span class="card-title">{{ t('appUsage.sessionsTitle') }}</span>
+          <span class="card-desc">{{ t('appUsage.sessionsDesc') }}</span>
+        </div>
+        <div class="usage-session-controls">
+          <label class="usage-date-field">
+            <span>{{ t('appUsage.sessionDate') }}</span>
+            <input
+              v-model="sessionDate"
+              type="date"
+              class="macos-input"
+              @change="resetSessions"
+            />
+          </label>
+          <button
+            class="macos-button"
+            :disabled="sessionOffset === 0"
+            @click="changeSessionPage(-1)"
+          >
+            {{ t('appUsage.prevPage') }}
+          </button>
+          <span class="usage-page-info">
+            {{ t('appUsage.pageInfo', { page: sessionPageNumber, pages: sessionPageCount }) }}
+          </span>
+          <button
+            class="macos-button"
+            :disabled="!sessionHasNext"
+            @click="changeSessionPage(1)"
+          >
+            {{ t('appUsage.nextPage') }}
+          </button>
+        </div>
+      </div>
+      <div class="table-container">
+        <table class="macos-table">
+          <thead>
+            <tr>
+              <th>{{ t('appUsage.colApp') }}</th>
+              <th>{{ t('appUsage.colWindowTitle') }}</th>
+              <th>{{ t('appUsage.colStart') }}</th>
+              <th>{{ t('appUsage.colEnd') }}</th>
+              <th>{{ t('appUsage.colDuration') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="sessionPage.sessions.length === 0">
+              <td colspan="5" class="empty-cell">{{ t('appUsage.noSessions') }}</td>
+            </tr>
+            <tr v-for="session in sessionPage.sessions" :key="session.id">
+              <td>
+                <strong>{{ session.app_name }}</strong>
+                <div class="usage-app-path">{{ session.app_id }}</div>
+              </td>
+              <td class="usage-session-title">
+                {{ session.window_title || t('appUsage.titleHidden') }}
+              </td>
+              <td>{{ formatTimestamp(session.started_at) }}</td>
+              <td>{{ formatTimestamp(session.ended_at) }}</td>
+              <td>{{ formatDuration(session.active_seconds) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="card-header-bar">
+        <div>
           <span class="card-title">{{ t('appUsage.appsTitle') }}</span>
           <span class="card-desc">{{ t('appUsage.appsDesc') }}</span>
         </div>
@@ -224,6 +296,14 @@
           <input v-model="settingsForm.keep_window_titles" type="checkbox" />
           <span>{{ t('appUsage.keepTitles') }}</span>
         </label>
+        <label class="usage-setting-check">
+          <input
+            v-model="settingsForm.audio_afk_exception"
+            type="checkbox"
+            :disabled="!status?.capabilities.audio_afk_exception"
+          />
+          <span>{{ t('appUsage.audioToggle') }}</span>
+        </label>
         <button class="macos-button primary" @click="saveSettings">
           {{ t('appUsage.saveSettings') }}
         </button>
@@ -241,6 +321,7 @@ import {
   type HourlyBreakdown,
   type TrackedApp,
   type UsageOverview,
+  type UsageSessionPage,
 } from '../api/ipc';
 import { t } from '../utils/i18n';
 import Icons from './Icons.vue';
@@ -254,6 +335,14 @@ const canCount = computed(() => status.value?.capabilities.active_app
 const overview = ref<UsageOverview | null>(null);
 const hourly = ref<HourlyBreakdown | null>(null);
 const apps = ref<TrackedApp[]>([]);
+const sessionPage = ref<UsageSessionPage>({
+  date: '',
+  total: 0,
+  offset: 0,
+  limit: 20,
+  sessions: [],
+});
+const SESSION_PAGE_SIZE = 20;
 
 const rangeOptions = [
   { days: 7, labelKey: 'appUsage.range7' },
@@ -275,11 +364,41 @@ const today = toDateInput(new Date());
 const startDate = ref(addDays(today, -6));
 const endDate = ref(today);
 const hourlyDate = ref(today);
+const sessionDate = ref(today);
+const sessionOffset = ref(0);
 const settingsForm = reactive<AppUsageConfig>({
   idle_threshold_secs: 300,
   flush_interval_secs: 60,
   keep_window_titles: true,
+  audio_afk_exception: true,
 });
+
+const audioAvailable = computed(
+  () =>
+    (status.value?.capabilities.audio_afk_exception ?? false)
+    && (status.value?.config.audio_afk_exception ?? false)
+);
+const audioStatusText = computed(() => {
+  if (!status.value) return '';
+  if (!status.value.capabilities.audio_afk_exception) {
+    return t('appUsage.audioLimit');
+  }
+  if (!status.value.config.audio_afk_exception) {
+    return t('appUsage.audioDisabled');
+  }
+  return t('appUsage.audioReady');
+});
+const sessionHasNext = computed(
+  () => sessionPage.value.offset + sessionPage.value.limit < sessionPage.value.total
+);
+const sessionPageNumber = computed(() =>
+  sessionPage.value.total === 0
+    ? 1
+    : Math.floor(sessionPage.value.offset / sessionPage.value.limit) + 1
+);
+const sessionPageCount = computed(() =>
+  Math.max(1, Math.ceil(sessionPage.value.total / sessionPage.value.limit))
+);
 
 const averageSeconds = computed(() => {
   const total = overview.value?.total_seconds || 0;
@@ -367,11 +486,31 @@ async function loadApps() {
   apps.value = await invokeIpc<TrackedApp[]>('usage_get_apps');
 }
 
+async function loadSessions() {
+  sessionPage.value = await invokeIpc<UsageSessionPage>('usage_get_sessions', {
+    date: sessionDate.value,
+    offset: sessionOffset.value,
+    limit: SESSION_PAGE_SIZE,
+  });
+}
+
+function resetSessions() {
+  sessionOffset.value = 0;
+  void loadSessions();
+}
+
+function changeSessionPage(direction: number) {
+  const nextOffset = sessionOffset.value + direction * SESSION_PAGE_SIZE;
+  if (nextOffset < 0) return;
+  sessionOffset.value = nextOffset;
+  void loadSessions();
+}
+
 async function loadAll() {
   error.value = '';
   loading.value = true;
   try {
-    await Promise.all([loadStatus(), loadOverview(), loadHourly(), loadApps()]);
+    await Promise.all([loadStatus(), loadOverview(), loadHourly(), loadApps(), loadSessions()]);
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err);
   } finally {
@@ -412,6 +551,7 @@ async function saveSettings() {
       idle_threshold_secs: settingsForm.idle_threshold_secs,
       flush_interval_secs: settingsForm.flush_interval_secs,
       keep_window_titles: settingsForm.keep_window_titles,
+      audio_afk_exception: settingsForm.audio_afk_exception,
     });
     Object.assign(settingsForm, config);
     await loadStatus();
@@ -441,6 +581,30 @@ onMounted(() => {
   font-size: 12px;
   background: rgba(245, 158, 11, 0.12);
   color: var(--macos-text-secondary, #52525b);
+}
+
+.usage-limit.available {
+  background: rgba(52, 199, 89, 0.12);
+}
+
+.usage-session-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.usage-page-info {
+  font-size: 11px;
+  color: var(--macos-text-secondary, #71717a);
+  align-self: center;
+}
+
+.usage-session-title {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .usage-range-bar,
