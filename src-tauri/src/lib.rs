@@ -33,6 +33,7 @@ use std::{
 };
 
 mod demo;
+mod exit_coordinator;
 mod ink_window;
 mod ipc;
 mod legacy_http;

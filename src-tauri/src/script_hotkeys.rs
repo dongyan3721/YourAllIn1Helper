@@ -22,7 +22,7 @@ impl TauriScriptHotkeySync {
         self.app
             .global_shortcut()
             .on_shortcut(accelerator, move |app, _shortcut, event| {
-                if event.state == ShortcutState::Pressed {
+                if event.state == ShortcutState::Pressed && !crate::tauri_app::is_exiting(app) {
                     if let Some(host) = app.try_state::<Arc<DesktopHost>>() {
                         if let Err(error) = host.kernel().trigger_action(&action) {
                             tracing::error!(action = %action, %error, "Script hotkey action failed");
