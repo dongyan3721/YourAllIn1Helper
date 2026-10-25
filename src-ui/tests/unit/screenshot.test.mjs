@@ -226,3 +226,28 @@ test('pin zoom stays within 10%-500%, opacity within 10%-100%, collapse uses min
   assert.equal(formatPercent(0.1), '10%');
   assert.equal(formatPercent(5), '500%');
 });
+
+test('M3 scroll utils: format pixel height and confidence percentage', async () => {
+  const { formatPixelHeight, formatConfidence } = await import('../../src/utils/screenshot/scroll.ts');
+  assert.equal(formatPixelHeight(0), '0 px');
+  assert.equal(formatPixelHeight(1080), '1,080 px');
+  assert.equal(formatPixelHeight(30000), '30,000 px');
+  assert.equal(formatConfidence(0.954), '95%');
+  assert.equal(formatConfidence(0.8), '80%');
+  assert.equal(formatConfidence(1.0), '100%');
+});
+
+test('M3 gif utils: format duration, file size and presets', async () => {
+  const { formatGifDuration, formatFileSize, GIF_FPS_OPTIONS, GIF_RESOLUTION_PRESETS } = await import('../../src/utils/screenshot/gif.ts');
+  assert.equal(formatGifDuration(0), '00:00');
+  assert.equal(formatGifDuration(5200), '00:05');
+  assert.equal(formatGifDuration(65000), '01:05');
+  assert.equal(formatFileSize(0), '0 B');
+  assert.equal(formatFileSize(512), '512 B');
+  assert.equal(formatFileSize(1536), '1.5 KB');
+  assert.equal(formatFileSize(2 * 1024 * 1024 + 512 * 1024), '2.5 MB');
+  assert.deepEqual(Array.from(GIF_FPS_OPTIONS), [10, 15, 24, 30]);
+  assert.equal(GIF_RESOLUTION_PRESETS.length, 4);
+  assert.deepEqual(GIF_RESOLUTION_PRESETS.map((p) => p.id), ['original', '1080p', '720p', '480p']);
+});
+

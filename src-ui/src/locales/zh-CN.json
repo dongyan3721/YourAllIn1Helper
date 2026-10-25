@@ -682,6 +682,43 @@
       "resultCopyFailed": "复制失败：{error}",
       "resultAlsoCopied": "已同时复制",
       "settingsSaved": "截图设置已保存"
+    },
+    "scroll": {
+      "start": "长截图",
+      "scrolling": "正在长截图",
+      "height": "高度",
+      "autoScroll": "自动滚动",
+      "stopAuto": "停止自动",
+      "autoScrollTitle": "切换自动向下滚动",
+      "finish": "完成",
+      "finishTitle": "结束长截图并打开预览",
+      "cancelTitle": "取消长截图",
+      "needSelection": "请先框选长截图区域",
+      "selectHint": "请框选长截图区域，按回车或点击开始",
+      "previewTitle": "长截图预览",
+      "loadingPreview": "正在生成长截图预览…",
+      "lowConfidenceTip": "已安全停止（图像变化差异过大以防错位）",
+      "maxLengthTip": "已达最大长度限制",
+      "copySuccess": "长截图已复制到剪贴板",
+      "saveSuccess": "长截图已保存",
+      "pinSuccess": "长截图已贴到屏幕"
+    },
+    "gif": {
+      "start": "GIF 录制",
+      "frames": "帧",
+      "stop": "停止",
+      "stopTitle": "停止录制并保存 GIF",
+      "cancelTitle": "取消录制并清理文件",
+      "needSelection": "请先框选录制区域",
+      "selectHint": "请框选录制区域并设置帧率与分辨率",
+      "record": "开始录制",
+      "previewTitle": "GIF 录制完成",
+      "savedSuccess": "GIF 录制成功并已保存",
+      "presetOriginal": "原画",
+      "preset1080p": "1080p",
+      "preset720p": "720p",
+      "preset480p": "480p",
+      "fpsLabel": "{fps} FPS"
     }
   },
   "translator": {

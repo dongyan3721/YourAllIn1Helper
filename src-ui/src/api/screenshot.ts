@@ -33,6 +33,7 @@ export interface ScreenshotSessionInfo {
     default_color: string;
     default_stroke_width: number;
   };
+  target_mode?: string | null;
   created_at: number;
 }
 
@@ -144,6 +145,42 @@ export async function fetchPinImage(pinId: string): Promise<ArrayBuffer> {
   return toArrayBuffer(await tauriCore().invoke('screenshot_pin_image', { pinId }));
 }
 
+/** 获取长截图拼接产物原始 RGBA 字节流 */
+export async function fetchScrollImage(): Promise<ArrayBuffer> {
+  return toArrayBuffer(await tauriCore().invoke('screenshot_scroll_image'));
+}
+
+export interface ScrollStatus {
+  is_active: boolean;
+  width: number;
+  current_height: number;
+  frame_count: number;
+  auto_scroll_enabled: boolean;
+  auto_scroll_error: string | null;
+  stop_reason: { reason: string; [key: string]: unknown } | null;
+}
+
+export type GifRecordingPreset = 'original' | '1080p' | '720p' | '480p' | 'custom';
+
+export interface GifRecordingConfigOptions {
+  preset?: GifRecordingPreset;
+  fps?: 10 | 15 | 24 | 30;
+  max_duration_secs?: number;
+  custom_width?: number;
+  custom_height?: number;
+}
+
+export interface GifStatus {
+  is_recording: boolean;
+  width: number;
+  height: number;
+  duration_ms: number;
+  frame_count: number;
+  file_size_bytes: number;
+  saved_path: string | null;
+  error: string | null;
+}
+
 /** 导出选区：标注层 PNG 作为原始请求体（无标注时为空），参数放在请求头。 */
 export async function exportSelection(
   sessionId: string,
@@ -193,4 +230,20 @@ export const screenshotApi = {
       settings,
       overlay,
     }),
+  // ── M3: 滚动长截图 ──
+  scrollStart: (sessionId: string, selection: Rect) =>
+    invokeIpc<ScrollStatus>('screenshot_scroll_start', { session_id: sessionId, selection }),
+  scrollStop: () => invokeIpc<ScrollStatus>('screenshot_scroll_stop'),
+  scrollCancel: () => invokeIpc<{ cancelled: boolean }>('screenshot_scroll_cancel'),
+  scrollStatus: () => invokeIpc<ScrollStatus | null>('screenshot_scroll_status'),
+  scrollSetAuto: (enabled: boolean) => invokeIpc<{ ok: boolean }>('screenshot_scroll_set_auto', { enabled }),
+  scrollInfo: () => invokeIpc<ScrollStatus>('screenshot_scroll_info'),
+  scrollExport: (action: ExportAction) => invokeIpc<ExportOutcome>('screenshot_scroll_export', { action }),
+
+  // ── M3: GIF 录制 ──
+  gifStart: (sessionId: string, selection: Rect, options?: GifRecordingConfigOptions) =>
+    invokeIpc<GifStatus>('screenshot_gif_start', { session_id: sessionId, selection, ...options }),
+  gifStop: () => invokeIpc<GifStatus>('screenshot_gif_stop'),
+  gifCancel: () => invokeIpc<{ cancelled: boolean }>('screenshot_gif_cancel'),
+  gifStatus: () => invokeIpc<GifStatus | null>('screenshot_gif_status'),
 };

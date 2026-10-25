@@ -682,6 +682,43 @@
       "resultCopyFailed": "Copy failed: {error}",
       "resultAlsoCopied": "also copied",
       "settingsSaved": "Capture settings saved"
+    },
+    "scroll": {
+      "start": "Scroll",
+      "scrolling": "Scrolling",
+      "height": "Height",
+      "autoScroll": "Auto Scroll",
+      "stopAuto": "Pause Auto",
+      "autoScrollTitle": "Toggle auto scrolling",
+      "finish": "Finish",
+      "finishTitle": "Finish and preview",
+      "cancelTitle": "Cancel scroll screenshot",
+      "needSelection": "Please select a region for scroll screenshot first",
+      "selectHint": "Select a region and press Enter or click to start scroll capture",
+      "previewTitle": "Scrolling Screenshot Preview",
+      "loadingPreview": "Loading stitched preview…",
+      "lowConfidenceTip": "Safely stopped (low confidence to avoid misaligned stitching)",
+      "maxLengthTip": "Maximum height limit reached",
+      "copySuccess": "Stitched screenshot copied to clipboard",
+      "saveSuccess": "Stitched screenshot saved",
+      "pinSuccess": "Stitched screenshot pinned"
+    },
+    "gif": {
+      "start": "GIF Recording",
+      "frames": "frames",
+      "stop": "Stop",
+      "stopTitle": "Stop recording and save GIF",
+      "cancelTitle": "Cancel recording and clean up",
+      "needSelection": "Please select a region for GIF recording first",
+      "selectHint": "Select a region and choose framerate/resolution",
+      "record": "Start Recording",
+      "previewTitle": "GIF Recording Finished",
+      "savedSuccess": "GIF successfully recorded and saved",
+      "presetOriginal": "Original",
+      "preset1080p": "1080p",
+      "preset720p": "720p",
+      "preset480p": "480p",
+      "fpsLabel": "{fps} FPS"
     }
   },
   "translator": {
