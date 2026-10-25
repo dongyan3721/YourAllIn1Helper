@@ -85,6 +85,75 @@ impl NativeOsHal {
         };
         Ok(display_asleep || session_locked)
     }
+
+    /// 查询默认输出设备是否有音频流在运行。
+    ///
+    /// `kAudioDevicePropertyDeviceIsRunningSomewhere` 不需要额外隐私权限，也不读取
+    /// 音频内容；只返回设备是否被任意进程启动。没有默认输出设备时视为未播放。
+    pub(super) fn usage_audio_active_macos(&self) -> HalResult<bool> {
+        use objc2_core_audio::{
+            kAudioDevicePropertyDeviceIsRunningSomewhere,
+            kAudioHardwarePropertyDefaultOutputDevice, kAudioObjectPropertyElementMain,
+            kAudioObjectPropertyScopeGlobal, kAudioObjectSystemObject, AudioObjectGetPropertyData,
+            AudioObjectPropertyAddress,
+        };
+        use std::ffi::c_void;
+        use std::mem::size_of;
+        use std::ptr::NonNull;
+
+        fn status_error(step: &str, status: i32) -> HalError {
+            HalError::NativeCallFailed(format!("{step} failed with OSStatus {status}"))
+        }
+
+        let mut device_id: u32 = 0;
+        let mut size = size_of::<u32>() as u32;
+        let output_address = AudioObjectPropertyAddress {
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain,
+        };
+        let status = unsafe {
+            AudioObjectGetPropertyData(
+                kAudioObjectSystemObject as u32,
+                NonNull::from(&output_address),
+                0,
+                std::ptr::null(),
+                NonNull::from(&mut size),
+                NonNull::from(&mut device_id).cast::<c_void>(),
+            )
+        };
+        if status != 0 {
+            return Err(status_error("querying default output device", status));
+        }
+        if device_id == 0 {
+            return Ok(false);
+        }
+
+        let mut running: u32 = 0;
+        let mut size = size_of::<u32>() as u32;
+        let running_address = AudioObjectPropertyAddress {
+            mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain,
+        };
+        let status = unsafe {
+            AudioObjectGetPropertyData(
+                device_id,
+                NonNull::from(&running_address),
+                0,
+                std::ptr::null(),
+                NonNull::from(&mut size),
+                NonNull::from(&mut running).cast::<c_void>(),
+            )
+        };
+        if status != 0 {
+            return Err(status_error(
+                "querying default output audio activity",
+                status,
+            ));
+        }
+        Ok(running != 0)
+    }
 }
 
 /// 读取前台应用最上层普通窗口的标题；无屏幕录制权限时系统可能返回空名称。

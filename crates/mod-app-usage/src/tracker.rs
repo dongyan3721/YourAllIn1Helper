@@ -3,7 +3,8 @@
 //! 计时规则：
 //! - 时长来自单调时钟，日期/小时桶来自 UTC 墙钟；在本地小时及 UTC 小时边界切段。
 //! - 采样间隔异常（休眠唤醒、系统时钟跳变）不补记离线时间，并关闭当前会话。
-//! - 锁屏、息屏、键鼠空闲超过阈值时不累计；当前尚无真实音频活动检测，因此 AFK 例外不生效。
+//! - 锁屏、息屏、睡眠、键鼠空闲超过阈值时不累计；锁屏/睡眠优先于音频例外。
+//! - 键鼠空闲但默认输出设备仍在播放音频时，设置允许则继续计时（视频/音乐场景）。
 //! - 进程重启只从第一个采样点开始计时，不会把停机时间计入，也不会恢复旧的未刷写增量。
 
 use crate::config::AppUsageConfig;
@@ -252,12 +253,18 @@ impl Tracker {
             limitations
                 .push("当前系统无法检测真实锁屏/息屏状态，采样暂停以避免误记时。".to_string());
         }
-        limitations.push("系统音频活动检测尚未接入：AFK 期间的音频播放例外暂不生效。".to_string());
+        let audio_ok = self.watcher.default_output_audio_active().is_ok();
+        if !audio_ok {
+            limitations
+                .push("当前系统无法检测默认输出设备的音频活动，音频 AFK 例外不可用。".to_string());
+        } else if !self.config().audio_afk_exception {
+            limitations.push("音频 AFK 例外已在设置中关闭。".to_string());
+        }
         AppUsageCapabilities {
             active_app,
             idle_detection: idle_ok,
             screen_lock_detection: lock_ok,
-            audio_afk_exception: false,
+            audio_afk_exception: audio_ok,
             limitations,
         }
     }
@@ -275,6 +282,11 @@ impl Tracker {
 
         let idle_seconds = self.watcher.system_idle_seconds().ok();
         let locked = self.watcher.is_screen_locked().ok();
+        // 只有键鼠已达到空闲阈值时才探测音频，避免正常操作期间反复查询系统设备。
+        let idle_afk = idle_seconds.is_some_and(|idle| idle >= config.idle_threshold_secs);
+        let audio_playing = idle_afk
+            && config.audio_afk_exception
+            && self.watcher.default_output_audio_active().unwrap_or(false);
         let snapshot = self.watcher.current_active_app().ok();
         let app = snapshot
             .filter(|snapshot| !snapshot.app_id.trim().is_empty())
@@ -288,9 +300,10 @@ impl Tracker {
                     .filter(|title| !title.trim().is_empty()),
             })
             .filter(|app| !self.is_ignored(&app.app_id));
+        // 锁屏/睡眠优先：即使音频正在播放也不计时。未知空闲/锁定状态一律暂停。
         let should_track = app.is_some()
             && locked == Some(false)
-            && idle_seconds.is_some_and(|idle| idle < config.idle_threshold_secs);
+            && idle_seconds.is_some_and(|idle| idle < config.idle_threshold_secs || audio_playing);
 
         let mut closed_session: Option<ClosedSession> = None;
         let mut flush_requested = false;

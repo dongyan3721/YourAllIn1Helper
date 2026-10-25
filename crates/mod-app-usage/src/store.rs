@@ -6,10 +6,10 @@
 use crate::config::MODULE_ID;
 use crate::report::{
     AppUsageSummary, CategoryUsage, DailyUsage, HourlyBreakdown, HourlyUsage, TrackedApp,
-    UsageOverview,
+    UsageOverview, UsageSession, UsageSessionPage,
 };
 use app_core::{CoreError, CoreResult, ModuleContext, ModuleMigration};
-use chrono::{Local, NaiveDate};
+use chrono::{Local, NaiveDate, TimeZone};
 use rusqlite::{params, OptionalExtension, Transaction};
 use std::collections::BTreeMap;
 
@@ -369,6 +369,92 @@ pub fn overview(
         days,
         apps,
         categories,
+    })
+}
+
+/// 本地日期零点；处理夏令时空档，避免跨日查询偏移一小时。
+fn local_midnight(date: NaiveDate) -> CoreResult<i64> {
+    let naive = date
+        .and_hms_opt(0, 0, 0)
+        .ok_or_else(|| CoreError::Config(format!("Invalid date '{date}'")))?;
+    Local
+        .from_local_datetime(&naive)
+        .earliest()
+        .or_else(|| {
+            Local
+                .from_local_datetime(&(naive + chrono::Duration::hours(1)))
+                .earliest()
+        })
+        .map(|value| value.timestamp_millis())
+        .ok_or_else(|| CoreError::Config(format!("Date '{date}' has no local midnight")))
+}
+
+/// 查询指定本地日期的逐会话明细；忽略名单与报表保持一致。
+/// `include_titles=false` 时不向 IPC 暴露已存储的历史标题。
+pub fn sessions(
+    ctx: &ModuleContext,
+    date: &str,
+    offset: u64,
+    limit: u64,
+    include_titles: bool,
+) -> CoreResult<UsageSessionPage> {
+    let parsed = parse_date(date)?;
+    let date = parsed.format("%Y-%m-%d").to_string();
+    let start = local_midnight(parsed)?;
+    let next = parsed.succ_opt().ok_or_else(|| {
+        CoreError::Config("Session date exceeds the supported calendar".to_string())
+    })?;
+    let end = local_midnight(next)?;
+    let limit = limit.clamp(1, 200);
+    let offset = offset.min(1_000_000);
+
+    let (total, sessions) = ctx.db.with_conn(|conn| {
+        let total: u64 = conn
+            .query_row(
+                "SELECT COUNT(*)
+                 FROM app_usage_sessions s
+                 LEFT JOIN tracked_apps ta ON ta.app_id = s.app_id
+                 WHERE s.ended_at > ?1 AND s.started_at < ?2
+                   AND COALESCE(ta.ignored, 0) = 0",
+                params![start, end],
+                |row| row.get::<_, i64>(0),
+            )?
+            .max(0) as u64;
+        let mut stmt = conn.prepare(
+            "SELECT s.id, s.app_id, s.app_name, s.window_title, s.started_at, s.ended_at,
+                    s.active_seconds
+             FROM app_usage_sessions s
+             LEFT JOIN tracked_apps ta ON ta.app_id = s.app_id
+             WHERE s.ended_at > ?1 AND s.started_at < ?2
+               AND COALESCE(ta.ignored, 0) = 0
+             ORDER BY s.started_at DESC, s.id DESC
+             LIMIT ?3 OFFSET ?4",
+        )?;
+        let rows = stmt.query_map(params![start, end, limit as i64, offset as i64], |row| {
+            let title: Option<String> = row.get(3)?;
+            Ok(UsageSession {
+                id: row.get(0)?,
+                app_id: row.get(1)?,
+                app_name: row.get(2)?,
+                window_title: if include_titles { title } else { None },
+                started_at: row.get(4)?,
+                ended_at: row.get(5)?,
+                active_seconds: row.get::<_, i64>(6)?.max(0) as u64,
+            })
+        })?;
+        let mut sessions = Vec::new();
+        for row in rows {
+            sessions.push(row?);
+        }
+        Ok((total, sessions))
+    })?;
+
+    Ok(UsageSessionPage {
+        date,
+        total,
+        offset,
+        limit,
+        sessions,
     })
 }
 

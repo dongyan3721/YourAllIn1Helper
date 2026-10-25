@@ -31,6 +31,9 @@ pub struct AppUsageConfig {
     pub flush_interval_secs: u64,
     /// 是否把窗口标题写入数据库。关闭时仅保留应用标识和名称。
     pub keep_window_titles: bool,
+    /// 键鼠空闲时若默认输出设备仍在播放音频，则不进入 AFK。默认开启。
+    /// 平台没有真实音频探测能力时该开关无效，界面会显示能力限制。
+    pub audio_afk_exception: bool,
 }
 
 impl Default for AppUsageConfig {
@@ -39,6 +42,7 @@ impl Default for AppUsageConfig {
             idle_threshold_secs: 300,
             flush_interval_secs: 60,
             keep_window_titles: true,
+            audio_afk_exception: true,
         }
     }
 }

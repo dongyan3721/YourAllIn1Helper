@@ -288,6 +288,7 @@ export interface AppUsageConfig {
   idle_threshold_secs: number;
   flush_interval_secs: number;
   keep_window_titles: boolean;
+  audio_afk_exception: boolean;
 }
 
 /** 原生采样能力探测结果 */
@@ -343,6 +344,24 @@ export interface HourlyBreakdown {
   date: string;
   total_seconds: number;
   hours: HourlyUsage[];
+}
+
+export interface UsageSession {
+  id: number;
+  app_id: string;
+  app_name: string;
+  window_title: string | null;
+  started_at: number;
+  ended_at: number;
+  active_seconds: number;
+}
+
+export interface UsageSessionPage {
+  date: string;
+  total: number;
+  offset: number;
+  limit: number;
+  sessions: UsageSession[];
 }
 
 export interface TrackedApp {

@@ -36,6 +36,19 @@ impl DesktopHost {
                 self.app_usage.list_tracked_apps(ctx)?,
             )?),
 
+            "usage_get_sessions" => {
+                let default_date = self.app_usage.today_local();
+                let date = args
+                    .get("date")
+                    .and_then(Value::as_str)
+                    .unwrap_or(&default_date);
+                let offset = args.get("offset").and_then(Value::as_u64).unwrap_or(0);
+                let limit = args.get("limit").and_then(Value::as_u64).unwrap_or(50);
+                Ok(serde_json::to_value(
+                    self.app_usage.sessions(ctx, date, offset, limit)?,
+                )?)
+            }
+
             "usage_set_app_category" => {
                 let app_id = args
                     .get("app_id")
@@ -67,6 +80,9 @@ impl DesktopHost {
                 }
                 if let Some(keep) = args.get("keep_window_titles").and_then(Value::as_bool) {
                     config.keep_window_titles = keep;
+                }
+                if let Some(audio) = args.get("audio_afk_exception").and_then(Value::as_bool) {
+                    config.audio_afk_exception = audio;
                 }
                 config = config.normalized();
                 config
