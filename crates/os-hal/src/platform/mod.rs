@@ -18,6 +18,8 @@ pub(super) fn native_error(error: impl std::fmt::Display) -> HalError {
 #[derive(Clone, Default)]
 pub struct NativeOsHal {
     paste_triggers: Arc<AtomicUsize>,
+    /// 锁屏/息屏/睡眠事件观察者；平台无关包装，业务模块只看到 trait。
+    usage_events: usage::NativeUsageEvents,
 }
 impl NativeOsHal {
     pub fn new() -> Self {
