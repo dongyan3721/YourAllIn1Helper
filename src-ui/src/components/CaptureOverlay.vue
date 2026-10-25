@@ -845,12 +845,9 @@ onMounted(async () => {
   try {
     const info = await screenshotApi.getSession();
     session.value = info;
-    color.value = ANNOTATION_COLORS.includes(info.settings.default_color)
-      ? info.settings.default_color
-      : ANNOTATION_COLORS[0];
-    strokeWidth.value = STROKE_WIDTHS.reduce((best, w) =>
-      Math.abs(w - info.settings.default_stroke_width) < Math.abs(best - info.settings.default_stroke_width) ? w : best
-    );
+    // 后端已校验默认值；调色板和线宽按钮是快捷选项，不限制用户保存的自定义值。
+    color.value = info.settings.default_color;
+    strokeWidth.value = info.settings.default_stroke_width;
     const buffer = await fetchFrozenFrame(info.session_id);
     if (buffer.byteLength !== info.frame_byte_length) {
       throw new Error(t('screenshot.overlay.frameSizeMismatch'));

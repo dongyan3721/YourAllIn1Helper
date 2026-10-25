@@ -853,7 +853,7 @@ pub fn run() {
             };
             let pool = &host.kernel().context().window_pool;
             match event {
-                WindowEvent::CloseRequested { .. } => {
+                WindowEvent::CloseRequested { api, .. } => {
                     let label = window.label();
                     if let Some(note_id) = label.strip_prefix("sticky-note-") {
                         let _ = host
@@ -866,9 +866,30 @@ pub fn run() {
                         let _ = pool.destroy_window(label);
                         host.screenshot.forget_pin(pin_id);
                     } else if label == mod_screenshot::OVERLAY_LABEL {
-                        let _ = host
+                        // 导出持有会话 gate，并可能等待主线程创建贴图或恢复遮罩层级。
+                        // 原生 CloseRequested 在主线程派发，不能在这里等待同一把 gate。
+                        api.prevent_close();
+                        let session_id = host
                             .screenshot
-                            .cancel_capture(host.kernel().context(), None);
+                            .session_info(host.kernel().context(), None)
+                            .ok()
+                            .map(|session| session.session_id);
+                        if let Some(session_id) = session_id {
+                            let host = host.inner().clone();
+                            let app = window.app_handle().clone();
+                            tauri::async_runtime::spawn_blocking(move || {
+                                // 等待中的旧窗口关闭请求不得取消后来启动的新会话。
+                                if let Err(error) = host.screenshot.cancel_capture(
+                                    host.kernel().context(),
+                                    Some(&session_id),
+                                ) {
+                                    tracing::warn!(%error, "Failed to cancel screenshot after native close request");
+                                }
+                                emit_update(&app);
+                            });
+                        } else {
+                            let _ = pool.destroy_window(label);
+                        }
                     } else {
                         let _ = pool.destroy_window(label);
                     }
