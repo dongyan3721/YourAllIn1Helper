@@ -1,6 +1,6 @@
 use crate::{
     error::{VaultError, VaultResult},
-    model::FieldId,
+    model::{FieldId, SecretString},
 };
 use aes_gcm::{
     aead::{Aead, KeyInit, Payload},
@@ -156,6 +156,7 @@ pub(crate) fn encrypt_field(
     Ok((encrypted[..split].to_vec(), tag))
 }
 
+#[allow(clippy::too_many_arguments)] // 显式展开 AEAD 上下文，避免调用方混淆字段、记录或版本。
 pub(crate) fn decrypt_field(
     dek: &[u8; KEY_LEN],
     vault_id: &Uuid,
@@ -237,7 +238,9 @@ pub(crate) fn unwrap_dek(
     Ok(dek)
 }
 
-pub(crate) fn plaintext_to_string(mut plaintext: Zeroizing<Vec<u8>>) -> VaultResult<String> {
-    // 将同一分配转移给 IPC 返回值；此后由前端短驻留契约管理，不宣称物理清零。
-    String::from_utf8(std::mem::take(&mut *plaintext)).map_err(|_| VaultError::DataIntegrityError)
+pub(crate) fn plaintext_to_string(mut plaintext: Zeroizing<Vec<u8>>) -> VaultResult<SecretString> {
+    // 将同一分配转移给秘密返回值；Drop 时由 SecretString 清理，IPC 副本除外。
+    String::from_utf8(std::mem::take(&mut *plaintext))
+        .map(SecretString::new)
+        .map_err(|_| VaultError::DataIntegrityError)
 }

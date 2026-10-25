@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
 use crate::{
-    crypto::VaultRandom, PasswordVaultModule, VaultEntryInput, VaultError, VaultResult,
-    VaultService,
+    crypto::VaultRandom, PasswordVaultModule, SecretString, VaultEntryInput, VaultError,
+    VaultResult, VaultService,
 };
 use app_core::{AppKernel, AppKernelBuilder};
 use os_hal::{ActiveAppSnapshot, ActiveAppWatcher, HalError, HalResult};
@@ -21,13 +21,13 @@ pub const MASTER: &str = "correct-horse-vault-2026";
 
 pub fn input(marker: &str) -> VaultEntryInput {
     VaultEntryInput {
-        title: format!("虚构站点 {marker}"),
-        url: format!("https://{marker}.example.test/login"),
-        category: "测试分类".to_string(),
-        username: format!("qa-{marker}@example.test"),
-        password: format!("not-a-real-password-{marker}"),
-        totp_secret: format!("FAKE-TOTP-{marker}"),
-        notes: format!("仅用于自动化测试的备注 {marker}"),
+        title: SecretString::new(format!("虚构站点 {marker}")),
+        url: SecretString::new(format!("https://{marker}.example.test/login")),
+        category: SecretString::from("测试分类"),
+        username: SecretString::new(format!("qa-{marker}@example.test")),
+        password: SecretString::new(format!("not-a-real-password-{marker}")),
+        totp_secret: SecretString::new(format!("FAKE-TOTP-{marker}")),
+        notes: SecretString::new(format!("仅用于自动化测试的备注 {marker}")),
         archived: false,
     }
 }
@@ -169,6 +169,9 @@ impl Fixture {
             .expect("register vault")
             .bootstrap()
             .expect("bootstrap vault");
+        // 并行 Argon2 测试可能让线程调度超过三秒并触发保守睡眠锁定；
+        // 普通服务测试改为显式 sample_now，避免把 CPU 饱和当成非确定性断言。
+        module.stop_worker();
         Self {
             _temp: temp,
             kernel,

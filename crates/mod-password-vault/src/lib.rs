@@ -16,8 +16,9 @@ mod unit_tests;
 
 pub use error::{VaultError, VaultResult};
 pub use model::{
-    LockReason, PasswordPolicy, VaultEntry, VaultEntryInput, VaultEntryPage, VaultEntrySummary,
-    VaultEvent, VaultMutationResult, VaultStatus, AUTO_LOCK_SECONDS, MODULE_ID, REVEAL_SECONDS,
+    LockReason, PasswordPolicy, SecretString, VaultEntry, VaultEntryInput, VaultEntryPage,
+    VaultEntrySummary, VaultEvent, VaultMutationResult, VaultStatus, AUTO_LOCK_SECONDS, MODULE_ID,
+    REVEAL_SECONDS,
 };
 pub use service::{VaultEventSink, VaultService};
 

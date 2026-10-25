@@ -73,7 +73,7 @@ impl NativeVaultObserver {
         let center = center.retain();
         self.removals.push(Box::new(move || {
             // SAFETY：token 来自同一个 notification center，且只移除一次。
-            let observer: &objc2::runtime::AnyObject = (&*token).as_ref();
+            let observer: &objc2::runtime::AnyObject = (*token).as_ref();
             unsafe { center.removeObserver(observer) };
         }));
     }
@@ -100,7 +100,7 @@ impl NativeVaultObserver {
         let center = center.retain();
         self.removals.push(Box::new(move || {
             // SAFETY：token 与 center 配对，stop 在主线程调用且只执行一次。
-            let observer: &objc2::runtime::AnyObject = (&*token).as_ref();
+            let observer: &objc2::runtime::AnyObject = (*token).as_ref();
             unsafe { center.removeObserver(observer) };
         }));
     }

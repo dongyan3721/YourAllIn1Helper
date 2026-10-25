@@ -5,8 +5,9 @@ use crate::{
     },
     error::{VaultError, VaultResult},
     model::{
-        FieldId, LockReason, PasswordPolicy, VaultEntry, VaultEntryInput, VaultEntryPage,
-        VaultEntrySummary, VaultEvent, VaultMutationResult, VaultStatus, AUTO_LOCK_SECONDS,
+        FieldId, LockReason, PasswordPolicy, SecretString, VaultEntry, VaultEntryInput,
+        VaultEntryPage, VaultEntrySummary, VaultEvent, VaultMutationResult, VaultStatus,
+        AUTO_LOCK_SECONDS,
     },
     store::{self, EntryMetadata, FieldEnvelope, MasterSlot, StoredEntry},
 };
@@ -170,9 +171,12 @@ impl VaultService {
 
     fn validate_new_password(password: &str) -> VaultResult<()> {
         let chars = password.chars().count();
-        if !(12..=256).contains(&chars) || password.len() > 1024 {
+        if !(12..=256).contains(&chars)
+            || password.len() > 1024
+            || password.chars().all(char::is_whitespace)
+        {
             return Err(VaultError::InvalidInput(
-                "master password must contain 12 to 256 characters",
+                "master password must contain 12 to 256 characters and not be whitespace-only",
             ));
         }
         Ok(())
@@ -358,7 +362,7 @@ impl VaultService {
 
     fn decrypt_entry(dek: &[u8; KEY_LEN], stored: &StoredEntry) -> VaultResult<VaultEntry> {
         Self::validate_envelope_versions(stored)?;
-        let mut values: [Option<String>; 7] = Default::default();
+        let mut values: [Option<SecretString>; 7] = Default::default();
         for field in FieldId::ALL {
             let plaintext = Self::decrypt_one(dek, stored, field)?;
             values[field as usize - 1] = Some(plaintext_to_string(plaintext)?);
@@ -387,9 +391,9 @@ impl VaultService {
     fn decrypt_summary(
         dek: &[u8; KEY_LEN],
         stored: &StoredEntry,
-    ) -> VaultResult<(VaultEntrySummary, Zeroizing<String>)> {
+    ) -> VaultResult<(VaultEntrySummary, SecretString)> {
         Self::validate_envelope_versions(stored)?;
-        let text = |field| -> VaultResult<String> {
+        let text = |field| -> VaultResult<SecretString> {
             plaintext_to_string(Self::decrypt_one(dek, stored, field)?)
         };
         Ok((
@@ -404,7 +408,7 @@ impl VaultService {
                 category: text(FieldId::Category)?,
                 username: text(FieldId::Username)?,
             },
-            Zeroizing::new(text(FieldId::Notes)?),
+            text(FieldId::Notes)?,
         ))
     }
 
@@ -609,7 +613,7 @@ impl VaultService {
         self: &Arc<Self>,
         ctx: ModuleContext,
         entry_id: &str,
-    ) -> VaultResult<Zeroizing<String>> {
+    ) -> VaultResult<SecretString> {
         let entry_id = parse_entry_id(entry_id)?;
         let service = Arc::clone(self);
         tokio::task::spawn_blocking(move || {
@@ -621,7 +625,6 @@ impl VaultService {
                 Self::check_context(&stored.metadata, &vault_id)?;
                 Self::validate_envelope_versions(&stored)?;
                 plaintext_to_string(Self::decrypt_one(dek, &stored, FieldId::Password)?)
-                    .map(Zeroizing::new)
             })();
             let event = service.integrity_event(&mut state, &result);
             drop(state);

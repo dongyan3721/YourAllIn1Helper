@@ -1,4 +1,57 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use zeroize::Zeroizing;
+
+/// 后端拥有的用户秘密；不实现 Debug/Clone，Drop 时清理自有字符串分配。
+/// Serialize 仅用于显式 IPC 返回，序列化后的 JS/WebView 副本不在零化保证内。
+pub struct SecretString(Zeroizing<String>);
+
+impl SecretString {
+    pub fn new(value: String) -> Self {
+        Self(Zeroizing::new(value))
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
+impl From<&str> for SecretString {
+    fn from(value: &str) -> Self {
+        Self::new(value.to_string())
+    }
+}
+
+impl From<String> for SecretString {
+    fn from(value: String) -> Self {
+        Self::new(value)
+    }
+}
+
+impl std::ops::Deref for SecretString {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+}
+
+impl Serialize for SecretString {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for SecretString {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        String::deserialize(deserializer).map(Self::new)
+    }
+}
 
 pub const MODULE_ID: &str = "password_vault";
 pub const AUTO_LOCK_SECONDS: u64 = 180;
@@ -42,13 +95,13 @@ pub struct VaultStatus {
 /// 完整编辑输入不实现 Debug/Clone/Serialize，避免秘密被格式化或无意复制。
 #[derive(Deserialize)]
 pub struct VaultEntryInput {
-    pub title: String,
-    pub url: String,
-    pub category: String,
-    pub username: String,
-    pub password: String,
-    pub totp_secret: String,
-    pub notes: String,
+    pub title: SecretString,
+    pub url: SecretString,
+    pub category: SecretString,
+    pub username: SecretString,
+    pub password: SecretString,
+    pub totp_secret: SecretString,
+    pub notes: SecretString,
     #[serde(default)]
     pub archived: bool,
 }
@@ -61,29 +114,29 @@ pub struct VaultEntry {
     pub created_at: i64,
     pub updated_at: i64,
     pub archived: bool,
-    pub title: String,
-    pub url: String,
-    pub category: String,
-    pub username: String,
-    pub password: String,
-    pub totp_secret: String,
-    pub notes: String,
+    pub title: SecretString,
+    pub url: SecretString,
+    pub category: SecretString,
+    pub username: SecretString,
+    pub password: SecretString,
+    pub totp_secret: SecretString,
+    pub notes: SecretString,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Serialize)]
 pub struct VaultEntrySummary {
     pub id: String,
     pub record_version: u64,
     pub created_at: i64,
     pub updated_at: i64,
     pub archived: bool,
-    pub title: String,
-    pub url: String,
-    pub category: String,
-    pub username: String,
+    pub title: SecretString,
+    pub url: SecretString,
+    pub category: SecretString,
+    pub username: SecretString,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Serialize)]
 pub struct VaultEntryPage {
     pub entries: Vec<VaultEntrySummary>,
     pub next_cursor: Option<String>,

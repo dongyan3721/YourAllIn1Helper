@@ -14,29 +14,30 @@ async fn initialize_persists_only_ciphertext_and_reopen_unlocks() {
         .create_entry(fixture.kernel.context().clone(), input("alpha"))
         .await
         .expect("create encrypted entry");
-    let conn = fixture.kernel.context().db.lock();
-    let (ciphertext, metadata_plaintext): (Vec<u8>, Option<String>) = conn
-        .query_row(
-            "SELECT f.ciphertext, NULL
+    {
+        let conn = fixture.kernel.context().db.lock();
+        let (ciphertext, metadata_plaintext): (Vec<u8>, Option<String>) = conn
+            .query_row(
+                "SELECT f.ciphertext, NULL
              FROM password_vault_fields f
              JOIN password_vault_entries e ON e.id = f.entry_id
              WHERE e.id = ?1 AND f.field_id = 1",
-            params![entry.id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .expect("read fictional ciphertext");
-    assert!(!ciphertext
-        .windows("虚构站点".len())
-        .any(|w| w == "虚构站点".as_bytes()));
-    assert!(metadata_plaintext.is_none());
-    assert!(conn
+                params![entry.id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read fictional ciphertext");
+        assert!(!ciphertext
+            .windows("虚构站点".len())
+            .any(|w| w == "虚构站点".as_bytes()));
+        assert!(metadata_plaintext.is_none());
+        assert!(conn
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'vault_device_slots')",
             [],
             |row| row.get::<_, bool>(0),
         )
         .expect("device table exists"));
-    drop(conn);
+    }
 
     let reopened = fixture.reopen();
     assert!(reopened.service.status().locked);
@@ -47,7 +48,7 @@ async fn initialize_persists_only_ciphertext_and_reopen_unlocks() {
         .await
         .expect("list after reopen");
     assert_eq!(page.entries.len(), 1);
-    assert_eq!(page.entries[0].title, "虚构站点 alpha");
+    assert_eq!(page.entries[0].title.as_str(), "虚构站点 alpha");
 }
 
 #[tokio::test]
@@ -171,8 +172,8 @@ async fn crud_search_reveal_and_password_generator_use_only_fictional_values() {
         .get_entry(ctx.clone(), &first.id)
         .await
         .expect("full entry");
-    assert_eq!(full.password, "not-a-real-password-alpha");
-    assert_eq!(full.totp_secret, "FAKE-TOTP-alpha");
+    assert_eq!(full.password.as_str(), "not-a-real-password-alpha");
+    assert_eq!(full.totp_secret.as_str(), "FAKE-TOTP-alpha");
     let revealed = fixture
         .service
         .reveal_password(ctx.clone(), &first.id)
@@ -380,13 +381,14 @@ async fn master_password_change_rewraps_same_dek_and_forces_lock() {
         .await
         .expect("change master");
     assert!(status.locked);
-    assert!(matches!(
-        fixture
-            .service
-            .unlock_master_password(ctx.clone(), Zeroizing::new(MASTER.to_string()))
-            .await,
-        Err(VaultError::UnlockFailed)
-    ));
+    let old_unlock = fixture
+        .service
+        .unlock_master_password(ctx.clone(), Zeroizing::new(MASTER.to_string()))
+        .await;
+    assert!(
+        matches!(old_unlock, Err(VaultError::UnlockFailed)),
+        "old master password unexpectedly returned: {old_unlock:?}"
+    );
     fixture
         .service
         .unlock_master_password(ctx.clone(), Zeroizing::new(new_password.to_string()))
@@ -557,7 +559,7 @@ fn migration_preserves_legacy_tables_and_checksum_changes_fail_closed() {
 fn input_limits_and_generator_policy_fail_closed() {
     let fixture = Fixture::new();
     let mut oversized = input("limits");
-    oversized.password = "x".repeat(64 * 1024 + 1);
+    oversized.password = crate::SecretString::new("x".repeat(64 * 1024 + 1));
     assert_eq!(oversized.validate(), Err("field exceeds 64 KiB"));
     assert!(matches!(
         fixture.service.generate_password(PasswordPolicy {

@@ -51,7 +51,8 @@ fn field_envelopes_use_independent_nonces_and_authenticate_context() {
             )
             .expect("decrypt first")
         )
-        .expect("utf8"),
+        .expect("utf8")
+        .as_str(),
         "fictional-password-only"
     );
 
@@ -159,3 +160,24 @@ fn kdf_profile_rejects_unknown_or_unbounded_parameters() {
 }
 
 const KDF_PROFILE_NAME: &str = "argon2id-v19-m65536-t3-p4";
+
+#[test]
+fn argon2id_project_vector_matches_independent_phc_example() {
+    // 独立依据：argon2_elixir 4.1.3 文档示例，密码 correct horse battery staple，
+    // PHC $argon2id$v=19$m=65536,t=3,p=4$LyJx1EVY77EtrRjQibNDVA$u56kC3UEDTXsV1tyaEveO4pq1vN87gFfqLtVV44dVHU
+    let salt = decode_hex::<16>("2f2271d44558efb12dad18d089b34354");
+    let expected =
+        decode_hex::<32>("bb9ea40b75040d35ec575b72684bde3b8a6ad6f37cee015fa8bb55578e1d5475");
+    let actual = derive_kek(KdfProfile::V1, b"correct horse battery staple", &salt)
+        .expect("derive project vector");
+    assert_eq!(*actual, expected);
+}
+
+fn decode_hex<const N: usize>(value: &str) -> [u8; N] {
+    assert_eq!(value.len(), N * 2);
+    let mut output = [0u8; N];
+    for (index, byte) in output.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&value[index * 2..index * 2 + 2], 16).expect("hex vector");
+    }
+    output
+}
