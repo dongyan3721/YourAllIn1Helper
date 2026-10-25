@@ -60,6 +60,7 @@ fn macos_external_topmost_reports_unsupported_without_touching_windows() {
 
 #[cfg(target_os = "macos")]
 #[test]
+#[ignore = "requires a live desktop session with available CGSession state; run explicitly for native QA"]
 fn macos_active_app_watcher_reports_real_state() {
     use os_hal::ActiveAppWatcher;
     let native = NativeOsHal::new();
