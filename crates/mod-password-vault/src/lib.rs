@@ -6,6 +6,7 @@
 mod crypto;
 mod error;
 mod model;
+pub mod native;
 mod service;
 mod store;
 
