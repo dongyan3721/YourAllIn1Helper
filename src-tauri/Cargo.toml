@@ -28,6 +28,7 @@ mod-window-pin = { path = "../crates/mod-window-pin" }
 mod-script-runner = { path = "../crates/mod-script-runner" }
 mod-app-usage = { path = "../crates/mod-app-usage" }
 mod-translator = { path = "../crates/mod-translator" }
+mod-password-vault = { path = "../crates/mod-password-vault" }
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -36,6 +37,7 @@ parking_lot.workspace = true
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 base64 = "0.22"
 tokio.workspace = true
+zeroize = "1.9.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.5"

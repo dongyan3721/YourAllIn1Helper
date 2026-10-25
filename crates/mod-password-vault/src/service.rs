@@ -780,7 +780,6 @@ impl VaultService {
     }
 
     pub fn generate_password(&self, policy: PasswordPolicy) -> VaultResult<Zeroizing<String>> {
-        Self::ensure_accepting(&self.state.lock())?;
         let length = usize::from(policy.length);
         if !(8..=256).contains(&length) {
             return Err(VaultError::InvalidInput("password length must be 8 to 256"));
@@ -803,6 +802,8 @@ impl VaultService {
                 "invalid password character policy",
             ));
         }
+        // 参数错误可无秘密地直接返回；实际生成秘密前必须验证当前会话已解锁。
+        Self::unlocked_parts(&self.state.lock())?;
         let alphabet: Vec<u8> = groups.concat();
         let mut output = Zeroizing::new(Vec::with_capacity(length));
         for group in &groups {

@@ -27,6 +27,65 @@ const ACTION_STICKY: &str = "sticky_note:create";
 const ACTION_PIN_FOREGROUND: &str = "window_pin:toggle_foreground";
 const ACTION_TRANSLATOR: &str = "translator:translate_selection";
 
+struct TauriVaultEventSink(AppHandle);
+
+impl mod_password_vault::VaultEventSink for TauriVaultEventSink {
+    fn locked(&self, event: mod_password_vault::VaultEvent) {
+        // 事件只含 epoch 与锁定原因，不携带主密码、DEK 或条文明文。
+        let _ = self.0.emit("vault://locked", event);
+    }
+}
+
+#[cfg(target_os = "macos")]
+thread_local! {
+    static VAULT_NATIVE_OBSERVER: std::cell::RefCell<
+        Option<mod_password_vault::native::NativeVaultObserver>
+    > = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(target_os = "macos")]
+fn stop_vault_native_observer() {
+    VAULT_NATIVE_OBSERVER.with(|slot| {
+        if let Some(observer) = slot.borrow_mut().take() {
+            observer.stop();
+        }
+    });
+}
+
+#[cfg(not(target_os = "macos"))]
+fn stop_vault_native_observer() {}
+
+#[cfg(target_os = "macos")]
+fn sync_vault_native_observer(app: &AppHandle) {
+    let Some(host) = app.try_state::<Arc<DesktopHost>>() else {
+        return;
+    };
+    let enabled = host
+        .kernel()
+        .registry()
+        .is_enabled(mod_password_vault::MODULE_ID);
+    VAULT_NATIVE_OBSERVER.with(|slot| {
+        if enabled {
+            if slot.borrow().is_none() {
+                match mod_password_vault::native::NativeVaultObserver::start(
+                    host.password_vault.service(),
+                ) {
+                    Ok(observer) => *slot.borrow_mut() = Some(observer),
+                    Err(error) => {
+                        host.password_vault.notify_page_close();
+                        tracing::error!(%error, "Password vault native observer unavailable");
+                    }
+                }
+            }
+        } else if let Some(observer) = slot.borrow_mut().take() {
+            observer.stop();
+        }
+    });
+}
+
+#[cfg(not(target_os = "macos"))]
+fn sync_vault_native_observer(_app: &AppHandle) {}
+
 fn to_core_error(error: impl std::fmt::Display) -> CoreError {
     CoreError::Internal(anyhow::anyhow!(error.to_string()))
 }
@@ -204,6 +263,9 @@ async fn ipc(app: AppHandle, request: IpcRequest) -> IpcResponse {
         return IpcResponse::success(json!({ "exit_requested": true }));
     }
     let host = app.state::<Arc<DesktopHost>>().inner().clone();
+    if request.cmd.starts_with("vault_") {
+        return host.invoke_vault_ipc(&request.cmd, request.args).await;
+    }
     if matches!(
         request.cmd.as_str(),
         "media_pick_files" | "media_pick_directory"
@@ -250,6 +312,7 @@ async fn ipc(app: AppHandle, request: IpcRequest) -> IpcResponse {
             ));
         }
         let _ = update_tray_menu(&app);
+        sync_vault_native_observer(&app);
         if module_id.as_deref() == Some(mod_screenshot::MODULE_ID)
             && !host
                 .kernel()
@@ -854,6 +917,9 @@ pub fn run() {
                 script_hotkeys,
             )?);
             let event_app = app.handle().clone();
+            host.password_vault.service().set_event_sink(Some(Arc::new(
+                TauriVaultEventSink(event_app.clone()),
+            )));
             host.media_proc.set_event_sink(Some(Arc::new(move |job| {
                 let _ = event_app.emit(
                     "media://job-progress",
@@ -901,6 +967,7 @@ pub fn run() {
                     );
                 }));
             app.manage(host);
+            sync_vault_native_observer(app.handle());
 
             // 个别按键被其他程序占用时继续启动，失败项已记录并在对应功能页显示。
             register_global_shortcuts(app.handle())?;
@@ -940,6 +1007,9 @@ pub fn run() {
             match event {
                 WindowEvent::CloseRequested { api, .. } => {
                     let label = window.label();
+                    if label == "dashboard" {
+                        host.password_vault.notify_page_close();
+                    }
                     if label == "translate-popover" {
                         host.translator.cancel_current_translation();
                     }
@@ -1004,6 +1074,10 @@ pub fn run() {
                 ExitDecision::Wait => api.prevent_exit(),
                 ExitDecision::StartShutdown => {
                     api.prevent_exit();
+                    stop_vault_native_observer();
+                    if let Some(host) = app.try_state::<Arc<DesktopHost>>() {
+                        host.password_vault.notify_page_close();
+                    }
                     if let Err(error) = app.global_shortcut().unregister_all() {
                         tracing::warn!(%error, "Failed to unregister shortcuts during exit");
                     }

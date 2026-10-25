@@ -95,6 +95,7 @@ dependencies = [
  "mod-app-usage",
  "mod-clipboard",
  "mod-media-proc",
+ "mod-password-vault",
  "mod-screen-ink",
  "mod-screenshot",
  "mod-script-runner",
@@ -114,6 +115,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+ "zeroize",
 ]
 
 [[package]]

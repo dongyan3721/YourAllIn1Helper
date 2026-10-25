@@ -9,11 +9,17 @@ mod script;
 mod sticky_note;
 mod translator;
 mod usage;
+mod vault;
 mod window_pin;
 impl DesktopHost {
     pub(crate) fn dispatch_inner(&self, cmd: &str, args: Value) -> CoreResult<Value> {
         if cmd.starts_with("kernel_") {
             return self.dispatch_kernel(cmd, args);
+        }
+        if cmd.starts_with("vault_") {
+            return Err(CoreError::Config(
+                "Vault IPC requires the async native dispatcher".to_string(),
+            ));
         }
         let (module_id, handler): (&str, fn(&Self, &str, Value) -> CoreResult<Value>) =
             if cmd.starts_with("clipboard_") {

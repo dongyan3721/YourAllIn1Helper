@@ -383,7 +383,7 @@ function useGenerated() {
 
 async function changeMasterPassword() {
   if (newMasterPassword.value !== newMasterConfirmation.value) {
-    error.value = 'Master password confirmation differs';
+    error.value = vaultText('confirmationMismatch');
     return;
   }
   const operation = currentOperation();

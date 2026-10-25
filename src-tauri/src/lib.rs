@@ -16,6 +16,7 @@ use app_core::{
 use mod_app_usage::AppUsageModule;
 use mod_clipboard::ClipboardModule;
 use mod_media_proc::MediaProcModule;
+use mod_password_vault::PasswordVaultModule;
 use mod_screen_ink::ScreenInkModule;
 use mod_screenshot::ScreenshotModule;
 use mod_script_runner::env::ScriptEnvironment;
@@ -98,6 +99,7 @@ pub struct DesktopHost {
     media_proc: Arc<MediaProcModule>,
     app_usage: Arc<AppUsageModule>,
     translator: Arc<TranslatorModule>,
+    password_vault: Arc<PasswordVaultModule>,
     translator_credentials: Arc<secure_credentials::HostCredentialStore>,
     os_hal: OsHalBundle,
     mock_hal: Option<MockOsHal>,
@@ -239,6 +241,7 @@ impl DesktopHost {
             media_proc,
             app_usage,
             translator,
+            password_vault,
             translator_credentials,
         } = modules::mount(
             builder,
@@ -258,6 +261,7 @@ impl DesktopHost {
             media_proc,
             app_usage,
             translator,
+            password_vault,
             translator_credentials,
             os_hal,
             mock_hal,

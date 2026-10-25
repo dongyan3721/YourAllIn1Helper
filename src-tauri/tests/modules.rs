@@ -22,20 +22,22 @@ fn toggle(host: &DesktopHost, id: &str, enabled: bool) {
 }
 
 #[test]
-fn catalog_has_ten_slots_and_unimplemented_blocks_cannot_be_enabled() {
+fn catalog_has_ten_slots_and_all_feature_modules_are_mounted() {
     let dir = tempfile::tempdir().unwrap();
     let host = DesktopHost::bootstrap(dir.path(), true).unwrap();
     let modules = call(&host, "kernel_list_modules", json!({}));
     let modules = modules.as_array().unwrap();
     assert_eq!(modules.len(), 10);
-    assert_eq!(modules.iter().filter(|m| m["available"] == true).count(), 9);
+    assert_eq!(
+        modules.iter().filter(|m| m["available"] == true).count(),
+        10
+    );
     assert!(
-        !host
-            .invoke_ipc(
-                "kernel_set_module_enabled",
-                json!({"module_id": "password_vault", "enabled": true})
-            )
-            .ok
+        host.invoke_ipc(
+            "kernel_set_module_enabled",
+            json!({"module_id": "password_vault", "enabled": true})
+        )
+        .ok
     );
     assert!(
         !host
@@ -46,6 +48,42 @@ fn catalog_has_ten_slots_and_unimplemented_blocks_cannot_be_enabled() {
             .ok
     );
     assert_eq!(host.kernel().context().window_pool.active_window_count(), 0);
+}
+
+#[tokio::test]
+async fn vault_async_ipc_enforces_lock_and_module_switch() {
+    let dir = tempfile::tempdir().unwrap();
+    let host = DesktopHost::bootstrap(dir.path(), true).unwrap();
+    let status = host.invoke_vault_ipc("vault_get_status", json!({})).await;
+    assert!(status.ok, "{:?}", status.error);
+    assert!(!status.data.unwrap()["initialized"].as_bool().unwrap());
+
+    let cases = [
+        ("vault_list_entries", json!({})),
+        (
+            "vault_reveal_password",
+            json!({"id": "00000000-0000-0000-0000-000000000001"}),
+        ),
+        (
+            "vault_generate_password",
+            json!({"policy": {"length": 20, "uppercase": true, "lowercase": true, "digits": true, "symbols": true}}),
+        ),
+    ];
+    for (command, args) in cases {
+        let response = host.invoke_vault_ipc(command, args).await;
+        assert!(!response.ok, "{command} must reject a locked vault");
+        assert!(response.error.unwrap().contains("locked"));
+    }
+    let copy = host
+        .invoke_vault_ipc("vault_copy_password", json!({}))
+        .await;
+    assert!(!copy.ok);
+    assert!(copy.error.unwrap().contains("disabled"));
+
+    toggle(&host, "password_vault", false);
+    let disabled = host.invoke_vault_ipc("vault_get_status", json!({})).await;
+    assert!(!disabled.ok);
+    assert!(disabled.error.unwrap().contains("disabled"));
 }
 
 #[test]
