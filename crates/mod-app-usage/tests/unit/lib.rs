@@ -11,6 +11,9 @@ use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 use std::sync::Arc;
 use tempfile::TempDir;
 
+#[path = "reliability.rs"]
+mod reliability;
+
 #[derive(Default)]
 struct FakeClock {
     mono: AtomicU64,
@@ -149,7 +152,9 @@ fn active_time_is_accumulated_with_monotonic_clock() {
     let dir = temp_dir("accumulate");
     let ctx = context(dir.path(), true);
     let watcher = Arc::new(FakeWatcher::new("com.example.editor", "Editor"));
-    let clock = Arc::new(FakeClock::at(chrono::Utc::now().timestamp_millis()));
+    // Align to a whole second so per-hour integer reporting does not depend on
+    // the test's wall-clock start falling across a fractional-second boundary.
+    let clock = Arc::new(FakeClock::at(chrono::Utc::now().timestamp() * 1_000));
     let module = AppUsageModule::with_clock(watcher.clone(), clock.clone());
 
     module.sample_now(&ctx).unwrap();

@@ -107,9 +107,13 @@ fn upsert_app(tx: &Transaction<'_>, app: &AppMeta) -> CoreResult<()> {
     Ok(())
 }
 
-/// 批量写入小时增量；空输入不发起事务。
-pub(crate) fn write_deltas(ctx: &ModuleContext, deltas: &[HourlyDelta]) -> CoreResult<()> {
-    if deltas.is_empty() {
+/// 在同一事务内写入小时增量与已结束会话；失败时由计时器完整保留重试。
+pub(crate) fn write_pending(
+    ctx: &ModuleContext,
+    deltas: &[HourlyDelta],
+    sessions: &[ClosedSession],
+) -> CoreResult<()> {
+    if deltas.is_empty() && sessions.is_empty() {
         return Ok(());
     }
     ctx.db.with_conn(|conn| {
@@ -132,32 +136,25 @@ pub(crate) fn write_deltas(ctx: &ModuleContext, deltas: &[HourlyDelta]) -> CoreR
                 ],
             )?;
         }
-        tx.commit()?;
-        Ok(())
-    })
-}
-
-/// 写入已结束会话；不足一秒的短暂切换不落盘。
-pub(crate) fn insert_session(ctx: &ModuleContext, session: &ClosedSession) -> CoreResult<()> {
-    if session.active_seconds == 0 || session.ended_at <= session.started_at {
-        return Ok(());
-    }
-    ctx.db.with_conn(|conn| {
-        let tx = conn.transaction()?;
-        upsert_app(&tx, &session.app)?;
-        tx.execute(
-            "INSERT INTO app_usage_sessions (
+        for session in sessions {
+            if session.active_seconds == 0 || session.ended_at <= session.started_at {
+                continue;
+            }
+            upsert_app(&tx, &session.app)?;
+            tx.execute(
+                "INSERT INTO app_usage_sessions (
                 app_id, app_name, window_title, started_at, ended_at, active_seconds
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![
-                session.app.app_id,
-                session.app.app_name,
-                session.app.window_title,
-                session.started_at,
-                session.ended_at,
-                session.active_seconds as i64
-            ],
-        )?;
+                params![
+                    session.app.app_id,
+                    session.app.app_name,
+                    session.app.window_title,
+                    session.started_at,
+                    session.ended_at,
+                    session.active_seconds as i64
+                ],
+            )?;
+        }
         tx.commit()?;
         Ok(())
     })
@@ -437,22 +434,5 @@ pub fn today_local() -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn date_ranges_are_validated_and_filled() {
-        let dates = enumerate_dates(
-            NaiveDate::from_ymd_opt(2026, 10, 31).unwrap(),
-            NaiveDate::from_ymd_opt(2026, 11, 2).unwrap(),
-        )
-        .unwrap();
-        assert_eq!(dates, vec!["2026-10-31", "2026-11-01", "2026-11-02"]);
-        assert!(enumerate_dates(
-            NaiveDate::from_ymd_opt(2026, 11, 2).unwrap(),
-            NaiveDate::from_ymd_opt(2026, 11, 1).unwrap(),
-        )
-        .is_err());
-        assert!(parse_date("2026-13-01").is_err());
-    }
-}
+#[path = "../tests/unit/store.rs"]
+mod tests;

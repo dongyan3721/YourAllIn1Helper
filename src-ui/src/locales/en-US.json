@@ -498,6 +498,7 @@
     "title": "App Usage",
     "desc": "Real foreground sampling; pauses on idle, lock and display sleep. Audio AFK exception is not available yet.",
     "trackingOn": "Tracking",
+    "unavailableState": "Usage counting is paused because foreground, idle, or screen-lock detection is unavailable.",
     "trackingOff": "Paused",
     "refresh": "Refresh",
     "audioLimit": "Limitation: system audio activity is unavailable, so playback during AFK is neither counted nor exempted.",

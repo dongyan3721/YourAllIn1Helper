@@ -177,13 +177,10 @@ impl AppUsageModule {
     }
 
     fn stop_worker(&self, ctx: &ModuleContext) -> CoreResult<()> {
-        let was_running = self.running.swap(false, Ordering::SeqCst);
+        self.running.store(false, Ordering::SeqCst);
         self.stop.store(true, Ordering::SeqCst);
         if let Some(handle) = self.worker.lock().take() {
             let _ = handle.join();
-        }
-        if !was_running {
-            return Ok(());
         }
         let result = self.tracker.finish(ctx);
         if let Err(error) = &result {
@@ -223,6 +220,11 @@ impl AppModule for AppUsageModule {
 
     fn on_shutdown(&self, ctx: &ModuleContext) -> CoreResult<()> {
         self.stop_worker(ctx)
+    }
+
+    fn on_shutdown_failed(&self, ctx: &ModuleContext) -> CoreResult<()> {
+        self.tracker.begin();
+        self.start_worker(ctx)
     }
 }
 
