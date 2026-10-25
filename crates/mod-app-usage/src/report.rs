@@ -50,6 +50,28 @@ pub struct HourlyBreakdown {
     pub hours: Vec<HourlyUsage>,
 }
 
+/// `/usage` 面板的逐会话明细；窗口标题只保存于数据库，是否返回由隐私设置决定。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UsageSession {
+    pub id: i64,
+    pub app_id: String,
+    pub app_name: String,
+    pub window_title: Option<String>,
+    pub started_at: i64,
+    pub ended_at: i64,
+    pub active_seconds: u64,
+}
+
+/// 会话列表分页结果；`total` 是该日全部会话数，用于上一页/下一页。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UsageSessionPage {
+    pub date: String,
+    pub total: u64,
+    pub offset: u64,
+    pub limit: u64,
+    pub sessions: Vec<UsageSession>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TrackedApp {
     pub app_id: String,

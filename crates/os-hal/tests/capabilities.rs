@@ -77,3 +77,31 @@ fn macos_active_app_watcher_reports_real_state() {
     assert!(!app.app_id.trim().is_empty());
     assert!(!app.app_name.trim().is_empty());
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_audio_activity_probe_returns_a_real_boolean() {
+    use os_hal::ActiveAppWatcher;
+    // 只查询默认输出设备是否在运行，不读取音频内容，也不需要隐私授权。
+    match NativeOsHal::new().default_output_audio_active() {
+        Ok(_) => {}
+        Err(HalError::Unsupported(capability)) => {
+            panic!("CoreAudio probe unexpectedly unsupported: {capability}")
+        }
+        Err(other) => panic!("CoreAudio probe failed: {other}"),
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "requires an AppKit process with a live desktop session; run explicitly for native QA"]
+fn macos_usage_event_monitor_start_stop_is_idempotent() {
+    use os_hal::ActiveAppWatcher;
+    let native = NativeOsHal::new();
+    native.start_usage_event_monitor().expect("start monitor");
+    native
+        .start_usage_event_monitor()
+        .expect("start monitor twice");
+    native.stop_usage_event_monitor();
+    native.stop_usage_event_monitor();
+}

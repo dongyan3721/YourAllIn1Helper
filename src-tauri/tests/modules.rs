@@ -637,11 +637,17 @@ fn app_usage_ipc_reports_capabilities_persists_config_and_blocks_when_disabled()
     let config = call(
         &host,
         "usage_update_config",
-        json!({"idle_threshold_secs": 120, "flush_interval_secs": 15, "keep_window_titles": false}),
+        json!({
+            "idle_threshold_secs": 120,
+            "flush_interval_secs": 15,
+            "keep_window_titles": false,
+            "audio_afk_exception": false
+        }),
     );
     assert_eq!(config["idle_threshold_secs"], 120);
     assert_eq!(config["flush_interval_secs"], 15);
     assert_eq!(config["keep_window_titles"], false);
+    assert_eq!(config["audio_afk_exception"], false);
     assert_eq!(
         host.kernel()
             .context()
@@ -665,6 +671,10 @@ fn app_usage_ipc_reports_capabilities_persists_config_and_blocks_when_disabled()
         .as_array()
         .unwrap()
         .is_empty());
+    let sessions = call(&host, "usage_get_sessions", json!({"date": "2026-10-25"}));
+    assert_eq!(sessions["date"], "2026-10-25");
+    assert_eq!(sessions["total"], 0);
+    assert!(sessions["sessions"].as_array().unwrap().is_empty());
 
     assert!(
         !host
@@ -688,5 +698,6 @@ fn app_usage_ipc_reports_capabilities_persists_config_and_blocks_when_disabled()
     assert_eq!(restored["idle_threshold_secs"], 120);
     assert_eq!(restored["flush_interval_secs"], 15);
     assert_eq!(restored["keep_window_titles"], false);
+    assert_eq!(restored["audio_afk_exception"], false);
     call(&restarted, "kernel_shutdown", json!({}));
 }
