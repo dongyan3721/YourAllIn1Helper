@@ -31,6 +31,17 @@ pub trait RegionDetector: Send + Sync + 'static {
 
     /// Queries the finest-grained UI control element at physical cursor position `(x, y)` on demand.
     fn query_ui_element_at_point(&self, x: i32, y: i32) -> HalResult<Option<DetectedRegionRect>>;
+
+    /// L2：光标处最前方外部窗口内的无障碍控件层级链（叶子在前、窗口之下的容器在后），
+    /// 坐标为桌面单位。默认表示平台未接入，不返回虚构控件。
+    fn query_ui_hierarchy_at_point(&self, _x: i32, _y: i32) -> HalResult<Vec<DetectedRegionRect>> {
+        Err(HalError::Unsupported("ui_element_hierarchy"))
+    }
+
+    /// L2 能力预检：缺辅助功能权限时返回 `PermissionDenied`（只检查，不弹出授权）。
+    fn check_ui_hierarchy_permission(&self) -> HalResult<()> {
+        Err(HalError::Unsupported("ui_element_hierarchy"))
+    }
 }
 
 /// 3. OCR inference engine (`SystemNative` first -> `OnnxGpu` -> `OnnxNpu` -> `OnnxCpu`).

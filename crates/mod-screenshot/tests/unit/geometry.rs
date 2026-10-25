@@ -171,6 +171,15 @@ fn crop_rgba_copies_exact_rows_and_validates_bounds() {
 }
 
 #[test]
+fn frame_points_map_back_to_desktop_units_including_negative_origin() {
+    let retina = MonitorGeometry::new(&monitor(0, 0, 1512, 982, 2.0), 3024, 1964).unwrap();
+    assert_eq!(retina.frame_point_to_desktop(200, 100), (100, 50));
+    let left = MonitorGeometry::new(&monitor(-1920, -200, 1920, 1080, 2.0), 3840, 2160).unwrap();
+    assert_eq!(left.frame_point_to_desktop(0, 0), (-1920, -200));
+    assert_eq!(left.frame_point_to_desktop(3840, 400), (0, 0));
+}
+
+#[test]
 fn monitor_region_is_root_of_hierarchy() {
     let geo = MonitorGeometry::new(&monitor(0, 0, 800, 600, 1.0), 800, 600).unwrap();
     let root = geo.monitor_region(1);

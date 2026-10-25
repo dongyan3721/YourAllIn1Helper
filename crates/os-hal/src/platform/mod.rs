@@ -2,6 +2,8 @@
 mod input;
 mod ocr;
 mod regions;
+#[cfg(target_os = "macos")]
+mod regions_ax;
 mod screen;
 mod secure;
 mod selection;

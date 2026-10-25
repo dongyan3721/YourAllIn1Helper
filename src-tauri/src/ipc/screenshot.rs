@@ -40,11 +40,27 @@ impl DesktopHost {
                     .get("hide_dashboard")
                     .and_then(Value::as_bool)
                     .unwrap_or(true);
-                Ok(serde_json::to_value(shot.start_capture(
+                let intent = match args.get("intent").and_then(Value::as_str) {
+                    Some("ocr") => mod_screenshot::ocr::CaptureIntent::Ocr,
+                    _ => mod_screenshot::ocr::CaptureIntent::Capture,
+                };
+                Ok(serde_json::to_value(shot.start_capture_with_intent(
                     ctx,
                     monitor_id,
                     hide_dashboard,
+                    intent,
                 )?)?)
+            }
+            "screenshot_ocr" => {
+                let id = str_arg(&args, "session_id")?;
+                let selection: SelectionBox =
+                    serde_json::from_value(args.get("selection").cloned().unwrap_or(Value::Null))
+                        .map_err(|e| CoreError::Config(format!("选区参数无效：{}", e)))?;
+                Ok(serde_json::to_value(shot.recognize_text(id, selection)?)?)
+            }
+            "screenshot_copy_text" => {
+                shot.copy_text(str_arg(&args, "text")?)?;
+                Ok(json!({ "copied": true }))
             }
             "screenshot_get_session" => {
                 let id = args.get("session_id").and_then(Value::as_str);

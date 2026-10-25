@@ -29,19 +29,32 @@ fn window(id: u32, x: i32, y: i32, w: u32, h: u32, label: &str) -> DetectedRegio
     }
 }
 
-fn session(detected: Vec<DetectedRegionRect>) -> CaptureSession {
+fn m1_caps() -> RegionCapabilities {
+    RegionCapabilities::new(
+        CapabilityState::Available,
+        CapabilityState::Unavailable {
+            reason: "需要辅助功能权限".into(),
+        },
+        CapabilityState::Disabled,
+    )
+}
+
+fn session_with(
+    detected: Vec<DetectedRegionRect>,
+    rgba: Vec<u8>,
+    caps: RegionCapabilities,
+) -> CaptureSession {
     let frame = CapturedFrame {
         width: 800,
         height: 600,
         scale_factor_milli: 2000,
-        rgba_bytes: vec![0; 800 * 600 * 4],
+        rgba_bytes: rgba,
     };
-    CaptureSession::new(
-        geometry(),
-        frame,
-        detected,
-        RegionCapabilities::m1(CapabilityState::Available),
-    )
+    CaptureSession::new(geometry(), frame, detected, caps)
+}
+
+fn session(detected: Vec<DetectedRegionRect>) -> CaptureSession {
+    session_with(detected, vec![0; 800 * 600 * 4], m1_caps())
 }
 
 #[test]
@@ -123,4 +136,122 @@ fn describe_reports_pixels_logical_size_and_honest_capabilities() {
     let json = serde_json::to_value(&info.capabilities).unwrap();
     assert_eq!(json["window_tree"]["state"], "available");
     assert_eq!(json["ui_elements"]["state"], "unavailable");
+}
+
+fn ui(x: i32, y: i32, w: u32, h: u32, label: &str) -> DetectedRegionRect {
+    DetectedRegionRect {
+        region_id: 99,
+        parent_id: None,
+        level: RegionHierarchyLevel::UiElement,
+        x,
+        y,
+        width: w,
+        height: h,
+        label: Some(label.into()),
+    }
+}
+
+#[test]
+fn ui_chain_climbs_leaf_container_window_monitor_and_is_clipped_to_window() {
+    // 窗口 (50,50,100x100) 点 → (100,100,200x200) 像素。
+    let s = session(vec![window(10, 50, 50, 100, 100, "editor")]);
+    // 叶子按钮 (60,60,20x10) 点；容器超出窗口右侧，需裁剪。
+    let chain = vec![ui(60, 60, 20, 10, "按钮"), ui(55, 55, 200, 40, "工具栏")];
+    let leaf = s.resolve_region_with_ui(130, 130, 0, &chain).unwrap();
+    assert_eq!(leaf.level, RegionHierarchyLevel::UiElement);
+    assert_eq!(
+        (leaf.x, leaf.y, leaf.width, leaf.height),
+        (120, 120, 40, 20)
+    );
+    assert_eq!(leaf.label.as_deref(), Some("按钮"));
+    let container = s.resolve_region_with_ui(130, 130, 1, &chain).unwrap();
+    assert_eq!(container.level, RegionHierarchyLevel::ContainerPanel);
+    assert_eq!(
+        (container.x, container.y, container.width, container.height),
+        (110, 110, 190, 80),
+        "container must be clipped to the window"
+    );
+    assert_eq!(
+        s.resolve_region_with_ui(130, 130, 2, &chain).unwrap().level,
+        RegionHierarchyLevel::TopLevelWindow
+    );
+    assert_eq!(
+        s.resolve_region_with_ui(130, 130, 3, &chain).unwrap().level,
+        RegionHierarchyLevel::Monitor
+    );
+}
+
+/// 黑底 800x600 帧中画一张白色卡片。
+fn frame_with_card(x0: u32, y0: u32, w: u32, h: u32) -> Vec<u8> {
+    let mut rgba = vec![0u8; 800 * 600 * 4];
+    for y in y0..y0 + h {
+        for x in x0..x0 + w {
+            let i = ((y * 800 + x) * 4) as usize;
+            rgba[i..i + 4].copy_from_slice(&[255, 255, 255, 255]);
+        }
+    }
+    rgba
+}
+
+fn visual_caps() -> RegionCapabilities {
+    RegionCapabilities::new(
+        CapabilityState::Available,
+        CapabilityState::Unavailable {
+            reason: "需要辅助功能权限".into(),
+        },
+        CapabilityState::Available,
+    )
+}
+
+#[test]
+fn visual_edge_fallback_snaps_to_card_inside_window_when_ui_chain_is_empty() {
+    let s = session_with(
+        vec![window(10, 0, 0, 300, 250, "app")],
+        frame_with_card(100, 100, 120, 80),
+        visual_caps(),
+    );
+    let leaf = s.resolve_region_with_ui(150, 130, 0, &[]).unwrap();
+    assert_eq!(leaf.label.as_deref(), Some("visual_edge"));
+    assert_eq!(
+        (leaf.x, leaf.y, leaf.width, leaf.height),
+        (100, 100, 120, 80)
+    );
+    assert_eq!(
+        s.resolve_region_with_ui(150, 130, 1, &[]).unwrap().level,
+        RegionHierarchyLevel::TopLevelWindow
+    );
+}
+
+#[test]
+fn visual_edge_is_skipped_when_disabled_tiny_or_covering_the_window() {
+    // 视觉候选关闭：直接命中窗口。
+    let off = session_with(
+        vec![window(10, 0, 0, 300, 250, "app")],
+        frame_with_card(100, 100, 120, 80),
+        m1_caps(),
+    );
+    assert_eq!(
+        off.resolve_region_with_ui(150, 130, 0, &[]).unwrap().level,
+        RegionHierarchyLevel::TopLevelWindow
+    );
+    // 卡片太小（文字笔画级别）不作为候选。
+    let tiny = session_with(
+        vec![window(10, 0, 0, 300, 250, "app")],
+        frame_with_card(100, 100, 12, 12),
+        visual_caps(),
+    );
+    assert_eq!(
+        tiny.resolve_region_with_ui(105, 105, 0, &[]).unwrap().level,
+        RegionHierarchyLevel::TopLevelWindow
+    );
+    // 有 L2 控件链时不再推导视觉候选。
+    let with_ui = session_with(
+        vec![window(10, 0, 0, 300, 250, "app")],
+        frame_with_card(100, 100, 120, 80),
+        visual_caps(),
+    );
+    let leaf = with_ui
+        .resolve_region_with_ui(150, 130, 0, &[ui(70, 60, 20, 20, "按钮")])
+        .unwrap();
+    assert_eq!(leaf.label.as_deref(), Some("按钮"));
 }

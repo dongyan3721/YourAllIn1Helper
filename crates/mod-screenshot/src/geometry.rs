@@ -127,6 +127,14 @@ impl MonitorGeometry {
         )
     }
 
+    /// 帧像素坐标 → 桌面单位坐标（供 L2 无障碍命中查询使用）。
+    pub fn frame_point_to_desktop(&self, x: i32, y: i32) -> (i32, i32) {
+        (
+            (self.desktop_x as f64 + x as f64 / self.pixels_per_desktop_x()).round() as i32,
+            (self.desktop_y as f64 + y as f64 / self.pixels_per_desktop_y()).round() as i32,
+        )
+    }
+
     /// 代表整个显示器的智能区域（层级树根节点）。
     pub fn monitor_region(&self, region_id: u32) -> DetectedRegionRect {
         DetectedRegionRect {

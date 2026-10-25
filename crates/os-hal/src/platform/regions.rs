@@ -33,6 +33,16 @@ impl RegionDetector for NativeOsHal {
         Ok(regions)
     }
 
+    #[cfg(target_os = "macos")]
+    fn query_ui_hierarchy_at_point(&self, x: i32, y: i32) -> HalResult<Vec<DetectedRegionRect>> {
+        self.ax_hierarchy_at_point(x, y)
+    }
+
+    #[cfg(target_os = "macos")]
+    fn check_ui_hierarchy_permission(&self) -> HalResult<()> {
+        super::regions_ax::permission()
+    }
+
     fn query_ui_element_at_point(&self, x: i32, y: i32) -> HalResult<Option<DetectedRegionRect>> {
         Ok(self
             .get_window_at_point(x, y)

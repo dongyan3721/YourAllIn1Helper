@@ -105,3 +105,38 @@ fn macos_usage_event_monitor_start_stop_is_idempotent() {
     native.stop_usage_event_monitor();
     native.stop_usage_event_monitor();
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "需要桌面会话；读取前台外部窗口的无障碍层级（只读），显式运行"]
+fn macos_ui_hierarchy_reports_real_chain_or_permission_denied() {
+    use os_hal::{RegionDetector, WindowController};
+    let native = NativeOsHal::new();
+    let Some(window) = native
+        .list_external_windows()
+        .unwrap_or_default()
+        .into_iter()
+        .find(|w| w.width > 100 && w.height > 100)
+    else {
+        return;
+    };
+    let (x, y) = (
+        window.x + window.width as i32 / 2,
+        window.y + window.height as i32 / 2,
+    );
+    match native.query_ui_hierarchy_at_point(x, y) {
+        Ok(chain) => {
+            println!(
+                "AX chain at ({x},{y}) in {}: {:?}",
+                window.process_name, chain
+            );
+            for r in &chain {
+                assert!(r.width >= 4 && r.height >= 4);
+            }
+        }
+        Err(HalError::PermissionDenied { capability, .. }) => {
+            assert_eq!(capability, "accessibility")
+        }
+        Err(other) => panic!("unexpected AX error: {other}"),
+    }
+}

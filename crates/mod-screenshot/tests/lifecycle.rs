@@ -30,6 +30,8 @@ struct FakeScreen {
     captures: AtomicUsize,
     deny_permission: AtomicBool,
     fail_regions: AtomicBool,
+    /// 模拟已授予辅助功能权限，L2 返回固定控件链。
+    ui_trusted: AtomicBool,
 }
 
 impl FakeScreen {
@@ -39,6 +41,7 @@ impl FakeScreen {
             captures: AtomicUsize::new(0),
             deny_permission: AtomicBool::new(false),
             fail_regions: AtomicBool::new(false),
+            ui_trusted: AtomicBool::new(false),
         }
     }
 }
@@ -111,6 +114,32 @@ impl RegionDetector for FakeScreen {
 
     fn query_ui_element_at_point(&self, _x: i32, _y: i32) -> HalResult<Option<DetectedRegionRect>> {
         Err(HalError::Unsupported("ui_element_query"))
+    }
+
+    fn check_ui_hierarchy_permission(&self) -> HalResult<()> {
+        if self.ui_trusted.load(Ordering::SeqCst) {
+            Ok(())
+        } else {
+            Err(HalError::PermissionDenied {
+                capability: "accessibility",
+                guidance: "请在系统设置中允许辅助功能".into(),
+            })
+        }
+    }
+
+    fn query_ui_hierarchy_at_point(&self, x: i32, y: i32) -> HalResult<Vec<DetectedRegionRect>> {
+        // 桌面单位：窗口 (5,5,20x10) 内的按钮 (8,8,6x4)。
+        self.log.lock().push(format!("ax:{},{}", x, y));
+        Ok(vec![DetectedRegionRect {
+            region_id: 1,
+            parent_id: None,
+            level: RegionHierarchyLevel::UiElement,
+            x: 8,
+            y: 8,
+            width: 6,
+            height: 4,
+            label: Some("按钮".into()),
+        }])
     }
 }
 
@@ -790,5 +819,176 @@ fn copy_color_accepts_only_color_text() {
     assert_eq!(
         h.clipboard.texts.lock().as_slice(),
         &["#A1B2C3".to_string(), "rgb(1, 2, 3)".to_string()]
+    );
+}
+
+/// 测试用 OCR：返回相对输入图像的整图一行，并记录收到的尺寸。
+struct RecordingOcr {
+    seen: Mutex<Vec<(u32, u32)>>,
+}
+
+impl os_hal::OcrProvider for RecordingOcr {
+    fn recognize_rgba(&self, frame: &CapturedFrame) -> HalResult<os_hal::OcrRecognitionResult> {
+        self.seen.lock().push((frame.width, frame.height));
+        Ok(os_hal::OcrRecognitionResult {
+            backend_used: os_hal::OcrBackendKind::SystemNative,
+            full_text: "fictional text".into(),
+            lines: vec![os_hal::OcrLineResult {
+                text: "fictional text".into(),
+                confidence: 0.9,
+                x: 0,
+                y: 0,
+                width: frame.width,
+                height: frame.height,
+            }],
+            elapsed_ms: 1,
+        })
+    }
+
+    fn release_idle_sessions(&self) -> HalResult<()> {
+        Ok(())
+    }
+}
+
+fn harness_with_ocr(ocr: Option<Arc<RecordingOcr>>) -> Harness {
+    let dir = tempfile::tempdir().unwrap();
+    let data_dir = dir.path().to_path_buf();
+    let log: EventLog = Arc::new(Mutex::new(Vec::new()));
+    let screen = Arc::new(FakeScreen::new(log.clone()));
+    let clipboard = Arc::new(RecordingClipboard::default());
+    let backend = Arc::new(RecordingBackend {
+        log: log.clone(),
+        fail_create_prefix: Mutex::new(None),
+    });
+    let mut module = ScreenshotModule::new(screen.clone(), screen.clone(), clipboard.clone());
+    if let Some(ocr) = ocr {
+        module = module.with_ocr(ocr);
+    }
+    let module = Arc::new(module);
+    let kernel = boot(&data_dir, backend.clone(), module.clone(), None);
+    Harness {
+        _dir: dir,
+        data_dir,
+        log,
+        screen,
+        clipboard,
+        backend,
+        module,
+        kernel,
+    }
+}
+
+#[test]
+fn ui_hierarchy_is_reported_honestly_and_used_only_when_trusted() {
+    let h = harness();
+    let info = h
+        .module
+        .start_capture(h.kernel.context(), None, false)
+        .unwrap();
+    let caps = serde_json::to_value(&info.capabilities).unwrap();
+    assert_eq!(caps["ui_elements"]["state"], "unavailable");
+    assert!(caps["ui_elements"]["reason"]
+        .as_str()
+        .unwrap()
+        .contains("辅助功能"));
+    // 未授权：命中窗口，且不调用 AX。
+    let hit = h
+        .module
+        .resolve_region(&info.session_id, 20, 15, 0)
+        .unwrap()
+        .unwrap();
+    assert_eq!(hit.level, RegionHierarchyLevel::TopLevelWindow);
+    assert!(!events(&h).iter().any(|e| e.starts_with("ax:")));
+
+    h.screen.ui_trusted.store(true, Ordering::SeqCst);
+    let info = h
+        .module
+        .start_capture(h.kernel.context(), None, false)
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(&info.capabilities).unwrap()["ui_elements"]["state"],
+        "available"
+    );
+    // 帧像素 (20,15) → 桌面 (10,7)；按钮 (8,8,6x4) 点 → (16,16,12x8) 像素。
+    let leaf = h
+        .module
+        .resolve_region(&info.session_id, 20, 18, 0)
+        .unwrap()
+        .unwrap();
+    assert!(
+        events(&h).iter().any(|e| e == "ax:10,9"),
+        "{:?}",
+        events(&h)
+    );
+    assert_eq!(leaf.level, RegionHierarchyLevel::UiElement);
+    assert_eq!((leaf.x, leaf.y, leaf.width, leaf.height), (16, 16, 12, 8));
+    let up = h
+        .module
+        .resolve_region(&info.session_id, 20, 18, 1)
+        .unwrap()
+        .unwrap();
+    assert_eq!(up.level, RegionHierarchyLevel::TopLevelWindow);
+}
+
+#[test]
+fn ocr_recognizes_cropped_original_frame_without_ending_session() {
+    let ocr = Arc::new(RecordingOcr {
+        seen: Mutex::new(Vec::new()),
+    });
+    let h = harness_with_ocr(Some(ocr.clone()));
+    let info = h
+        .module
+        .start_capture(h.kernel.context(), None, false)
+        .unwrap();
+    let out = h
+        .module
+        .recognize_text(
+            &info.session_id,
+            SelectionBox {
+                x: 70,
+                y: 50,
+                width: 30,
+                height: 30,
+            },
+        )
+        .unwrap();
+    // 超出帧的部分被裁掉后才送 OCR。
+    assert_eq!(ocr.seen.lock().as_slice(), &[(10, 10)]);
+    assert_eq!((out.width, out.height), (10, 10));
+    assert_eq!(out.text, "fictional text");
+    assert!(h.module.has_active_session());
+    h.module.copy_text(&out.text).unwrap();
+    assert_eq!(h.clipboard.texts.lock().last().unwrap(), "fictional text");
+    assert!(h.module.copy_text("   ").is_err());
+}
+
+#[test]
+fn ocr_without_provider_reports_unsupported_and_shortcut_sets_intent() {
+    let h = harness();
+    h.kernel.trigger_action(mod_screenshot::ACTION_OCR).unwrap();
+    let info = h.module.session_info(h.kernel.context(), None).unwrap();
+    assert_eq!(info.intent, mod_screenshot::ocr::CaptureIntent::Ocr);
+    let err = h
+        .module
+        .recognize_text(
+            &info.session_id,
+            SelectionBox {
+                x: 0,
+                y: 0,
+                width: 8,
+                height: 8,
+            },
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("native_ocr"), "{err}");
+    // 普通截图快捷键恢复为 Capture 意图。
+    h.kernel.trigger_action(ACTION_CAPTURE).unwrap();
+    assert_eq!(
+        h.module
+            .session_info(h.kernel.context(), None)
+            .unwrap()
+            .intent,
+        mod_screenshot::ocr::CaptureIntent::Capture
     );
 }

@@ -23,11 +23,14 @@ pub(super) fn mount(
     script_hotkeys: Arc<dyn mod_script_runner::hotkey::ScriptHotkeySync>,
 ) -> CoreResult<Mounted> {
     // 截图只注入屏幕捕获与区域探测；系统剪贴板由 Tauri 生产启动流程替换注入。
-    let screenshot = Arc::new(ScreenshotModule::new(
-        hal.screen_capturer.clone(),
-        hal.region_detector.clone(),
-        Arc::new(mod_screenshot::clipboard::UnavailableClipboard),
-    ));
+    let screenshot = Arc::new(
+        ScreenshotModule::new(
+            hal.screen_capturer.clone(),
+            hal.region_detector.clone(),
+            Arc::new(mod_screenshot::clipboard::UnavailableClipboard),
+        )
+        .with_ocr(hal.ocr_provider.clone()),
+    );
     let clipboard = Arc::new(ClipboardModule::new(hal.input_simulator.clone()));
     let sticky_note = Arc::new(StickyNoteModule::new());
     let window_pin = Arc::new(WindowPinModule::new(hal.window_controller.clone()));
