@@ -676,6 +676,7 @@
     "sourceText": "Source",
     "targetText": "Translation",
     "translating": "Translating...",
+    "emptyResult": "No translation yet",
     "retranslate": "Re-translate",
     "copy": "Copy Translation",
     "copied": "Copied",

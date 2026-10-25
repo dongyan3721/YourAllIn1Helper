@@ -101,7 +101,7 @@
           <div v-else-if="isTranslating" class="loading-placeholder">
             <span class="loading-bar"></span>
           </div>
-          <div v-else class="empty-hint">{{ t('translator.translating') }}</div>
+          <div v-else class="empty-hint">{{ t('translator.emptyResult') }}</div>
         </div>
       </section>
     </main>

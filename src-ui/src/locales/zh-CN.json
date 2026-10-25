@@ -676,6 +676,7 @@
     "sourceText": "原文",
     "targetText": "译文",
     "translating": "翻译中...",
+    "emptyResult": "暂无译文",
     "retranslate": "重新翻译",
     "copy": "复制译文",
     "copied": "已复制",

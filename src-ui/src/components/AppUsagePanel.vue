@@ -83,7 +83,7 @@
           </div>
         </div>
         <div v-if="!overview || overview.days.length === 0" class="empty-cell">
-          {{ t('appUsage.empty') }}
+          {{ t('appUsage.noData') }}
         </div>
         <div v-else class="usage-day-list">
           <div v-for="day in overview.days" :key="day.date" class="usage-day-row">
@@ -107,7 +107,7 @@
           </div>
         </div>
         <div v-if="!overview || overview.categories.length === 0" class="empty-cell">
-          {{ t('appUsage.empty') }}
+          {{ t('appUsage.noData') }}
         </div>
         <div v-else class="usage-category-list">
           <div v-for="item in overview.categories" :key="item.category" class="usage-category-row">
@@ -170,7 +170,7 @@
           </thead>
           <tbody>
             <tr v-if="apps.length === 0">
-              <td colspan="6" class="empty-cell">{{ t('appUsage.empty') }}</td>
+              <td colspan="6" class="empty-cell">{{ t('appUsage.noData') }}</td>
             </tr>
             <tr v-for="app in apps" :key="app.app_id">
               <td>

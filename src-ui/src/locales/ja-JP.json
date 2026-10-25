@@ -676,6 +676,7 @@
     "sourceText": "原文",
     "targetText": "訳文",
     "translating": "翻訳中...",
+    "emptyResult": "翻訳結果はまだありません",
     "retranslate": "再翻訳",
     "copy": "翻訳をコピー",
     "copied": "コピーしました",
