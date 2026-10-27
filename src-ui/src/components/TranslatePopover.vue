@@ -51,7 +51,7 @@
       </div>
 
       <!-- API Key 缺失警告 -->
-      <div v-else-if="missingApiKey" class="alert-box error-alert">
+      <div v-if="missingApiKey" class="alert-box error-alert">
         <Icons name="terminal" :size="14" class="alert-icon" />
         <div class="alert-content">
           <p>{{ t('translator.missingApiKey') }}</p>
@@ -149,6 +149,22 @@ let earlyEvents: any[] = [];
 let awaitingRequest = false;
 let disposed = false;
 
+async function checkApiKeyStatus() {
+  try {
+    const provs = await invokeIpc('translator_list_providers');
+    if (Array.isArray(provs)) {
+      const current = provs.find((p: any) => p.id === currentProviderId.value);
+      if (current && current.requires_api_key && !current.has_api_key) {
+        missingApiKey.value = true;
+        return;
+      }
+    }
+    missingApiKey.value = false;
+  } catch (e) {
+    // 凭据元数据读取失败时保持由翻译错误触发的兜底机制
+  }
+}
+
 async function loadConfig() {
   try {
     const cfg = await invokeIpc('translator_get_config');
@@ -160,6 +176,7 @@ async function loadConfig() {
   } catch (e) {
     console.error('读取划词翻译配置失败:', e);
   }
+  await checkApiKeyStatus();
 }
 
 async function consumeSelection() {
@@ -174,7 +191,7 @@ async function consumeSelection() {
   isTranslating.value = false;
   permissionDenied.value = !!sel.permission_denied;
   permissionGuidance.value = sel.guidance || '';
-  missingApiKey.value = false;
+  await checkApiKeyStatus();
   if (sel.unsupported) translatedText.value = t('translator.unsupported');
   if (sourceText.value) await triggerTranslate();
 }
@@ -255,14 +272,20 @@ async function closePopover() {
   }
 }
 
-function openDashboardSettings() {
-  invokeIpc('kernel_open_window', {
-    spec: {
-      label: 'dashboard',
-      route: '/overview',
-      title: 'Dashboard',
-    },
-  }).catch(() => {});
+async function openDashboardSettings() {
+  try {
+    return await invokeIpc('kernel_open_dashboard', { route: '/translator' });
+  } catch (e) {
+    console.error('打开主控台翻译设置失败:', e);
+  }
+}
+
+async function handleWindowFocus() {
+  try {
+    await loadConfig();
+  } catch (e) {
+    console.error('聚焦刷新划词翻译配置失败:', e);
+  }
 }
 
 function handleKeydown(e: KeyboardEvent) {
@@ -299,6 +322,7 @@ function receiveStream(payload: any) {
 
 onMounted(async () => {
   window.addEventListener('keydown', handleKeydown);
+  window.addEventListener('focus', handleWindowFocus);
   await loadConfig();
   if (disposed) return;
 
@@ -327,6 +351,7 @@ onUnmounted(() => {
   ++submission;
   earlyEvents = [];
   window.removeEventListener('keydown', handleKeydown);
+  window.removeEventListener('focus', handleWindowFocus);
   unlistenSelection?.();
   if (unlistenStream) {
     unlistenStream();
