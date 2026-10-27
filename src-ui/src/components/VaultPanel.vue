@@ -139,6 +139,13 @@ function clearReveal() {
   generatedPassword.value = '';
 }
 
+function scheduleRevealClear() {
+  const timer = setTimeout(() => {
+    if (revealTimer === timer) clearReveal();
+  }, VAULT_REVEAL_MS);
+  revealTimer = timer;
+}
+
 function clearSensitiveState() {
   operationEpoch += 1;
   clearReveal();
@@ -365,9 +372,7 @@ async function revealPassword(id: string) {
     if (!isCurrent(operation)) return;
     revealedPassword.value = secret;
     revealedId.value = id;
-    revealTimer = setTimeout(() => {
-      if (!disposed && operation === operationEpoch) clearReveal();
-    }, VAULT_REVEAL_MS);
+    scheduleRevealClear();
   } catch (reason) {
     if (!disposed && operation === operationEpoch) reportError(reason);
   }
@@ -382,9 +387,7 @@ async function generatePassword() {
     });
     if (!isCurrent(operation)) return;
     generatedPassword.value = generated;
-    revealTimer = setTimeout(() => {
-      if (!disposed && operation === operationEpoch) clearReveal();
-    }, VAULT_REVEAL_MS);
+    scheduleRevealClear();
   } catch (reason) {
     if (!disposed && operation === operationEpoch) reportError(reason);
   }
