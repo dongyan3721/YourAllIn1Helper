@@ -324,6 +324,7 @@ import {
   type UsageSessionPage,
 } from '../api/ipc';
 import { t } from '../utils/i18n';
+import { lastDaysRange } from '../utils/appUsage';
 import Icons from './Icons.vue';
 
 const error = ref('');
@@ -360,11 +361,11 @@ const categories = [
 ];
 
 const rangeDays = ref(7);
-const today = toDateInput(new Date());
-const startDate = ref(addDays(today, -6));
-const endDate = ref(today);
-const hourlyDate = ref(today);
-const sessionDate = ref(today);
+const initialRange = lastDaysRange(rangeDays.value, new Date());
+const startDate = ref(initialRange.startDate);
+const endDate = ref(initialRange.endDate);
+const hourlyDate = ref(initialRange.endDate);
+const sessionDate = ref(initialRange.endDate);
 const sessionOffset = ref(0);
 const settingsForm = reactive<AppUsageConfig>({
   idle_threshold_secs: 300,
@@ -416,19 +417,6 @@ const hourlyMax = computed(() =>
   Math.max(1, ...(hourly.value?.hours || []).map((hour) => hour.active_seconds))
 );
 
-function toDateInput(date: Date): string {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, '0');
-  const day = `${date.getDate()}`.padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function addDays(date: string, days: number): string {
-  const parsed = new Date(`${date}T12:00:00`);
-  parsed.setDate(parsed.getDate() + days);
-  return toDateInput(parsed);
-}
-
 function percent(value: number, max: number): number {
   if (!Number.isFinite(value) || max <= 0) return 0;
   return Math.max(2, Math.min(100, (value / max) * 100));
@@ -459,8 +447,9 @@ function categoryLabel(category: string): string {
 
 function selectRange(days: number) {
   rangeDays.value = days;
-  endDate.value = today;
-  startDate.value = addDays(today, -(days - 1));
+  const range = lastDaysRange(days, new Date());
+  startDate.value = range.startDate;
+  endDate.value = range.endDate;
   void loadOverview();
 }
 
