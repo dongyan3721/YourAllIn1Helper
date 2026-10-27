@@ -104,6 +104,7 @@
 
       <div class="save-status">
         <span v-if="saving">{{ t('sticky.window.saving') }}</span>
+        <span v-else-if="saveError">{{ t('sticky.window.saveFailed') }}</span>
         <span v-else-if="lastSavedTime">{{ t('sticky.window.savedAt', { time: lastSavedTime }) }}</span>
       </div>
     </footer>
@@ -111,7 +112,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { marked } from 'marked';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
@@ -145,6 +146,8 @@ const viewMode = ref<'edit' | 'preview'>('edit');
 const showPalette = ref(false);
 /** 正在存盘标记 */
 const saving = ref(false);
+/** 最近一次待保存写入失败。关闭会被取消，窗口保持打开。 */
+const saveError = ref(false);
 /** 上次存盘时间 */
 const lastSavedTime = ref('');
 /** 编辑器输入引用 */
@@ -201,31 +204,175 @@ const renderedHtml = computed(() => {
   }
 });
 
-/** 防抖计时器 */
+/** 标题与正文防抖。关闭时如果这个计时器还在，写入请求尚未发出。 */
+const CONTENT_SAVE_DELAY_MS = 400;
 let debounceTimer: any = null;
+/** 同一便笺的保存串行执行，避免较慢的旧请求覆盖更新的标题、正文或窗口状态。 */
+let writeTail: Promise<void> = Promise.resolve();
+let closing = false;
+let contentDirty = false;
+let themeDirty = false;
+let windowDirty = false;
+let nextContentSeq = 0;
+let nextThemeSeq = 0;
+let nextWindowSeq = 0;
+let unlistenFlush: (() => void) | undefined;
 
-/** 执行防抖保存 */
-function saveContentDebounced() {
+function enqueue(task: () => Promise<void>): Promise<void> {
+  const run = writeTail.then(task, task);
+  writeTail = run.then(() => undefined, () => undefined);
+  return run;
+}
+
+function formatSavedTime() {
+  const now = new Date();
+  const h = now.getHours().toString().padStart(2, '0');
+  const m = now.getMinutes().toString().padStart(2, '0');
+  const s = now.getSeconds().toString().padStart(2, '0');
+  return `${h}:${m}:${s}`;
+}
+
+function clearSaveErrorIfClean() {
+  if (!contentDirty && !themeDirty && !windowDirty) saveError.value = false;
+}
+
+function scheduleContentTimer() {
   clearTimeout(debounceTimer);
-  saving.value = true;
-  debounceTimer = setTimeout(async () => {
-    try {
-      await invokeIpc('sticky_save_content', {
-        id: note.value.id,
-        title: note.value.title,
-        content_md: note.value.content_md,
-      });
-      const now = new Date();
-      const h = now.getHours().toString().padStart(2, '0');
-      const m = now.getMinutes().toString().padStart(2, '0');
-      const s = now.getSeconds().toString().padStart(2, '0');
-      lastSavedTime.value = `${h}:${m}:${s}`;
-    } catch (err) {
+  debounceTimer = setTimeout(() => {
+    debounceTimer = null;
+    void persistContent().catch((err) => {
       console.error('保存便笺失败:', err);
-    } finally {
+    });
+  }, CONTENT_SAVE_DELAY_MS);
+}
+
+/** 记录最新标题与正文，并在 400ms 内没有继续输入时写入。 */
+function saveContentDebounced() {
+  contentDirty = true;
+  saving.value = true;
+  saveError.value = false;
+  if (closing) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+    return;
+  }
+  scheduleContentTimer();
+}
+
+function persistContent() {
+  return enqueue(async () => {
+    if (!contentDirty) return;
+    if (!note.value.id) {
       saving.value = false;
+      saveError.value = true;
+      throw new Error('便笺尚未加载，无法保存');
     }
-  }, 400);
+    const snapshot = {
+      id: note.value.id,
+      title: note.value.title,
+      content: note.value.content_md,
+    };
+    const writeSeq = ++nextContentSeq;
+    contentDirty = false;
+    try {
+      const saved = await invokeIpc<StickyNoteRecord>('sticky_save_content', {
+        id: snapshot.id,
+        title: snapshot.title,
+        content_md: snapshot.content,
+        write_seq: writeSeq,
+      });
+      const localMoved = note.value.title !== snapshot.title || note.value.content_md !== snapshot.content;
+      const storedMoved = !!saved
+        && (saved.title !== snapshot.title || saved.content_md !== snapshot.content);
+      if (localMoved || storedMoved) {
+        contentDirty = true;
+        saving.value = true;
+        if (!closing && debounceTimer === null) scheduleContentTimer();
+      } else {
+        saving.value = false;
+        lastSavedTime.value = formatSavedTime();
+        clearSaveErrorIfClean();
+      }
+    } catch (err) {
+      contentDirty = true;
+      saving.value = false;
+      saveError.value = true;
+      throw err;
+    }
+  });
+}
+
+function persistTheme() {
+  return enqueue(async () => {
+    if (!themeDirty) return;
+    if (!note.value.id) {
+      saveError.value = true;
+      throw new Error('便笺尚未加载，无法保存');
+    }
+    const snapshot = { id: note.value.id, theme: note.value.theme_color };
+    const writeSeq = ++nextThemeSeq;
+    themeDirty = false;
+    try {
+      await invokeIpc('sticky_update_theme', {
+        id: snapshot.id,
+        theme_color: snapshot.theme,
+        write_seq: writeSeq,
+      });
+      if (note.value.theme_color !== snapshot.theme) themeDirty = true;
+      else clearSaveErrorIfClean();
+    } catch (err) {
+      themeDirty = true;
+      saveError.value = true;
+      throw err;
+    }
+  });
+}
+
+function persistWindow() {
+  return enqueue(async () => {
+    if (!windowDirty) return;
+    if (!note.value.id) {
+      saveError.value = true;
+      throw new Error('便笺尚未加载，无法保存');
+    }
+    const snapshot = {
+      id: note.value.id,
+      opacity: note.value.opacity,
+      isPinned: note.value.is_pinned,
+    };
+    const writeSeq = ++nextWindowSeq;
+    windowDirty = false;
+    try {
+      await invokeIpc('sticky_update_window_state', {
+        id: snapshot.id,
+        opacity: snapshot.opacity,
+        is_pinned: snapshot.isPinned,
+        write_seq: writeSeq,
+      });
+      if (note.value.opacity !== snapshot.opacity || note.value.is_pinned !== snapshot.isPinned) {
+        windowDirty = true;
+      } else {
+        clearSaveErrorIfClean();
+      }
+    } catch (err) {
+      windowDirty = true;
+      saveError.value = true;
+      throw err;
+    }
+  });
+}
+
+/** 把标题、正文、主题和窗口状态里尚未完成的写入全部落盘。 */
+async function flushDirtyState() {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    if (!contentDirty && !themeDirty && !windowDirty) return;
+    await persistContent();
+    await persistTheme();
+    await persistWindow();
+  }
+  if (contentDirty || themeDirty || windowDirty) {
+    throw new Error('便笺仍有未保存的更改');
+  }
 }
 
 /** 切换编辑/预览视图 */
@@ -234,45 +381,32 @@ function toggleViewMode() {
 }
 
 /** 切换置顶状态 */
-async function togglePin() {
+function togglePin() {
   note.value.is_pinned = !note.value.is_pinned;
-  try {
-    await invokeIpc('sticky_update_window_state', {
-      id: note.value.id,
-      is_pinned: note.value.is_pinned,
-    });
-  } catch (err) {
+  windowDirty = true;
+  void persistWindow().catch((err) => {
     console.error('更新置顶状态失败:', err);
-  }
+  });
 }
 
 /** 调节透明度 */
-async function onOpacityChange(e: Event) {
+function onOpacityChange(e: Event) {
   const val = Number((e.target as HTMLInputElement).value);
-  const opacity = Math.max(0.35, Math.min(1.0, val / 100.0));
-  note.value.opacity = opacity;
-  try {
-    await invokeIpc('sticky_update_window_state', {
-      id: note.value.id,
-      opacity,
-    });
-  } catch (err) {
+  note.value.opacity = Math.max(0.35, Math.min(1.0, val / 100.0));
+  windowDirty = true;
+  void persistWindow().catch((err) => {
     console.error('更新透明度失败:', err);
-  }
+  });
 }
 
 /** 切换色彩主题 */
-async function setTheme(colorKey: string) {
+function setTheme(colorKey: string) {
   note.value.theme_color = colorKey;
   showPalette.value = false;
-  try {
-    await invokeIpc('sticky_update_theme', {
-      id: note.value.id,
-      theme_color: colorKey,
-    });
-  } catch (err) {
+  themeDirty = true;
+  void persistTheme().catch((err) => {
     console.error('更新主题色失败:', err);
-  }
+  });
 }
 
 /** 导出便笺为 .md 文件 */
@@ -293,12 +427,23 @@ async function exportMarkdownFile() {
   }
 }
 
-/** 关闭并销毁便笺原生 WebView 窗口 */
+/**
+ * 关闭并销毁便笺 WebView。
+ * 必须先等最新标题、正文、主题和窗口状态写入成功；失败时保留窗口和未保存内容。
+ */
 async function closeNoteWindow() {
+  if (closing) return;
+  closing = true;
+  clearTimeout(debounceTimer);
+  debounceTimer = null;
   try {
+    await flushDirtyState();
     await invokeIpc('sticky_close_note', { id: note.value.id });
   } catch (err) {
-    console.error('关闭便笺窗口失败:', err);
+    closing = false;
+    const pending = contentDirty || themeDirty || windowDirty;
+    if (pending) saveError.value = true;
+    console.error(pending ? '关闭前保存便笺失败:' : '关闭便笺窗口失败:', err);
   }
 }
 
@@ -310,16 +455,52 @@ function handleContentClick(e: MouseEvent) {
   }
 }
 
-/** 初始化加载便笺 */
+if (typeof onUnmounted === 'function') {
+  onUnmounted(() => {
+    unlistenFlush?.();
+  });
+}
+
+/** 初始化加载便笺，并在系统或主面板请求关闭时先保存再销毁。 */
 onMounted(async () => {
   const targetId = props.noteId || new URLSearchParams(window.location.search).get('id') || '';
+  const eventApi = (window as any).__TAURI__?.event;
+  if (typeof eventApi?.listen === 'function') {
+    try {
+      unlistenFlush = await eventApi.listen(
+        'sticky://flush-close',
+        (event: { payload?: { id?: string } }) => {
+          const requested = event?.payload?.id || '';
+          if (!requested || requested === targetId || requested === note.value.id) {
+            void closeNoteWindow();
+          }
+        },
+      );
+    } catch (err) {
+      console.error('订阅便笺关闭保存失败:', err);
+    }
+  }
   if (!targetId) return;
 
+  const baseline = {
+    title: note.value.title,
+    content: note.value.content_md,
+    theme: note.value.theme_color,
+    opacity: note.value.opacity,
+    pinned: note.value.is_pinned,
+  };
   try {
     const data = await invokeIpc<StickyNoteRecord>('sticky_get_note', { id: targetId });
-    if (data) {
-      note.value = data;
-    }
+    if (!data) return;
+    // 只保留加载期间用户真正改过的字段，避免用空白正文盖掉服务器上的内容。
+    note.value = {
+      ...data,
+      title: note.value.title !== baseline.title ? note.value.title : data.title,
+      content_md: note.value.content_md !== baseline.content ? note.value.content_md : data.content_md,
+      theme_color: note.value.theme_color !== baseline.theme ? note.value.theme_color : data.theme_color,
+      opacity: note.value.opacity !== baseline.opacity ? note.value.opacity : data.opacity,
+      is_pinned: note.value.is_pinned !== baseline.pinned ? note.value.is_pinned : data.is_pinned,
+    };
   } catch (err) {
     console.error('获取便笺详情失败:', err);
   }

@@ -261,6 +261,7 @@
       "emptyRenderedHint": "暂无内容，点击上方「编辑」开始记录...",
       "opacityLabel": "透明度 {percent}%",
       "saving": "正在存盘...",
+      "saveFailed": "保存失败",
       "savedAt": "已保存 {time}",
       "themes": {
         "neutral": "冷淡中性灰",

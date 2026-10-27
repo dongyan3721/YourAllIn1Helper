@@ -4,8 +4,12 @@
 //! - **Level 2 钉住驻留窗口生命周期**：在 `on_init` 初始化时，仅查询 `sticky_notes` 中 `is_open = 1` 的便笺并恢复原生窗口；
 //!   若桌面无打开便笺，启动时保持 0 WebView 常驻；
 //! - **实时与防抖持久化**：便笺标题、Markdown 内容、LaTeX 公式、主题色、透明度、窗口几何坐标与置顶状态统一持久化至 SQLite；
-//! - **关闭即销毁释放内存**：用户点击便笺关闭按钮时，将 `is_open` 标记为 0，并立即调用 `window_pool.destroy_window("sticky-note-{id}")` 销毁 WebView 进程；
+//!   前端在关闭前冲刷尚未落盘的标题、正文和窗口状态。带 `write_seq` 的写入若序号更旧，则不会覆盖已提交的更新内容；
+//! - **关闭即销毁释放内存**：页面确认保存成功后，将 `is_open` 标记为 0，并调用 `window_pool.destroy_window("sticky-note-{id}")` 销毁 WebView 进程；
 //! - **Markdown + LaTeX 导出**：支持一键将便笺内容导出为标准 `.md` 文件或格式化文本。
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use app_core::{
     AppModule, CoreError, CoreResult, ModuleContext, ModuleMigration, ShortcutSpec, WindowSpec,
@@ -64,12 +68,42 @@ pub struct StickyNoteWindowStateUpdate {
 
 /// 便笺模块实现
 #[derive(Default, Clone)]
-pub struct StickyNoteModule;
+pub struct StickyNoteModule {
+    /// 标题与正文的客户端序号。更小的序号不得覆盖已提交的更新正文。
+    content_seq: Arc<Mutex<HashMap<String, u64>>>,
+    /// 主题色的客户端序号。
+    theme_seq: Arc<Mutex<HashMap<String, u64>>>,
+    /// 透明度、置顶与几何状态的客户端序号。
+    window_seq: Arc<Mutex<HashMap<String, u64>>>,
+}
 
 impl StickyNoteModule {
     /// 创建便笺模块实例
     pub fn new() -> Self {
-        Self
+        Self::default()
+    }
+
+    fn lock_seqs(
+        seqs: &Mutex<HashMap<String, u64>>,
+    ) -> std::sync::MutexGuard<'_, HashMap<String, u64>> {
+        seqs.lock().unwrap_or_else(|err| err.into_inner())
+    }
+
+    /// 序号小于已提交值时视为过期写入。相等序号允许重试同一轮请求。
+    fn is_stale(seqs: &HashMap<String, u64>, note_id: &str, write_seq: Option<u64>) -> bool {
+        write_seq.is_some_and(|seq| seq < seqs.get(note_id).copied().unwrap_or(0))
+    }
+
+    fn remember_seq(seqs: &mut HashMap<String, u64>, note_id: &str, write_seq: Option<u64>) {
+        if let Some(seq) = write_seq {
+            seqs.insert(note_id.to_string(), seq);
+        }
+    }
+
+    fn read_required(&self, ctx: &ModuleContext, note_id: &str) -> CoreResult<StickyNoteRecord> {
+        self.get_note(ctx, note_id)?.ok_or_else(|| {
+            CoreError::Internal(anyhow::anyhow!("便笺 '{}' 更新后读取异常", note_id))
+        })
     }
 
     /// 根据便笺 ID 生成规范的 WebView 原生窗口 Label
@@ -181,14 +215,24 @@ impl StickyNoteModule {
         })
     }
 
-    /// 保存便笺标题与 Markdown 内容（前端 500ms 防抖调用）
+    /// 保存便笺标题与 Markdown 内容。
+    ///
+    /// `write_seq` 由页面按发送顺序递增。序号更小的并发请求不会覆盖已经落盘的更新内容。
+    /// `None` 保持旧调用方的直接写入行为。
     pub fn save_content(
         &self,
         ctx: &ModuleContext,
         note_id: &str,
         title: Option<&str>,
         content_md: &str,
+        write_seq: Option<u64>,
     ) -> CoreResult<StickyNoteRecord> {
+        let mut seqs = Self::lock_seqs(&self.content_seq);
+        if Self::is_stale(&seqs, note_id, write_seq) {
+            drop(seqs);
+            return self.read_required(ctx, note_id);
+        }
+
         let now = Utc::now().timestamp_millis();
         ctx.db.with_conn(|conn| {
             let affected = if let Some(new_title) = title {
@@ -215,19 +259,27 @@ impl StickyNoteModule {
             }
             Ok(())
         })?;
+        Self::remember_seq(&mut seqs, note_id, write_seq);
+        drop(seqs);
 
-        self.get_note(ctx, note_id)?.ok_or_else(|| {
-            CoreError::Internal(anyhow::anyhow!("便笺 '{}' 更新后读取异常", note_id))
-        })
+        self.read_required(ctx, note_id)
     }
 
-    /// 更新便笺窗口大小、坐标位置、透明度与置顶状态
+    /// 更新便笺窗口大小、坐标位置、透明度与置顶状态。
+    ///
+    /// 过期的 `write_seq` 不会改写数据库，也不会把窗口层级退回到旧的置顶状态。
     pub fn update_window_state(
         &self,
         ctx: &ModuleContext,
         note_id: &str,
         state: StickyNoteWindowStateUpdate,
+        write_seq: Option<u64>,
     ) -> CoreResult<()> {
+        let mut seqs = Self::lock_seqs(&self.window_seq);
+        if Self::is_stale(&seqs, note_id, write_seq) {
+            return Ok(());
+        }
+
         let now = Utc::now().timestamp_millis();
         let clamped_opacity = state.opacity.clamp(0.2, 1.0);
         let width = state.width.max(220);
@@ -252,11 +304,37 @@ impl StickyNoteModule {
             )?;
             Ok(())
         })?;
+        Self::remember_seq(&mut seqs, note_id, write_seq);
+        drop(seqs);
 
         let label = Self::window_label_for(note_id);
         if ctx.window_pool.get_active_window(&label).is_some() {
             ctx.window_pool.set_always_on_top(&label, state.is_pinned)?;
         }
+        Ok(())
+    }
+
+    /// 更新便笺主题色。过期序号保留已经提交的颜色。
+    pub fn update_theme(
+        &self,
+        ctx: &ModuleContext,
+        note_id: &str,
+        theme_color: &str,
+        write_seq: Option<u64>,
+    ) -> CoreResult<()> {
+        let mut seqs = Self::lock_seqs(&self.theme_seq);
+        if Self::is_stale(&seqs, note_id, write_seq) {
+            return Ok(());
+        }
+
+        ctx.db.with_conn(|conn| {
+            conn.execute(
+                "UPDATE sticky_notes SET theme_color = ?1 WHERE id = ?2",
+                params![theme_color, note_id],
+            )?;
+            Ok(())
+        })?;
+        Self::remember_seq(&mut seqs, note_id, write_seq);
         Ok(())
     }
 

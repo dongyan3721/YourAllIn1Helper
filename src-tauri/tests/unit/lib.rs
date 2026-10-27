@@ -154,6 +154,96 @@ async fn translator_ipc_translation_supports_current_thread_runtime() {
 }
 
 #[test]
+fn sticky_ipc_keeps_latest_state_when_close_follows_a_stale_write() {
+    let dir = tempfile::tempdir().unwrap();
+    let host = DesktopHost::bootstrap(dir.path(), true).unwrap();
+    let created = host.invoke_ipc(
+        "sticky_create_note",
+        json!({
+            "title": "旧标题",
+            "content_md": "旧正文",
+            "theme_color": "amber"
+        }),
+    );
+    assert!(created.ok, "{:?}", created.error);
+    let id = created.data.unwrap()["id"].as_str().unwrap().to_string();
+
+    let newer = host.invoke_ipc(
+        "sticky_save_content",
+        json!({
+            "id": id,
+            "title": "新标题",
+            "content_md": "新正文",
+            "write_seq": 2
+        }),
+    );
+    assert!(newer.ok, "{:?}", newer.error);
+    let older = host.invoke_ipc(
+        "sticky_save_content",
+        json!({
+            "id": id,
+            "title": "回退标题",
+            "content_md": "回退正文",
+            "write_seq": 1
+        }),
+    );
+    assert!(older.ok, "{:?}", older.error);
+    assert_eq!(older.data.unwrap()["content_md"], "新正文");
+
+    let theme = host.invoke_ipc(
+        "sticky_update_theme",
+        json!({ "id": id, "theme_color": "rose", "write_seq": 3 }),
+    );
+    assert!(theme.ok, "{:?}", theme.error);
+    let stale_theme = host.invoke_ipc(
+        "sticky_update_theme",
+        json!({ "id": id, "theme_color": "sky", "write_seq": 1 }),
+    );
+    assert!(stale_theme.ok, "{:?}", stale_theme.error);
+    assert_eq!(stale_theme.data.unwrap()["theme_color"], "rose");
+
+    let window = host.invoke_ipc(
+        "sticky_update_window_state",
+        json!({ "id": id, "opacity": 0.5, "is_pinned": false, "write_seq": 5 }),
+    );
+    assert!(window.ok, "{:?}", window.error);
+    let stale_window = host.invoke_ipc(
+        "sticky_update_window_state",
+        json!({ "id": id, "opacity": 0.75, "is_pinned": true, "write_seq": 4 }),
+    );
+    assert!(stale_window.ok, "{:?}", stale_window.error);
+    assert_eq!(stale_window.data.unwrap()["is_pinned"], false);
+
+    let missing = host.invoke_ipc(
+        "sticky_save_content",
+        json!({
+            "id": "missing-note",
+            "title": "x",
+            "content_md": "y",
+            "write_seq": 1
+        }),
+    );
+    assert!(!missing.ok);
+
+    let closed = host.invoke_ipc("sticky_request_close", json!({ "id": id }));
+    assert!(closed.ok, "{:?}", closed.error);
+    let closed_data = closed.data.unwrap();
+    assert_eq!(closed_data["delegated"], false);
+    assert_eq!(closed_data["closed"], true);
+    assert_eq!(closed_data["active_window_count"], 0);
+
+    let stored = host.invoke_ipc("sticky_get_note", json!({ "id": id }));
+    assert!(stored.ok, "{:?}", stored.error);
+    let note = stored.data.unwrap();
+    assert_eq!(note["title"], "新标题");
+    assert_eq!(note["content_md"], "新正文");
+    assert_eq!(note["theme_color"], "rose");
+    assert_eq!(note["opacity"], 0.5);
+    assert_eq!(note["is_pinned"], false);
+    assert_eq!(note["is_open"], false);
+}
+
+#[test]
 fn translator_ipc_without_runtime_reports_error_instead_of_panicking() {
     let dir = tempfile::tempdir().unwrap();
     let host = DesktopHost::bootstrap(dir.path(), true).unwrap();

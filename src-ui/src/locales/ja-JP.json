@@ -261,6 +261,7 @@
       "emptyRenderedHint": "内容がありません。上の「編集」をクリックして入力を開始...",
       "opacityLabel": "不透明度 {percent}%",
       "saving": "保存中...",
+      "saveFailed": "保存失敗",
       "savedAt": "{time} に保存済み",
       "themes": {
         "neutral": "ニュートラルグレー",

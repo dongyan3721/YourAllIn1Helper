@@ -1,0 +1,406 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import vm from 'node:vm';
+import ts from 'typescript';
+
+async function loadSticky(options = {}) {
+  const source = await readFile(new URL('../../src/components/StickyNote.vue', import.meta.url), 'utf8');
+  const script = source.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)?.[1];
+  assert.ok(script, 'must load the actual sticky note script');
+  const parsed = ts.createSourceFile('StickyNote.ts', script, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const body = ts.factory.updateSourceFile(parsed, parsed.statements.filter((node) => !ts.isImportDeclaration(node)));
+  const code = ts.transpileModule(ts.createPrinter().printFile(body), {
+    compilerOptions: { target: ts.ScriptTarget.ES2020 },
+  }).outputText;
+
+  const calls = [];
+  const errors = [];
+  const timers = new Map();
+  const pending = [];
+  const listeners = [];
+  const hooks = { mounted: [], unmounted: [] };
+  let nextTimer = 0;
+  let destroyed = false;
+  const fail = options.fail ?? new Set();
+  const defer = options.defer ?? new Set();
+  const context = vm.createContext({
+    ref: (value) => ({ value }),
+    computed: (get) => ({ get value() { return get(); } }),
+    defineProps: () => ({ noteId: options.noteId || '' }),
+    onMounted(fn) { hooks.mounted.push(fn); },
+    onUnmounted(fn) { hooks.unmounted.push(fn); },
+    t: (key) => key,
+    URLSearchParams,
+    window: options.window ?? {
+      location: { search: options.search || '' },
+      __TAURI__: {
+        event: {
+          listen(name, callback) {
+            listeners.push({ name, callback });
+            return Promise.resolve(() => {});
+          },
+        },
+      },
+    },
+    setTimeout(fn, delay) {
+      assert.equal(delay, 400, 'content debounce stays 400 ms');
+      const id = ++nextTimer;
+      timers.set(id, fn);
+      return id;
+    },
+    clearTimeout(id) { timers.delete(id); },
+    invokeIpc: async (name, payload = {}) => {
+      calls.push({
+        name,
+        id: payload.id,
+        title: payload.title,
+        content: payload.content_md,
+        theme: payload.theme_color,
+        opacity: payload.opacity,
+        isPinned: payload.is_pinned,
+        writeSeq: payload.write_seq,
+      });
+      if (name === 'sticky_close_note') {
+        destroyed = true;
+        timers.clear();
+      }
+      if (fail.has(name)) throw new Error(`forced failure ${name}`);
+      if (defer.has(name)) {
+        return new Promise((resolve, reject) => pending.push({ name, payload, resolve, reject }));
+      }
+      if (name === 'sticky_get_note') {
+        return {
+          id: payload.id,
+          title: '服务器标题',
+          content_md: '服务器正文',
+          theme_color: 'amber',
+          opacity: 0.95,
+          pos_x: 10,
+          pos_y: 20,
+          width: 320,
+          height: 300,
+          is_pinned: true,
+          is_open: true,
+          updated_at: 1,
+        };
+      }
+      return {
+        id: payload.id,
+        title: payload.title,
+        content_md: payload.content_md,
+        theme_color: payload.theme_color,
+        opacity: payload.opacity,
+        is_pinned: payload.is_pinned,
+      };
+    },
+    console: { error: (...args) => errors.push(args.map(String).join(' ')) },
+  });
+  vm.runInContext(code, context);
+  const run = (expression) => vm.runInContext(expression, context);
+  if (options.note) {
+    run(`note.value.id = ${JSON.stringify(options.note.id)};
+      note.value.title = ${JSON.stringify(options.note.title)};
+      note.value.content_md = ${JSON.stringify(options.note.content)};`);
+  }
+
+  async function until(predicate) {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      if (predicate()) return;
+      await Promise.resolve();
+    }
+    assert.fail(`timed out; calls=${JSON.stringify(calls.map((call) => call.name))}`);
+  }
+
+  return {
+    calls,
+    errors,
+    listeners,
+    hooks,
+    get destroyed() { return destroyed; },
+    get pendingTimers() { return timers.size; },
+    get pendingCount() { return pending.length; },
+    run,
+    scheduleSave: () => run('saveContentDebounced()'),
+    close: () => run('closeNoteWindow()'),
+    setTheme: (theme) => run(`setTheme(${JSON.stringify(theme)})`),
+    togglePin: () => run('togglePin()'),
+    setOpacityPercent: (percent) => run(`onOpacityChange({ target: { value: ${JSON.stringify(String(percent))} } })`),
+    async flushTimer() {
+      const next = timers.entries().next().value;
+      assert.ok(next, 'expected a pending debounce timer');
+      const [id, callback] = next;
+      timers.delete(id);
+      await callback();
+    },
+    resolveHead(value) {
+      const item = pending.shift();
+      assert.ok(item, 'no deferred IPC to resolve');
+      item.resolve(value ?? {
+        id: item.payload.id,
+        title: item.payload.title,
+        content_md: item.payload.content_md,
+        theme_color: item.payload.theme_color,
+        opacity: item.payload.opacity,
+        is_pinned: item.payload.is_pinned,
+      });
+    },
+    rejectHead(error = new Error('save failed')) {
+      const item = pending.shift();
+      assert.ok(item, 'no deferred IPC to reject');
+      item.reject(error);
+    },
+    until,
+  };
+}
+
+const qaNote = { id: 'qa-note', title: 'QA fictional title', content: 'QA fictional content' };
+
+test('ordinary debounce saves the fictional note when its timer fires', async () => {
+  const sticky = await loadSticky({ note: qaNote });
+  sticky.scheduleSave();
+  assert.equal(sticky.pendingTimers, 1);
+  await sticky.flushTimer();
+  assert.deepEqual(sticky.calls.map((call) => call.name), ['sticky_save_content']);
+  assert.equal(sticky.calls[0].title, qaNote.title);
+  assert.equal(sticky.calls[0].content, qaNote.content);
+  assert.equal(sticky.calls[0].writeSeq, 1);
+});
+
+test('closing while a save is pending persists edits before destroying the WebView', async () => {
+  const sticky = await loadSticky({ note: qaNote });
+  sticky.scheduleSave();
+  assert.equal(sticky.pendingTimers, 1, 'the edit must be pending before close');
+  await sticky.close();
+  assert.equal(sticky.destroyed, true);
+  assert.equal(sticky.pendingTimers, 0);
+  assert.deepEqual(sticky.calls.map((call) => call.name), ['sticky_save_content', 'sticky_close_note']);
+  assert.equal(sticky.calls[0].title, qaNote.title);
+  assert.equal(sticky.calls[0].content, qaNote.content);
+});
+
+test('closing without pending edits only closes', async () => {
+  const sticky = await loadSticky({ note: qaNote });
+  await sticky.close();
+  assert.deepEqual(sticky.calls.map((call) => call.name), ['sticky_close_note']);
+});
+
+test('a failed save keeps the note open and a retry then persists the same text', async () => {
+  const fail = new Set(['sticky_save_content']);
+  const sticky = await loadSticky({ note: qaNote, fail });
+  sticky.scheduleSave();
+  await sticky.close();
+  assert.equal(sticky.destroyed, false);
+  assert.deepEqual(sticky.calls.map((call) => call.name), ['sticky_save_content']);
+  assert.equal(sticky.run('note.value.content_md'), qaNote.content);
+  assert.equal(sticky.run('note.value.title'), qaNote.title);
+  assert.equal(sticky.run('saveError.value'), true);
+  assert.match(sticky.errors.join('\n'), /关闭前保存便笺失败/);
+
+  fail.delete('sticky_save_content');
+  await sticky.close();
+  assert.equal(sticky.destroyed, true);
+  assert.deepEqual(sticky.calls.map((call) => call.name), ['sticky_save_content', 'sticky_save_content', 'sticky_close_note']);
+  assert.equal(sticky.calls[1].content, qaNote.content);
+  assert.ok(sticky.calls[1].writeSeq > sticky.calls[0].writeSeq);
+});
+
+test('close waits for an in-flight save and persists newer text, theme, and window state', async () => {
+  const sticky = await loadSticky({
+    note: { ...qaNote, content: 'version one' },
+    defer: new Set(['sticky_save_content', 'sticky_update_theme', 'sticky_update_window_state']),
+  });
+  sticky.scheduleSave();
+  await sticky.flushTimer();
+  sticky.run('note.value.title = "QA newer title"');
+  sticky.run('note.value.content_md = "version two"');
+  sticky.scheduleSave();
+  sticky.setTheme('rose');
+  sticky.setOpacityPercent(80);
+  sticky.togglePin();
+  const closing = sticky.close();
+
+  assert.deepEqual(sticky.calls.map((call) => call.name), ['sticky_save_content']);
+  assert.equal(sticky.calls[0].content, 'version one');
+  assert.equal(sticky.destroyed, false);
+
+  sticky.resolveHead({ title: qaNote.title, content_md: 'version one' });
+  await sticky.until(() => sticky.calls.some((call) => call.name === 'sticky_update_theme'));
+  assert.equal(sticky.calls[1].theme, 'rose');
+  sticky.resolveHead({ theme_color: 'rose' });
+
+  await sticky.until(() => sticky.calls.some((call) => call.name === 'sticky_update_window_state'));
+  const latestWindow = sticky.calls.find((call) => call.name === 'sticky_update_window_state');
+  assert.equal(latestWindow.opacity, 0.8);
+  assert.equal(latestWindow.isPinned, false);
+  assert.equal(sticky.destroyed, false);
+  sticky.resolveHead({ opacity: 0.8, is_pinned: false });
+
+  await sticky.until(() => sticky.calls.filter((call) => call.name === 'sticky_save_content').length === 2);
+  const latestContent = sticky.calls.filter((call) => call.name === 'sticky_save_content').at(-1);
+  assert.equal(latestContent.title, 'QA newer title');
+  assert.equal(latestContent.content, 'version two');
+  assert.ok(latestContent.writeSeq > sticky.calls[0].writeSeq);
+  sticky.resolveHead({ title: 'QA newer title', content_md: 'version two' });
+  await closing;
+
+  assert.equal(sticky.calls.at(-1).name, 'sticky_close_note');
+  assert.equal(sticky.destroyed, true);
+  const contentWrites = sticky.calls.filter((call) => call.name === 'sticky_save_content').map((call) => call.content);
+  assert.deepEqual(contentWrites, ['version one', 'version two']);
+});
+
+test('a rejected in-flight save does not destroy the note and the retry stores the edited text', async () => {
+  const sticky = await loadSticky({
+    note: qaNote,
+    defer: new Set(['sticky_save_content']),
+  });
+  sticky.scheduleSave();
+  await sticky.flushTimer();
+  sticky.run('note.value.title = "kept title"');
+  sticky.run('note.value.content_md = "kept body"');
+  sticky.scheduleSave();
+  const closing = sticky.close();
+  sticky.rejectHead();
+  await sticky.until(() => sticky.calls.filter((call) => call.name === 'sticky_save_content').length === 2);
+  assert.equal(sticky.calls[1].title, 'kept title');
+  assert.equal(sticky.calls[1].content, 'kept body');
+  sticky.rejectHead();
+  await closing;
+  assert.equal(sticky.destroyed, false);
+  assert.equal(sticky.calls.some((call) => call.name === 'sticky_close_note'), false);
+  assert.equal(sticky.run('note.value.content_md'), 'kept body');
+  assert.equal(sticky.run('saveError.value'), true);
+});
+
+test('a slow older window update cannot outrun the latest opacity and pin before close', async () => {
+  const sticky = await loadSticky({
+    note: qaNote,
+    defer: new Set(['sticky_update_window_state']),
+  });
+  sticky.setOpacityPercent(40);
+  await sticky.until(() => sticky.calls.length >= 1);
+  assert.equal(sticky.calls[0].opacity, 0.4);
+  sticky.setOpacityPercent(80);
+  sticky.togglePin();
+  const closing = sticky.close();
+  assert.equal(sticky.calls[0].isPinned, true);
+  assert.equal(sticky.destroyed, false);
+  sticky.resolveHead({ opacity: 0.4, is_pinned: true });
+  await sticky.until(() => sticky.calls.some((call) => call.opacity === 0.8));
+  const latest = sticky.calls.filter((call) => call.name === 'sticky_update_window_state').at(-1);
+  assert.equal(latest.opacity, 0.8);
+  assert.equal(latest.isPinned, false);
+  assert.ok(latest.writeSeq > sticky.calls[0].writeSeq);
+  sticky.resolveHead({ opacity: 0.8, is_pinned: false });
+  await closing;
+  assert.equal(sticky.calls.at(-1).name, 'sticky_close_note');
+  assert.equal(sticky.calls.filter((call) => call.opacity === 0.4).length, 1);
+});
+
+test('theme save failure blocks close until a later attempt succeeds', async () => {
+  const fail = new Set(['sticky_update_theme']);
+  const sticky = await loadSticky({ note: qaNote, fail });
+  sticky.setTheme('violet');
+  await sticky.close();
+  assert.equal(sticky.destroyed, false);
+  assert.deepEqual(sticky.calls.map((call) => call.name), ['sticky_update_theme', 'sticky_update_theme']);
+  assert.equal(sticky.run('note.value.theme_color'), 'violet');
+  assert.match(sticky.errors.join('\n'), /关闭前保存便笺失败/);
+
+  fail.delete('sticky_update_theme');
+  await sticky.close();
+  assert.deepEqual(
+    sticky.calls.map((call) => call.name),
+    ['sticky_update_theme', 'sticky_update_theme', 'sticky_update_theme', 'sticky_close_note'],
+  );
+  assert.equal(sticky.calls[2].theme, 'violet');
+  assert.equal(sticky.destroyed, true);
+});
+
+test('initial load keeps typed fields and does not save placeholders before the note id exists', async () => {
+  const sticky = await loadSticky({
+    noteId: 'qa-note',
+    defer: new Set(['sticky_get_note']),
+  });
+  const mounted = sticky.hooks.mounted[0]();
+  await sticky.until(() => sticky.calls.some((call) => call.name === 'sticky_get_note'));
+  sticky.run('note.value.title = "typed title"');
+  sticky.run('note.value.content_md = "typed body"');
+  sticky.scheduleSave();
+  await sticky.close();
+  assert.equal(sticky.calls.some((call) => call.name === 'sticky_save_content'), false);
+  assert.equal(sticky.destroyed, false);
+
+  sticky.resolveHead({
+    id: 'qa-note',
+    title: '服务器标题',
+    content_md: '服务器正文',
+    theme_color: 'sky',
+    opacity: 0.4,
+    pos_x: 10,
+    pos_y: 20,
+    width: 320,
+    height: 300,
+    is_pinned: true,
+    is_open: true,
+    updated_at: 1,
+  });
+  await mounted;
+  assert.equal(sticky.run('note.value.title'), 'typed title');
+  assert.equal(sticky.run('note.value.content_md'), 'typed body');
+  assert.equal(sticky.run('note.value.theme_color'), 'sky');
+  await sticky.close();
+  const save = sticky.calls.find((call) => call.name === 'sticky_save_content');
+  assert.equal(save.title, 'typed title');
+  assert.equal(save.content, 'typed body');
+  assert.equal(sticky.calls.at(-1).name, 'sticky_close_note');
+});
+
+test('a title edit during load keeps the untouched server body', async () => {
+  const sticky = await loadSticky({
+    noteId: 'qa-note',
+    defer: new Set(['sticky_get_note']),
+  });
+  const mounted = sticky.hooks.mounted[0]();
+  await sticky.until(() => sticky.calls.some((call) => call.name === 'sticky_get_note'));
+  sticky.run('note.value.title = "typed title"');
+  sticky.scheduleSave();
+  sticky.resolveHead({
+    id: 'qa-note',
+    title: '服务器标题',
+    content_md: '服务器正文',
+    theme_color: 'sky',
+    opacity: 0.95,
+    pos_x: 10,
+    pos_y: 20,
+    width: 320,
+    height: 300,
+    is_pinned: true,
+    is_open: true,
+    updated_at: 1,
+  });
+  await mounted;
+  assert.equal(sticky.run('note.value.title'), 'typed title');
+  assert.equal(sticky.run('note.value.content_md'), '服务器正文');
+  await sticky.close();
+  const save = sticky.calls.find((call) => call.name === 'sticky_save_content');
+  assert.equal(save.title, 'typed title');
+  assert.equal(save.content, '服务器正文');
+});
+
+test('native or library flush-close saves pending edits before destroying the note', async () => {
+  const sticky = await loadSticky({ noteId: 'qa-note' });
+  await sticky.hooks.mounted[0]();
+  assert.equal(sticky.listeners[0].name, 'sticky://flush-close');
+  sticky.run('note.value.title = "flush title"');
+  sticky.run('note.value.content_md = "flush body"');
+  sticky.scheduleSave();
+  sticky.listeners[0].callback({ payload: { id: 'qa-note' } });
+  await sticky.until(() => sticky.destroyed);
+  assert.deepEqual(
+    sticky.calls.filter((call) => call.name !== 'sticky_get_note').map((call) => call.name),
+    ['sticky_save_content', 'sticky_close_note'],
+  );
+  assert.equal(sticky.calls.find((call) => call.name === 'sticky_save_content').content, 'flush body');
+});

@@ -270,7 +270,31 @@ impl WindowBackend for TauriWindowBackend {
 
 /// Single typed IPC entry point used by every WebView.
 #[tauri::command]
-async fn ipc(app: AppHandle, request: IpcRequest) -> IpcResponse {
+async fn ipc(app: AppHandle, mut request: IpcRequest) -> IpcResponse {
+    if request.cmd == "sticky_request_close" {
+        let id = request
+            .args
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let label = mod_sticky_note::StickyNoteModule::window_label_for(&id);
+        if let Some(webview) = app.get_webview_window(&label) {
+            match webview.emit("sticky://flush-close", json!({ "id": id })) {
+                Ok(()) => {
+                    return IpcResponse::success(json!({
+                        "id": id,
+                        "delegated": true,
+                        "closed": false
+                    }));
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "Sticky note flush-close delegation failed; closing directly");
+                }
+            }
+        }
+        request.cmd = "sticky_close_note".to_string();
+    }
     if request.cmd == "kernel_shutdown" {
         // 桌面退出统一交给 ExitRequested；这里不能在活动 IPC 中等待内核清理。
         app.exit(0);
@@ -385,6 +409,8 @@ async fn ipc(app: AppHandle, request: IpcRequest) -> IpcResponse {
         emit_update(&app);
     } else if response.ok && request.cmd == "ink_clear_canvas" {
         let _ = app.emit("screen-ink://clear-canvas", json!({}));
+        emit_update(&app);
+    } else if response.ok && request.cmd == "sticky_close_note" {
         emit_update(&app);
     } else if response.ok
         && matches!(
@@ -1045,9 +1071,17 @@ pub fn run() {
                         host.translator.cancel_current_translation();
                     }
                     if let Some(note_id) = label.strip_prefix("sticky-note-") {
-                        let _ = host
-                            .sticky_note
-                            .close_note(host.kernel().context(), note_id);
+                        // 标题和正文还在页面内存里。先不销毁 WebView，等页面把最新状态写入后再关闭。
+                        api.prevent_close();
+                        let note_id = note_id.to_string();
+                        if let Err(error) =
+                            window.emit("sticky://flush-close", json!({ "id": note_id }))
+                        {
+                            tracing::warn!(%error, "Sticky note flush-close event failed; closing without a page flush");
+                            let _ = host
+                                .sticky_note
+                                .close_note(host.kernel().context(), &note_id);
+                        }
                     } else if let Some(pin_id) =
                         label.strip_prefix(mod_screenshot::pins::PIN_LABEL_PREFIX)
                     {

@@ -261,6 +261,7 @@
       "emptyRenderedHint": "Empty note. Click 'Edit' above to start writing...",
       "opacityLabel": "Opacity {percent}%",
       "saving": "Saving...",
+      "saveFailed": "Save failed",
       "savedAt": "Saved {time}",
       "themes": {
         "neutral": "Neutral Slate",
