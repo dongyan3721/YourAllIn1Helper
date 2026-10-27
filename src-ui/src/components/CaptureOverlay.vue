@@ -388,7 +388,6 @@ const gifPreviewUrl = ref<string | null>(null);
 const scrollHeight = ref(0);
 const scrollThumbUrl = ref<string | null>(null);
 const textComposing = ref(false);
-let textOpenedAt = 0;
 let liveTimer: ReturnType<typeof setInterval> | undefined;
 let gifFinishing = false;
 let scrollStopping = false;
@@ -824,7 +823,6 @@ function beginAnnotation(p: Point) {
       return;
     case 'text':
       textEditor.value = { at: p, value: '', size: frameSize.value, color: color.value };
-      textOpenedAt = performance.now();
       void nextTick(() => textEl.value?.focus());
       return;
     case 'rect':
