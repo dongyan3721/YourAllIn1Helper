@@ -362,15 +362,22 @@ function persistWindow() {
   });
 }
 
-/** 把标题、正文、主题和窗口状态里尚未完成的写入全部落盘。 */
+/** 等未完成的写入，以及等待期间新产生的标题、正文、主题和窗口状态保存。 */
 async function flushDirtyState() {
+  let waited: Promise<void> = writeTail;
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    if (!contentDirty && !themeDirty && !windowDirty) return;
-    await persistContent();
-    await persistTheme();
-    await persistWindow();
+    waited = writeTail;
+    await waited;
+    if (contentDirty || themeDirty || windowDirty) {
+      await persistContent();
+      await persistTheme();
+      await persistWindow();
+      continue;
+    }
+    if (writeTail !== waited) continue;
+    return;
   }
-  if (contentDirty || themeDirty || windowDirty) {
+  if (contentDirty || themeDirty || windowDirty || writeTail !== waited) {
     throw new Error('便笺仍有未保存的更改');
   }
 }
@@ -429,7 +436,7 @@ async function exportMarkdownFile() {
 
 /**
  * 关闭并销毁便笺 WebView。
- * 必须先等最新标题、正文、主题和窗口状态写入成功；失败时保留窗口和未保存内容。
+ * 先等未完成的保存，再等关闭等待期间新产生的保存；失败时保留窗口和未保存内容。
  */
 async function closeNoteWindow() {
   if (closing) return;

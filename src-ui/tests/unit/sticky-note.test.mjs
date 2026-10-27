@@ -179,6 +179,51 @@ test('closing while a save is pending persists edits before destroying the WebVi
   assert.equal(sticky.calls[0].content, qaNote.content);
 });
 
+test('close waits for an unfinished save before destroying the WebView', async () => {
+  const sticky = await loadSticky({
+    note: qaNote,
+    defer: new Set(['sticky_save_content']),
+  });
+  sticky.scheduleSave();
+  await sticky.flushTimer();
+  assert.equal(sticky.calls.length, 1);
+  const closing = sticky.close();
+  await Promise.resolve();
+  assert.equal(sticky.destroyed, false);
+  assert.deepEqual(sticky.calls.map((call) => call.name), ['sticky_save_content']);
+  sticky.resolveHead({ title: qaNote.title, content_md: qaNote.content });
+  await closing;
+  assert.deepEqual(sticky.calls.map((call) => call.name), ['sticky_save_content', 'sticky_close_note']);
+  assert.equal(sticky.calls[0].content, qaNote.content);
+});
+
+test('a save generated while close is waiting is persisted before destroy', async () => {
+  const sticky = await loadSticky({
+    note: { ...qaNote, content: 'version one' },
+    defer: new Set(['sticky_save_content']),
+  });
+  sticky.scheduleSave();
+  await sticky.flushTimer();
+  const closing = sticky.close();
+  await Promise.resolve();
+  sticky.run('note.value.title = "generated title"');
+  sticky.run('note.value.content_md = "generated body"');
+  sticky.scheduleSave();
+  assert.equal(sticky.destroyed, false);
+  sticky.resolveHead({ title: qaNote.title, content_md: 'version one' });
+  await sticky.until(() => sticky.calls.filter((call) => call.name === 'sticky_save_content').length === 2);
+  assert.equal(sticky.calls[1].title, 'generated title');
+  assert.equal(sticky.calls[1].content, 'generated body');
+  assert.equal(sticky.destroyed, false);
+  sticky.resolveHead({ title: 'generated title', content_md: 'generated body' });
+  await closing;
+  assert.equal(sticky.calls.at(-1).name, 'sticky_close_note');
+  assert.deepEqual(
+    sticky.calls.filter((call) => call.name === 'sticky_save_content').map((call) => call.content),
+    ['version one', 'generated body'],
+  );
+});
+
 test('closing without pending edits only closes', async () => {
   const sticky = await loadSticky({ note: qaNote });
   await sticky.close();
