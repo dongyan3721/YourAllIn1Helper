@@ -162,6 +162,9 @@ struct TrackerState {
 impl TrackerState {
     fn close_session(&mut self) -> Option<ClosedSession> {
         let session = self.session.take()?;
+        if session.active_ms < 1_000 {
+            return None;
+        }
         Some(ClosedSession {
             app: session.app,
             started_at: session.started_at,
@@ -179,6 +182,8 @@ pub(crate) struct Tracker {
     ignored: RwLock<HashSet<String>>,
     state: Mutex<TrackerState>,
     operation: Mutex<()>,
+    #[cfg(test)]
+    write_attempts: std::sync::atomic::AtomicUsize,
 }
 
 impl Tracker {
@@ -190,7 +195,15 @@ impl Tracker {
             ignored: RwLock::new(HashSet::new()),
             state: Mutex::new(TrackerState::default()),
             operation: Mutex::new(()),
+            #[cfg(test)]
+            write_attempts: std::sync::atomic::AtomicUsize::new(0),
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn write_attempts(&self) -> usize {
+        self.write_attempts
+            .load(std::sync::atomic::Ordering::SeqCst)
     }
 
     pub(crate) fn apply_config(&self, config: AppUsageConfig) {
@@ -355,21 +368,27 @@ impl Tracker {
             if state.active && should_track && same_app {
                 // 同一应用持续活跃，保留会话。
             } else {
+                let was_active = state.active;
                 if let Some(session) = state.close_session() {
                     closed_session = Some(session);
+                    flush_requested = true;
                 }
                 state.active = should_track;
                 state.app = app.clone();
-                if let Some(app) = app {
-                    state.pending_apps.insert(app.app_id.clone(), app.clone());
-                    state.session = Some(Session {
-                        app,
-                        started_at: now_utc,
-                        last_at: now_utc,
-                        active_ms: 0,
-                    });
+                if should_track {
+                    if let Some(app) = app {
+                        state.pending_apps.insert(app.app_id.clone(), app.clone());
+                        state.session = Some(Session {
+                            app,
+                            started_at: now_utc,
+                            last_at: now_utc,
+                            active_ms: 0,
+                        });
+                    }
+                    flush_requested = true;
+                } else if was_active {
+                    flush_requested = true;
                 }
-                flush_requested = true;
             }
 
             state.last_mono = Some(now_mono);
@@ -482,6 +501,10 @@ impl Tracker {
             state.last_flush_mono = now_mono;
             return Ok(());
         }
+
+        #[cfg(test)]
+        self.write_attempts
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
         let write_result = store::write_pending(ctx, &deltas, &sessions);
         if let Err(error) = write_result {

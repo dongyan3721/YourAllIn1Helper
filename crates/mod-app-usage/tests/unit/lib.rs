@@ -231,6 +231,50 @@ fn idle_and_lock_pause_without_recording() {
 }
 
 #[test]
+fn paused_samples_do_not_create_or_write_empty_sessions() {
+    let dir = temp_dir("paused-writes");
+    let ctx = context(dir.path(), true);
+    let watcher = Arc::new(FakeWatcher::new("com.example.editor", "Editor"));
+    let clock = Arc::new(FakeClock::at(1_790_000_000_000));
+    let module = AppUsageModule::with_clock(watcher.clone(), clock.clone());
+
+    module.sample_now(&ctx).unwrap();
+    run_seconds(&module, &ctx, &clock, 5);
+    watcher.set_idle(301);
+    run_seconds(&module, &ctx, &clock, 1);
+    let writes_after_pause = module.tracker.write_attempts();
+    assert_eq!(
+        writes_after_pause, 1,
+        "closing the active session writes once"
+    );
+
+    run_seconds(&module, &ctx, &clock, 10);
+    watcher.set_idle(0);
+    watcher.set_locked(true);
+    run_seconds(&module, &ctx, &clock, 10);
+    watcher.set_locked(false);
+    module.flush_pending(&ctx).unwrap();
+
+    assert_eq!(
+        module.tracker.write_attempts(),
+        writes_after_pause,
+        "paused samples must not open zero-length sessions or flush empty transactions"
+    );
+    let sessions: i64 = ctx
+        .db
+        .with_conn(|conn| {
+            Ok(
+                conn.query_row("SELECT COUNT(*) FROM app_usage_sessions", [], |row| {
+                    row.get(0)
+                })?,
+            )
+        })
+        .unwrap();
+    assert_eq!(sessions, 1);
+    assert_eq!(total_seconds(&ctx), 6);
+}
+
+#[test]
 fn sleep_wake_gap_is_not_counted() {
     let dir = temp_dir("sleep");
     let ctx = context(dir.path(), true);
