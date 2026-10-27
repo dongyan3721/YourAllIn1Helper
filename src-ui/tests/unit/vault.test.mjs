@@ -103,6 +103,94 @@ test('VaultPanel expires reveal and generated values with the same 15 second tim
   assert.equal(run('generatedPassword.value'), '');
 });
 
+for (const [action, field, secret] of [
+  ["revealPassword('fiction-entry')", 'revealedPassword', 'fiction-reveal'],
+  ['generatePassword()', 'generatedPassword', 'fiction-generated'],
+]) {
+  test(`${action} expires after refresh and search change the operation epoch`, async () => {
+    const timers = [];
+    const { run } = await loadComponent((cmd) => {
+      if (cmd === 'vault_reveal_password') return Promise.resolve('fiction-reveal');
+      if (cmd === 'vault_generate_password') return Promise.resolve('fiction-generated');
+      if (cmd === 'vault_list_entries') return Promise.resolve({ entries: [] });
+      return Promise.resolve({});
+    }, timers);
+    await run(action);
+    const timer = timers.at(-1);
+    assert.equal(run(`${field}.value`), secret);
+    run(`searchQuery.value = 'fiction-search'`);
+    await run('refreshEntries()');
+    assert.equal(timer.cleared, false);
+    timer.callback();
+    assert.equal(run(`${field}.value`), '');
+  });
+}
+
+test('VaultPanel keeps the latest secret when reveals are consecutive and a stale timer fires', async () => {
+  const timers = [];
+  const { run } = await loadComponent((cmd, args) => {
+    if (cmd === 'vault_reveal_password') return Promise.resolve(`fiction-${args.id}`);
+    return Promise.resolve({});
+  }, timers);
+  await run(`revealPassword('first')`);
+  const firstTimer = timers.at(-1);
+  await run(`revealPassword('second')`);
+  const secondTimer = timers.at(-1);
+  assert.equal(firstTimer.cleared, true);
+  assert.equal(run('revealedPassword.value'), 'fiction-second');
+  firstTimer.callback();
+  assert.equal(run('revealedPassword.value'), 'fiction-second');
+  secondTimer.callback();
+  assert.equal(run('revealedPassword.value'), '');
+});
+
+test('VaultPanel ignores an out-of-order reveal response without replacing the latest secret or timer', async () => {
+  const pending = new Map();
+  const timers = [];
+  const { run } = await loadComponent((cmd, args) => {
+    if (cmd === 'vault_reveal_password') {
+      return new Promise((resolve) => pending.set(args.id, resolve));
+    }
+    return Promise.resolve({});
+  }, timers);
+  const first = run(`revealPassword('first')`);
+  const second = run(`revealPassword('second')`);
+  pending.get('second')('fiction-second');
+  await second;
+  pending.get('first')('fiction-first');
+  await first;
+  assert.equal(run('revealedPassword.value'), 'fiction-second');
+  assert.equal(run('revealedId.value'), 'second');
+  assert.equal(timers.length, 1);
+  timers[0].callback();
+  assert.equal(run('revealedPassword.value'), '');
+});
+
+for (const [action, field, secret] of [
+  ["revealPassword('fiction-entry')", 'revealedPassword', 'fiction-reveal'],
+  ['generatePassword()', 'generatedPassword', 'fiction-generated'],
+]) {
+  for (const cleanup of ['lockNow', 'unmount']) {
+    test(`${action} timer is cancelled by ${cleanup}`, async () => {
+      const timers = [];
+      const { run, unmount } = await loadComponent((cmd) => {
+        if (cmd === 'vault_reveal_password') return Promise.resolve('fiction-reveal');
+        if (cmd === 'vault_generate_password') return Promise.resolve('fiction-generated');
+        return Promise.resolve({});
+      }, timers);
+      await run(action);
+      const timer = timers.at(-1);
+      assert.equal(run(`${field}.value`), secret);
+      if (cleanup === 'unmount') unmount();
+      else run('lockNow()');
+      assert.equal(timer.cleared, true);
+      assert.equal(run(`${field}.value`), '');
+      timer.callback();
+      assert.equal(run(`${field}.value`), '');
+    });
+  }
+}
+
 test('VaultPanel never persists secrets or enables M2/clipboard IPC', async () => {
   const source = await readFile(componentUrl, 'utf8');
   assert.doesNotMatch(source, /localStorage|sessionStorage|vault_unlock_biometric/);
