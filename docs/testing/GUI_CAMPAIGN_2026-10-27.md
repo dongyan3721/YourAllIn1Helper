@@ -73,3 +73,5 @@
 - 完整集成前端回归：59 项通过；原便笺与密码超时组件复现 4 项现均通过；严格前端构建通过。Rust 全工作区 239 项通过、0 项失败、6 项 ignored；最终 GUI 回归进行中。 [Rust](evidence/gui-2026-10-27/rust-final.log)、[前端](evidence/gui-2026-10-27/ui-final.log)、[原复现](evidence/gui-2026-10-27/regressions-final.log)、[构建](evidence/gui-2026-10-27/ui-final-build.log)。
 - 便笺关闭以外的待核实风险：模块停用和应用退出会调用 `StickyNoteModule::on_shutdown`，直接销毁活动便笺窗口；防抖或在途保存可能因此丢失。该问题由代码审查确认调用路径、尚未 GUI 复现；OpenCode 正在独立分支 `codex/gui-qa-sticky-shutdown-20261028` 核实和修复。
 - 正式版 `152066a` 固定签名构建已验证，SHA-256 为 `2319cd1043bf61a0672260a98d2541e9b8ca017aa8c9af5746a8f299d833a171`。GUI 回归：对既有虚构便笺一次写入后立即关闭，唤醒后内容完整；同进程再次编辑、关闭、唤醒后新内容仍完整，最终归档。首次逐字 typeText 后立即关闭出现末尾截断，因未观察到完整输入是否送达，不据此判定保存缺陷；后续使用 AX setValue 完整写入复测通过。该 GUI 结果不覆盖模块停用/应用退出。
+
+- 退出/停用修复追加提交 `9e9053b`、`3ec4df7` 经审查合入；Codex 追加 `09d7507` 使标题输入及时标脏。完整集成回归：Rust 251 通过、0 失败、6 ignored，前端 62 通过，严格构建通过。[Rust](evidence/gui-2026-10-27/rust-complete.log)、[前端](evidence/gui-2026-10-27/ui-complete.log)、[构建](evidence/gui-2026-10-27/ui-complete-build.log)。退出/停用 GUI 复测待新包签名完成。
