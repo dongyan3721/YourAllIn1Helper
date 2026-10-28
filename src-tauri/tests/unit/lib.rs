@@ -164,3 +164,38 @@ fn translator_ipc_without_runtime_reports_error_instead_of_panicking() {
     assert!(!response.ok);
     assert!(response.error.unwrap().contains("异步运行时"));
 }
+
+#[test]
+fn test_kernel_open_dashboard_translator_route_and_rejects_kernel_open_window() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let host = DesktopHost::bootstrap(temp_dir.path(), true).unwrap();
+
+    // 验证正确的 kernel_open_dashboard 路由调用契约
+    let dash_resp = host.invoke_ipc("kernel_open_dashboard", json!({ "route": "/translator" }));
+    assert!(dash_resp.ok);
+    let data = dash_resp.data.unwrap();
+    assert_eq!(data["active_window_count"], 1);
+    let active_windows = data["active_windows"].as_array().unwrap();
+    let dashboard_win = active_windows
+        .iter()
+        .find(|w| w["spec"]["label"] == "dashboard")
+        .expect("dashboard window should be active");
+    assert_eq!(dashboard_win["spec"]["route"], "/dashboard/translator");
+
+    // 验证历史错误调用的 kernel_open_window 不存在并被明确报错拒绝
+    let bogus_resp = host.invoke_ipc(
+        "kernel_open_window",
+        json!({
+            "spec": {
+                "label": "dashboard",
+                "route": "/overview",
+                "title": "Dashboard",
+            }
+        }),
+    );
+    assert!(!bogus_resp.ok);
+    assert!(bogus_resp
+        .error
+        .unwrap()
+        .contains("Unknown IPC command: kernel_open_window"));
+}

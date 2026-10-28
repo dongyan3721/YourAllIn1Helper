@@ -605,6 +605,7 @@ const tabs = [
 
 /** 当前选中的选项卡 ID */
 const currentTab = ref('overview');
+let pendingRoute: string | null = null;
 
 /** 响应式状态数据 */
 const status = ref<KernelStatus | null>(null);
@@ -662,7 +663,12 @@ async function refreshDashboard() {
     if (s.config?.general?.language) {
       syncLocaleFromBackendConfig(s.config.general.language);
     }
-    if (!visibleTabs.value.some((tab) => tab.id === currentTab.value)) currentTab.value = 'overview';
+    if (pendingRoute && visibleTabs.value.some((tab) => tab.id === pendingRoute)) {
+      currentTab.value = pendingRoute;
+      pendingRoute = null;
+    } else if (!visibleTabs.value.some((tab) => tab.id === currentTab.value)) {
+      currentTab.value = 'overview';
+    }
     const [c, n, w, i] = await Promise.all([
       moduleEnabled('clipboard')
         ? invokeIpc<ClipboardRecord[]>('clipboard_list_items', { limit: 100 })
@@ -851,7 +857,8 @@ function formatDateTime(ts: number) {
 }
 
 function applyDashboardRoute(route: string | null) {
-  const normalized = route?.replace(/^dashboard\//, '/').replace(/^\/?/, '/');
+  if (!route) return;
+  const normalized = route.replace(/^\/?dashboard\//, '/').replace(/^\/?/, '/');
   const requested =
     normalized === '/media'
       ? 'media'
@@ -859,10 +866,19 @@ function applyDashboardRoute(route: string | null) {
       ? 'vault'
       : normalized === '/screenshot'
       ? 'screenshot'
+      : normalized === '/translator'
+      ? 'translator'
       : normalized === '/overview'
       ? 'overview'
       : null;
-  if (requested && visibleTabs.value.some((tab) => tab.id === requested)) currentTab.value = requested;
+  if (!requested) return;
+
+  if (visibleTabs.value.some((tab) => tab.id === requested)) {
+    currentTab.value = requested;
+    pendingRoute = null;
+  } else {
+    pendingRoute = requested;
+  }
 }
 
 let refreshTimer: ReturnType<typeof setInterval> | undefined;
@@ -870,6 +886,7 @@ let unlistenNavigate: (() => void) | undefined;
 let unlistenKernel: (() => void) | undefined;
 onMounted(async () => {
   const initialRoute = new URLSearchParams(window.location.search).get('route');
+  applyDashboardRoute(initialRoute);
   await refreshDashboard();
   applyDashboardRoute(initialRoute);
   // 即便事件订阅不可用也继续轮询，不让订阅异常中断整个主面板刷新。
