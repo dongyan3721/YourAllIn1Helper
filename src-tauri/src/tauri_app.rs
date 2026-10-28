@@ -423,8 +423,14 @@ async fn ipc(app: AppHandle, mut request: IpcRequest) -> IpcResponse {
     {
         // 页面仍处于启用状态时先完成落盘。失败则取消本次停用并保留窗口，
         // 由 IPC 错误向界面反馈，而不是先禁用再盲销毁。
-        if let Err(error) = host.sticky_note.flush_open_windows(host.kernel().context()) {
-            return IpcResponse::err(format!("便笺保存未完成，已取消停用：{}", error));
+        let flush_host = host.clone();
+        let flush = tauri::async_runtime::spawn_blocking(move || {
+            flush_host.sticky_note.flush_open_windows(flush_host.kernel().context())
+        }).await;
+        match flush {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => return IpcResponse::err(format!("便笺保存未完成，已取消停用：{}", error)),
+            Err(error) => return IpcResponse::err(format!("便笺保存线程失败，已取消停用：{}", error)),
         }
     }
     let previous = module_id
