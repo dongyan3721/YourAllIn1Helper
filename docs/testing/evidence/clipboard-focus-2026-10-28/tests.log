@@ -1,0 +1,19 @@
+   Compiling mod-clipboard v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/mod-clipboard)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.82s
+     Running unittests src/lib.rs (target/debug/deps/mod_clipboard-1135d3ccad6137e5)
+
+running 2 tests
+test tests::test_clipboard_deduplication_lru_eviction_and_suppression ... ok
+test tests::test_clipboard_image_capture_and_blob_storage ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.77s
+
+     Running tests/paste_pipeline.rs (target/debug/deps/paste_pipeline-6fcd459eef83eab8)
+
+running 4 tests
+test permission_denied_keeps_popup_and_clipboard_without_attempting_write ... ok
+test opening_remembers_destination_before_focus_changes_but_closing_does_not_replace_it ... ok
+test failed_clipboard_write_keeps_popup_and_never_sends_paste ... ok
+test selected_payload_is_written_before_popup_close_and_paste ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.72s

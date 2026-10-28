@@ -1,0 +1,8 @@
+{
+  "bundle_id": "com.allinone.desktop",
+  "signing_identity": "271023D7C47579D97F8E05720C765A4AF682D336",
+  "designated_requirement": "designated => identifier \"com.allinone.desktop\" and certificate leaf = H\"271023d7c47579d97f8e05720c765a4af682d336\"",
+  "executable_sha256": "ec01683a14dbca62ae5df8a7d628d601bd3afa043948a18d14dd336188df019f",
+  "source_head": "328d0012361014b59b877982ca9ee9e7ba2e5b67",
+  "source_dirty": true
+}

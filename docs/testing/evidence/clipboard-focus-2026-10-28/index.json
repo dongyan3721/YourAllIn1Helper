@@ -1,0 +1,20 @@
+{
+  "evidence": [
+    {
+      "file": "build.json",
+      "sha256": "1d6e9a078f0834f16654db0b03277760b5811ecabba41ff32f2ec04ce35f3588"
+    },
+    {
+      "file": "host-tests.log",
+      "sha256": "1a6473d40b05b720b596b0258a9debd31a53f73241309171ea28267076448cf5"
+    },
+    {
+      "file": "no-flash-build.json",
+      "sha256": "47f5ba7192e9337b14e7348be28f5d427d3edc281688acc1710a32c8b0405f04"
+    },
+    {
+      "file": "tests.log",
+      "sha256": "921e4d8fe24432f631e7675258fc3798d7834677313b128d23a3dd0ddf064b46"
+    }
+  ]
+}
