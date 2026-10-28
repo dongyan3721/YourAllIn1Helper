@@ -25,6 +25,8 @@ pub(super) fn native_error(error: impl std::fmt::Display) -> HalError {
 /// Production adapter. Deterministic state belongs exclusively to `MockOsHal`.
 #[derive(Clone, Default)]
 pub struct NativeOsHal {
+    #[cfg(target_os = "macos")]
+    paste_target: Arc<std::sync::Mutex<Option<i32>>>,
     paste_triggers: Arc<AtomicUsize>,
     /// 锁屏/息屏/睡眠事件观察者；平台无关包装，业务模块只看到 trait。
     usage_events: usage::NativeUsageEvents,

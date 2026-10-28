@@ -42,6 +42,18 @@ impl NativeOsHal {
 }
 
 impl InputSimulator for NativeOsHal {
+    fn remember_paste_target(&self) -> HalResult<()> {
+        #[cfg(target_os = "macos")]
+        {
+            let pid = objc2_app_kit::NSWorkspace::sharedWorkspace()
+                .frontmostApplication()
+                .map(|app| app.processIdentifier())
+                .filter(|pid| *pid > 0 && *pid as u32 != std::process::id());
+            *self.paste_target.lock().unwrap_or_else(|e| e.into_inner()) = pid;
+        }
+        Ok(())
+    }
+
     fn check_input_permission(&self) -> HalResult<()> {
         #[cfg(target_os = "macos")]
         if !super::selection::macos::is_accessibility_trusted() {
@@ -62,6 +74,8 @@ impl InputSimulator for NativeOsHal {
         self.check_input_permission()?;
         // Give the previous application time to regain focus after the transient popup closes.
         std::thread::sleep(Duration::from_millis(140));
+        #[cfg(target_os = "macos")]
+        self.restore_paste_target()?;
         self.send_modified_key('v')?;
         self.paste_triggers.fetch_add(1, Ordering::SeqCst);
         Ok(())
@@ -77,6 +91,42 @@ impl InputSimulator for NativeOsHal {
             .move_mouse(x, y, Coordinate::Abs)
             .map_err(native_error)?;
         enigo.scroll(delta_y, Axis::Vertical).map_err(native_error)
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl NativeOsHal {
+    fn restore_paste_target(&self) -> HalResult<()> {
+        use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication, NSWorkspace};
+        let target = self
+            .paste_target
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take();
+        let Some(pid) = target else {
+            return Ok(());
+        };
+        let app = NSRunningApplication::runningApplicationWithProcessIdentifier(pid)
+            .filter(|app| !app.isTerminated())
+            .ok_or_else(|| {
+                crate::HalError::NotFound("原粘贴目标已退出，请重新打开历史面板选择目标".into())
+            })?;
+        #[allow(deprecated)]
+        if !app.activateWithOptions(NSApplicationActivationOptions::ActivateIgnoringOtherApps) {
+            return Err(native_error("无法恢复原应用焦点，已取消自动粘贴"));
+        }
+        // Activation is asynchronous. Never send Cmd+V while Dashboard is still frontmost.
+        let deadline = std::time::Instant::now() + Duration::from_secs(1);
+        while std::time::Instant::now() < deadline {
+            if NSWorkspace::sharedWorkspace()
+                .frontmostApplication()
+                .is_some_and(|front| front.processIdentifier() == pid)
+            {
+                return Ok(());
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        Err(native_error("原应用未取得焦点，已取消自动粘贴"))
     }
 }
 

@@ -656,6 +656,9 @@ impl AppModule for ClipboardModule {
             {
                 ctx.window_pool.destroy_window("clipboard-popup")?;
             } else {
+                self.input_simulator
+                    .remember_paste_target()
+                    .map_err(|e| CoreError::Internal(anyhow::anyhow!(e)))?;
                 ctx.window_pool
                     .open_window(WindowSpec::clipboard_popup(480.0, 320.0))?;
             }

@@ -14,6 +14,10 @@ struct Probe {
     pasted: Mutex<Option<String>>,
 }
 impl InputSimulator for Probe {
+    fn remember_paste_target(&self) -> HalResult<()> {
+        self.events.lock().unwrap().push("remember");
+        Ok(())
+    }
     fn check_input_permission(&self) -> HalResult<()> {
         self.events.lock().unwrap().push("check");
         if self.denied.load(Ordering::SeqCst) {
@@ -39,6 +43,7 @@ impl InputSimulator for Probe {
 struct Backend(Arc<Probe>);
 impl WindowBackend for Backend {
     fn create_or_focus_window(&self, _: &WindowSpec) -> CoreResult<()> {
+        self.0.events.lock().unwrap().push("open");
         Ok(())
     }
     fn destroy_window(&self, _: &str) -> CoreResult<()> {
@@ -64,7 +69,20 @@ fn fixture(path: &std::path::Path) -> (AppKernel, ClipboardModule, Arc<Probe>) {
         .bootstrap()
         .unwrap();
     kernel.trigger_action("clipboard:toggle_popup").unwrap();
+    probe.events.lock().unwrap().clear();
     (kernel, ClipboardModule::new(probe.clone()), probe)
+}
+
+#[test]
+fn opening_remembers_destination_before_focus_changes_but_closing_does_not_replace_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let (kernel, _, probe) = fixture(dir.path());
+    kernel.trigger_action("clipboard:toggle_popup").unwrap();
+    kernel.trigger_action("clipboard:toggle_popup").unwrap();
+    assert_eq!(
+        *probe.events.lock().unwrap(),
+        vec!["close", "remember", "open"]
+    );
 }
 #[test]
 fn selected_payload_is_written_before_popup_close_and_paste() {
