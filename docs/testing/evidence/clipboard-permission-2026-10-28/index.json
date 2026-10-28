@@ -1,0 +1,41 @@
+{
+  "date": "2026-10-28",
+  "evidence": [
+    {
+      "file": "build.json",
+      "sha256": "984736085865eb521c0314200877150e7d872632d8648b3154d906acdf5cbb71"
+    },
+    {
+      "file": "host-tests.log",
+      "sha256": "9545a5a01ac4b7736b6012120984830451eea3d825446111ed1be10bcb29a178"
+    },
+    {
+      "file": "identities.json",
+      "sha256": "8ec3e5a07569d178c5d75e9afc9b633e892cb145ea2a695df6ac6f87d546553a"
+    },
+    {
+      "file": "preflight-gui.json",
+      "sha256": "26efcf46c31239f3fb95834474a7236f1dae9480fd88006215838aa7536a8139"
+    },
+    {
+      "file": "restore-tests.log",
+      "sha256": "d6a7ee19e56585ebba51b35ee99e80bbf54c8c26a27f555d9b06665cf2b551be"
+    },
+    {
+      "file": "restored-reminder-build.json",
+      "sha256": "f32fc41b1dc395d8a04311ec1126bab277ae2287c4ac879f034ea113ee512d0b"
+    },
+    {
+      "file": "rust-clipboard.log",
+      "sha256": "c3af12a244d4a4eb21505176201b4920d0a052409db5a7b331ba948f5fd66981"
+    },
+    {
+      "file": "ui-build.log",
+      "sha256": "dcb00d40dc9c2eabe05a649a069507b46132c99c7236ad5f374c7e548d9195d7"
+    },
+    {
+      "file": "ui-tests.log",
+      "sha256": "c4da8abbba9230d9ed1cf86f04957c547a8e22b9283c4fe4794dc6bf0f01439e"
+    }
+  ]
+}

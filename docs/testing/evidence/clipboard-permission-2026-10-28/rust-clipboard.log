@@ -1,0 +1,20 @@
+   Compiling app-core v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/app-core)
+   Compiling os-hal v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/os-hal)
+   Compiling mod-clipboard v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/mod-clipboard)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.10s
+     Running unittests src/lib.rs (target/debug/deps/mod_clipboard-1135d3ccad6137e5)
+
+running 2 tests
+test tests::test_clipboard_deduplication_lru_eviction_and_suppression ... ok
+test tests::test_clipboard_image_capture_and_blob_storage ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.78s
+
+     Running tests/paste_pipeline.rs (target/debug/deps/paste_pipeline-6fcd459eef83eab8)
+
+running 3 tests
+test selected_payload_is_written_before_popup_close_and_paste ... ok
+test failed_clipboard_write_keeps_popup_and_never_sends_paste ... ok
+test permission_denied_keeps_popup_and_clipboard_without_attempting_write ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.18s

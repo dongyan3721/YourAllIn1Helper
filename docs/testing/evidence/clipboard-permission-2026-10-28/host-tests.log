@@ -1,0 +1,16 @@
+   Compiling os-hal v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/os-hal)
+   Compiling mod-clipboard v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/mod-clipboard)
+   Compiling mod-window-pin v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/mod-window-pin)
+   Compiling mod-screenshot v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/mod-screenshot)
+   Compiling mod-password-vault v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/mod-password-vault)
+   Compiling mod-app-usage v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/mod-app-usage)
+   Compiling mod-translator v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/mod-translator)
+   Compiling mod-screen-ink v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/mod-screen-ink)
+   Compiling all-in-one-host v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/src-tauri)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.77s
+     Running unittests src/lib.rs (target/debug/deps/all_in_one_host-f12c984ac5a07715)
+
+running 1 test
+test tests::test_desktop_host_ipc_full_workflow ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 19 filtered out; finished in 3.19s

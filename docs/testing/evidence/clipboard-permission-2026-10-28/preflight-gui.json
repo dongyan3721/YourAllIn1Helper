@@ -1,0 +1,11 @@
+{
+  "os": "macOS 27.0 (26A428)",
+  "runtime_path": "dist/All-in-One Toolbox.app",
+  "permission_pane": "设备控制和数据访问",
+  "pane_switch_initial": "on",
+  "show_in_finder_initial_path": "/Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/team/cursor-screenshot/dist/All-in-One Toolbox.app",
+  "new_signed_app_preflight": "permission denied for accessibility",
+  "repeated_paste": "popup retained; permission guidance visible; no automatic system permission dialog",
+  "fixture": "AIO-QA-history-alpha",
+  "authorization_update": "awaiting user action"
+}

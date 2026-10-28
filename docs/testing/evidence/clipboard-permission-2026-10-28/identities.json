@@ -1,0 +1,10 @@
+{
+  "authorized_legacy_copy": {
+    "path": "/Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/team/cursor-screenshot/dist/All-in-One Toolbox.app",
+    "requirement": "# designated => cdhash H\"1664553dbe8cbfbd4fde0be46dd03ccb49c1ca6a\"\nExecutable=/Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/team/cursor-screenshot/dist/All-in-One Toolbox.app/Contents/MacOS/all-in-one-desktop"
+  },
+  "current_dist": {
+    "path": "/Users/santa_antilles/Desktop/your_all_in_one/dist/All-in-One Toolbox.app",
+    "requirement": "designated => identifier \"com.allinone.desktop\" and certificate leaf = H\"271023d7c47579d97f8e05720c765a4af682d336\"\nExecutable=/Users/santa_antilles/Desktop/your_all_in_one/dist/All-in-One Toolbox.app/Contents/MacOS/all-in-one-desktop"
+  }
+}
