@@ -99,10 +99,7 @@ impl StickyFlushCoordinator {
         let Some(signal) = signal else {
             return false;
         };
-        *signal
-            .result
-            .lock()
-            .unwrap_or_else(|err| err.into_inner()) = Some(result);
+        *signal.result.lock().unwrap_or_else(|err| err.into_inner()) = Some(result);
         signal.ready.notify_all();
         true
     }

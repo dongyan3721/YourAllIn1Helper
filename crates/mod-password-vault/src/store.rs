@@ -453,6 +453,91 @@ pub(crate) fn delete_entry(
     Ok(())
 }
 
+#[derive(Debug)]
+pub(crate) struct DeviceSlot {
+    pub slot_id: Uuid,
+    pub vault_id: Uuid,
+    pub backend: String,
+    pub wrap_nonce: Vec<u8>,
+    pub wrapped_dek: Vec<u8>,
+}
+
+pub(crate) fn load_device_slot(
+    conn: &Connection,
+    vault_id: &Uuid,
+    backend: &str,
+) -> VaultResult<Option<DeviceSlot>> {
+    let row = conn
+        .query_row(
+            "SELECT slot_id, backend, crypto_version, device_wrap_nonce,
+                    device_wrapped_dek, os_protected_dkek
+             FROM vault_device_slots
+             WHERE vault_id = ?1 AND backend = ?2
+             ORDER BY updated_at DESC
+             LIMIT 1",
+            params![vault_id.to_string(), backend],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, Vec<u8>>(3)?,
+                    row.get::<_, Vec<u8>>(4)?,
+                    row.get::<_, Option<Vec<u8>>>(5)?,
+                ))
+            },
+        )
+        .optional()?;
+    let Some((slot_id, backend, crypto_version, wrap_nonce, wrapped_dek, protected)) = row else {
+        return Ok(None);
+    };
+    // 这个后端的 DKEK 只在钥匙串里。数据库里出现一份就拒绝，避免把设备密钥放进普通文件。
+    if protected.is_some()
+        || crypto_version != i64::from(CRYPTO_VERSION)
+        || wrap_nonce.len() != NONCE_LEN
+        || wrapped_dek.len() != 48
+    {
+        return Err(VaultError::UnsupportedFormat);
+    }
+    Ok(Some(DeviceSlot {
+        slot_id: parse_uuid(&slot_id)?,
+        vault_id: *vault_id,
+        backend,
+        wrap_nonce,
+        wrapped_dek,
+    }))
+}
+
+pub(crate) fn insert_device_slot(
+    tx: &Transaction<'_>,
+    slot: &DeviceSlot,
+    now: i64,
+) -> VaultResult<()> {
+    tx.execute(
+        "INSERT INTO vault_device_slots (
+            slot_id, vault_id, backend, crypto_version, device_wrap_nonce,
+            device_wrapped_dek, os_protected_dkek, created_at, updated_at
+         ) VALUES (?1, ?2, ?3, 1, ?4, ?5, NULL, ?6, ?6)",
+        params![
+            slot.slot_id.to_string(),
+            slot.vault_id.to_string(),
+            slot.backend,
+            slot.wrap_nonce,
+            slot.wrapped_dek,
+            now,
+        ],
+    )?;
+    Ok(())
+}
+
+pub(crate) fn delete_device_slot(tx: &Transaction<'_>, slot_id: &Uuid) -> VaultResult<()> {
+    tx.execute(
+        "DELETE FROM vault_device_slots WHERE slot_id = ?1",
+        params![slot_id.to_string()],
+    )?;
+    Ok(())
+}
+
 /// 启动校验只读；任何 checksum、未来版本、结构或外键错误都 fail closed。
 pub(crate) fn validate_storage(conn: &Connection) -> VaultResult<()> {
     let expected = migrations().remove(0).checksum_hex();

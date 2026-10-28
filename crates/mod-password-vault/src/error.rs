@@ -13,6 +13,21 @@ pub enum VaultError {
     UnlockInProgress,
     #[error("master password unlock failed")]
     UnlockFailed,
+    #[error("biometric authentication was canceled")]
+    BiometricCanceled,
+    #[error("biometric authentication failed")]
+    BiometricFailed,
+    #[error("biometric authentication is unavailable")]
+    BiometricUnavailable,
+    /// 数据保护钥匙串要求受描述文件授权的 keychain-access-groups。本地证书加上该权限会被系统直接杀掉。
+    #[error("biometric keychain entitlement is missing")]
+    BiometricKeychainDenied,
+    #[error("biometric hardware is not enrolled")]
+    BiometricNotEnrolled,
+    #[error("biometric authentication is locked out")]
+    BiometricLockout,
+    #[error("biometric device key is no longer valid")]
+    BiometricKeyInvalid,
     #[error("invalid vault input: {0}")]
     InvalidInput(&'static str),
     #[error("entry was not found")]

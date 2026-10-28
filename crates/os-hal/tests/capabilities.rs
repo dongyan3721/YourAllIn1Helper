@@ -3,7 +3,8 @@ use os_hal::{BiometricAuthenticator, HalError, NativeOsHal, OcrProvider};
 #[test]
 fn unimplemented_native_capabilities_do_not_return_mock_results() {
     let native = NativeOsHal::new();
-    assert!(!native.is_biometric_available());
+    // 探测可以因硬件而不同，但不得弹窗，也不得用认证布尔值代替钥匙串解钥。
+    let _available = native.is_biometric_available();
     assert!(matches!(
         native.verify_identity("test"),
         Err(HalError::Unsupported(_))

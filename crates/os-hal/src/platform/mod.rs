@@ -1,4 +1,5 @@
 //! 原生适配器装配入口；业务模块只依赖 Trait，不依赖这里的具体实现。
+mod biometry;
 mod input;
 mod ocr;
 mod regions;
@@ -13,6 +14,7 @@ mod services;
 mod usage;
 mod windows;
 
+pub use biometry::{touch_id_probe, TouchIdProbe};
 pub use secure::write_animated_gif_clipboard;
 
 use crate::{HalError, OsHalBundle};

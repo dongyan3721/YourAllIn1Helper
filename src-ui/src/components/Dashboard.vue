@@ -304,8 +304,8 @@
             </div>
             <div class="metric-card">
               <span class="metric-label">{{ t('screen_ink.dashboard.canvasModeLabel') }}</span>
-              <span class="metric-val" :style="{ color: inkSessionStatus?.is_passthrough ? '#3b82f6' : '#8b5cf6' }">
-                {{ inkSessionStatus?.is_passthrough ? t('screen_ink.dashboard.passthroughMode') : t('screen_ink.dashboard.drawingMode') }}
+              <span class="metric-val" :style="{ color: canvasModeColor }">
+                {{ canvasModeText }}
               </span>
               <span class="metric-sub">{{ t('screen_ink.dashboard.canvasModeSub') }}</span>
             </div>
@@ -526,7 +526,7 @@
         </div>
       </section>
 
-      <!-- Tab 10: 主密码加密密码本（M1 禁用复制与生物识别） -->
+      <!-- Tab 10: 主密码加密密码本（macOS Touch ID 走钥匙串设备密钥） -->
       <section v-else-if="currentTab === 'vault'" class="tab-pane">
         <VaultPanel />
       </section>
@@ -614,6 +614,19 @@ const notes = ref<StickyNoteRecord[]>([]);
 const externalWindows = ref<ExternalWindowInfo[]>([]);
 const pinnedWindows = ref<PinnedWindowEntry[]>([]);
 const inkSessionStatus = ref<{ is_active: boolean; is_passthrough: boolean } | null>(null);
+
+/** 未启动会话时不能显示「墨迹绘制中」：只有会话进行中才区分绘制与穿透。 */
+const canvasModeText = computed(() => {
+  if (!inkSessionStatus.value?.is_active) return t('screen_ink.dashboard.idleMode');
+  return inkSessionStatus.value.is_passthrough
+    ? t('screen_ink.dashboard.passthroughMode')
+    : t('screen_ink.dashboard.drawingMode');
+});
+
+const canvasModeColor = computed(() => {
+  if (!inkSessionStatus.value?.is_active) return '#6b7280';
+  return inkSessionStatus.value.is_passthrough ? '#3b82f6' : '#8b5cf6';
+});
 
 const moduleEnabled = (id: string) =>
   status.value?.module_catalog.some((module) => module.id === id && module.enabled) ?? false;

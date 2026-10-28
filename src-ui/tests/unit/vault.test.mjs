@@ -42,7 +42,7 @@ async function loadComponent(invokeIpc, timers = []) {
   const run = (expression) => vm.runInContext(expression, context);
   run(`status.value = {
     initialized: true, locked: false, unlocking: false, epoch: 7,
-    auto_lock_seconds: 180, biometric_available: false,
+    auto_lock_seconds: 180, biometric_available: false, biometric_enrolled: false,
     secret_copy_available: false, capability_error: null
   }; busy.value = false`);
   return { run, unmount: () => unmounted() };
@@ -210,9 +210,10 @@ for (const [action, field, secret] of [
   }
 }
 
-test('VaultPanel never persists secrets or enables M2/clipboard IPC', async () => {
+test('VaultPanel unlocks with Touch ID without sending a password or storing secrets', async () => {
   const source = await readFile(componentUrl, 'utf8');
-  assert.doesNotMatch(source, /localStorage|sessionStorage|vault_unlock_biometric/);
+  assert.doesNotMatch(source, /localStorage|sessionStorage/);
+  assert.match(source, /invokeIpc<VaultStatus>\('vault_unlock_biometric'\)/);
   assert.match(source, /vault_copy_password/);
   assert.match(source, /pagehide/);
   assert.match(source, /visibilitychange/);

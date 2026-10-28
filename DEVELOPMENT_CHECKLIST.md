@@ -74,7 +74,7 @@ flowchart TD
     subgraph Unsupported["尚未实现的原生能力 (已移除 Mock 回退，明确返回 Unsupported)"]
         M1["OcrProvider: recognize_rgba -> HalError::Unsupported('native_ocr')"]
         M2["SelectionExtractor: macOS AX 已接入；Windows 待实现"]
-        M3["BiometricAuthenticator: verify_identity -> HalError::Unsupported('native_biometric_authentication')"]
+        M3["BiometricAuthenticator: macOS canEvaluatePolicy 只探测；verify_identity 仍拒绝，不能当解钥"]
         M4["ActiveAppWatcher: 原生采样已接入；无法查询会话时暂停计费"]
     end
 
@@ -86,7 +86,7 @@ flowchart TD
 - [x] **清理生产环境 Mock 回退（已完成）**：`crates/os-hal/src/platform/services.rs` 已彻底移除 `self.fallback` 调用，并由 `crates/os-hal/tests/capabilities.rs` 自动化测试强制守卫。
 - [x] **OCR 文字识别 (`OcrProvider`) macOS 接入**：模块 01 已使用 Apple Vision。Windows `Windows.Media.Ocr` 与自定义 ONNX 仍未实现，不返回假文字。
 - [ ] **全局划词提取 (`SelectionExtractor`) 原生接入**：macOS 已接入；Windows 和模拟复制待实现。原计划：接入 macOS `AXUIElementCopyAttributeValue(kAXSelectedTextAttribute)`、Windows `UIAutomation` 及 `enigo` 防污染模拟复制兜底。
-- [ ] **生物识别鉴权 (`BiometricAuthenticator`) 原生接入**：待在模块 10 开发时接入 macOS `LocalAuthentication`（Touch ID / 系统凭证）与 Windows `UserConsentVerifier`（Windows Hello）。
+- [ ] **生物识别鉴权 (`BiometricAuthenticator`) 原生接入**：macOS 已用 `LAContext.canEvaluatePolicy` 做不弹窗探测。密码本解锁不使用这个布尔值，而是读取带 `biometryCurrentSet` 的钥匙串项。Windows `UserConsentVerifier` 仍未接入。
 - [ ] **系统空闲与锁屏检测 (`ActiveAppWatcher`) 原生接入**：已接入，锁屏/睡眠人工回归待执行。原计划：接入 macOS `CGEventSourceSecondsSinceLastEventType` 与 Windows `GetLastInputInfo` / `WM_WTSSESSION_CHANGE`。
 
 ---
@@ -105,7 +105,7 @@ flowchart TD
 | **07** | **全局划词翻译** | `mod-translator` | **支持用户自定义 OpenAI 兼容大模型** | - [x] macOS AX 与显式触发、浮窗、取消及迟到结果隔离<br>- [x] Google / DeepL / OpenAI 兼容请求与 SSE<br>- [x] 自定义提供商：模型名、HTTPS 端点、钥匙串中的 API Key。填写 `https://主机/v1` 时自动补全 `/chat/completions`<br>- [x] API Key 不写入 config.json<br>- [ ] 多应用选区、Windows UIAutomation、模拟复制的实机验收 | macOS AXUIElement；reqwest native-tls |
 | **08** | **基础多媒体处理** | `mod-media-proc` | **已接入，GUI 回归见集成报告** | - [x] PNG/JPEG/WebP/BMP/ICO 编解码、质量与缩放<br>- [x] FFmpeg 转换/裁剪/提取音频/音量调整<br>- [x] 进度、并发、取消与停用清理、历史持久化<br>- [x] FFmpeg 9.0.2 真实样本集成测试<br>- [ ] Windows 实机回归 | `image`, 本机 FFmpeg/FFprobe |
 | **09** | **任意窗口置顶小工具** | `mod-window-pin` | **框架已接入；macOS 原窗口持续置顶不支持** | - [x] 双触发模式：当前活动窗口置顶 + 全屏准星拾取外部窗口<br>- [x] 内存句柄生命周期追踪与守护<br>- [x] **守护进程退出 (`on_shutdown`) 或模块停用时自动还原所有外部窗口原始状态**<br>- [x] macOS 原生高精度窗口枚举（彻底过滤 Layer 24 的 Window Server 与 Layer 20 的 Dock 等系统合成层，无 Mock）<br>- [x] 解决 macOS 无屏幕录制权限时标题丢失问题，平滑回退至 NSRunningApplication 本地化真实应用名称<br>- [x] 全屏准星拾取层彻底移除全屏暗色蒙层与模糊，采用原生 `crosshair` 十字准星与悬浮微高亮<br>- [x] 平台能力边界誠实声明（macOS `supports_external_topmost() == false` 时明确提示并禁用置顶按钮，保留窗口枚举与激活）<br>- [x] 主控台外部真实窗口列表管理、一键刷新、激活与多语言国际化支持 | `xcap`, `objc2`, `enigo`, Win32 / macOS 窗口 API |
-| **10** | **加密密码本** | `mod-password-vault` | **M1 已挂载，无 Mock 条目；生物识别不做** | - [x] 主密码 Argon2id + 随机 DEK + AES-256-GCM 字段加密，虚构测试数据<br>- [x] 条目增删改查、搜索、生成器、180 秒空闲与锁屏/睡眠锁定<br>- [x] 复制密码走剪贴板租约，30 秒后仅清除仍未改动的内容<br>- [x] 不使用 Mock 密码库，不伪造 Touch ID / Windows Hello<br>- [ ] 生物识别与设备钥匙：**明确不做**，界面保持禁用 | `argon2`, `aes-gcm`, `zeroize`, `arboard` |
+| **10** | **加密密码本** | `mod-password-vault` | **M1 已挂载；macOS Touch ID 设备槽已接入，真机 GUI 未验收** | - [x] 主密码 Argon2id + 随机 DEK + AES-256-GCM 字段加密，虚构测试数据<br>- [x] 条目增删改查、搜索、生成器、180 秒空闲与锁屏/睡眠锁定<br>- [x] 复制密码走剪贴板租约，30 秒后仅清除仍未改动的内容<br>- [x] 不使用 Mock 密码库，不把认证布尔值当成 DEK<br>- [x] macOS：钥匙串 `biometryCurrentSet` 保存 DKEK，主密码始终可恢复；Windows Hello 未做<br>- [ ] 签名后的真机 Touch ID 成功/取消/失效尚未验收 | `argon2`, `aes-gcm`, `zeroize`, `arboard`, `security-framework` |
 
 ---
 
@@ -123,4 +123,4 @@ flowchart LR
 ### 当前最优先事项（接续下一步）：
 1. 用打包后的 `dist/All-in-One Toolbox.app` 做截图、密码本和划词翻译的实机验收。录屏权限只授予这个 App。
 2. 翻译自定义大模型由用户在界面填写模型、HTTPS 端点和钥匙串中的 Key。不把 Key 写入仓库。
-3. 屏幕注释不做跨屏幕。密码本不做生物识别。截图不做自定义 ONNX。
+3. 屏幕注释不做跨屏幕。密码本的 Windows Hello 不做。截图不做自定义 ONNX。

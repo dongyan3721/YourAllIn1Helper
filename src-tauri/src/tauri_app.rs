@@ -130,9 +130,8 @@ impl TauriWindowBackend {
 impl WindowBackend for TauriWindowBackend {
     fn create_or_focus_window(&self, spec: &WindowSpec) -> CoreResult<()> {
         if spec.label == "clipboard-popup" {
-            crate::clipboard_window::prepare_popup(&self.app).map_err(|error| {
-                CoreError::Internal(anyhow::anyhow!(error))
-            })?;
+            crate::clipboard_window::prepare_popup(&self.app)
+                .map_err(|error| CoreError::Internal(anyhow::anyhow!(error)))?;
         }
         if let Some(window) = self.app.get_webview_window(&spec.label) {
             if spec.label == mod_screenshot::OVERLAY_LABEL {
@@ -301,7 +300,16 @@ impl WindowBackend for TauriWindowBackend {
                 })?;
         window
             .set_ignore_cursor_events(ignore)
-            .map_err(to_core_error)
+            .map_err(to_core_error)?;
+        if label == "screen-ink-canvas" {
+            // 穿透后画布不再收到鼠标移动，必须在原生层立刻恢复箭头。
+            // 回到绘制时先给十字；画布随后按工具发出的命令更晚入队，橡皮和激光笔不会被盖掉。
+            crate::ink_window::apply_cursor_shape(
+                &self.app,
+                if ignore { "arrow" } else { "crosshair" },
+            );
+        }
+        Ok(())
     }
 
     fn set_always_on_top(&self, label: &str, always_on_top: bool) -> CoreResult<()> {
@@ -430,18 +438,38 @@ async fn ipc(app: AppHandle, mut request: IpcRequest) -> IpcResponse {
         // 由 IPC 错误向界面反馈，而不是先禁用再盲销毁。
         let flush_host = host.clone();
         let flush = tauri::async_runtime::spawn_blocking(move || {
-            flush_host.sticky_note.flush_open_windows(flush_host.kernel().context())
-        }).await;
+            flush_host
+                .sticky_note
+                .flush_open_windows(flush_host.kernel().context())
+        })
+        .await;
         match flush {
             Ok(Ok(())) => {}
-            Ok(Err(error)) => return IpcResponse::err(format!("便笺保存未完成，已取消停用：{}", error)),
-            Err(error) => return IpcResponse::err(format!("便笺保存线程失败，已取消停用：{}", error)),
+            Ok(Err(error)) => {
+                return IpcResponse::err(format!("便笺保存未完成，已取消停用：{}", error))
+            }
+            Err(error) => {
+                return IpcResponse::err(format!("便笺保存线程失败，已取消停用：{}", error))
+            }
         }
     }
     let previous = module_id
         .as_deref()
         .map(|id| host.kernel().registry().is_enabled(id));
+    let ink_cursor_shape = (request.cmd == "ink_apply_cursor").then(|| {
+        request
+            .args
+            .get("shape")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    });
     let response = host.invoke_ipc(&request.cmd, request.args);
+    if response.ok {
+        if let Some(shape) = ink_cursor_shape.as_deref() {
+            crate::ink_window::apply_cursor_shape(&app, shape);
+        }
+    }
     if response.ok && request.cmd == "kernel_set_module_enabled" {
         let now_enabled = module_id
             .as_deref()
@@ -503,6 +531,7 @@ async fn ipc(app: AppHandle, mut request: IpcRequest) -> IpcResponse {
                     let _ = window.destroy();
                 }
             }
+            crate::ink_window::apply_cursor_shape(&app, "arrow");
         }
         emit_update(&app);
     } else if response.ok && request.cmd == "kernel_update_general_config" {
@@ -520,6 +549,9 @@ async fn ipc(app: AppHandle, mut request: IpcRequest) -> IpcResponse {
             || request.cmd == "ink_exit_session")
     {
         let snap = host.screen_ink.get_status();
+        if !snap.is_active {
+            crate::ink_window::apply_cursor_shape(&app, "arrow");
+        }
         let _ = app.emit(
             "screen-ink://mode-changed",
             serde_json::to_value(&snap).unwrap_or_default(),
@@ -606,6 +638,9 @@ fn trigger_action(app: &AppHandle, action_id: &str) {
         }
         if action_id.starts_with("screen_ink:") {
             let snap = host.screen_ink.get_status();
+            if !snap.is_active {
+                crate::ink_window::apply_cursor_shape(app, "arrow");
+            }
             let _ = app.emit(
                 "screen-ink://mode-changed",
                 serde_json::to_value(&snap).unwrap_or_default(),

@@ -28,6 +28,8 @@ objc2 = "0.6.5"
 block2 = "0.6.2"
 objc2-app-kit = "=0.3.2"
 objc2-foundation = "=0.3.2"
+# 数据保护钥匙串上的 biometryCurrentSet 需要 10.15 的 kSecUseDataProtectionKeychain。
+security-framework = { version = "3.7", features = ["OSX_10_15"] }
 
 [dev-dependencies]
 tempfile = "3.10"

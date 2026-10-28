@@ -4,7 +4,8 @@ export interface VaultStatus {
   unlocking: boolean;
   epoch: number;
   auto_lock_seconds: number;
-  biometric_available: false;
+  biometric_available: boolean;
+  biometric_enrolled: boolean;
   secret_copy_available: boolean;
   capability_error: string | null;
 }

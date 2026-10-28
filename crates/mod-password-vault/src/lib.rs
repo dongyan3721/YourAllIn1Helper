@@ -1,10 +1,11 @@
-//! 功能 10 M1：主密码加密密码本。
+//! 功能 10：主密码加密密码本，macOS 可用 Touch ID 设备槽。
 //!
-//! M1 已接入 Host，但未通过独立安全审查前只处理虚构数据。生物识别与秘密复制
-//! 在本版本明确禁用；模块不依赖 EventBus 或剪贴板模块。
+//! Touch ID 只负责取出钥匙串里的设备密钥，再用它解开 DEK。认证布尔值本身不能解锁。
+//! Windows Hello 仍未接入。未通过独立安全审查前只处理虚构数据。
 
 mod crypto;
 mod error;
+mod keystore;
 mod model;
 pub mod native;
 mod service;

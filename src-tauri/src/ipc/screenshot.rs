@@ -182,11 +182,8 @@ impl DesktopHost {
                     .and_then(Value::as_str)
                     .filter(|value| !value.is_empty())
                     .map(|value| {
-                        base64::Engine::decode(
-                            &base64::engine::general_purpose::STANDARD,
-                            value,
-                        )
-                        .map_err(|e| CoreError::Config(format!("标注层数据无效: {}", e)))
+                        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, value)
+                            .map_err(|e| CoreError::Config(format!("标注层数据无效: {}", e)))
                     })
                     .transpose()?;
                 Ok(serde_json::to_value(shot.start_gif(

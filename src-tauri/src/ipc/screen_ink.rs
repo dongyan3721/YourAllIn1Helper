@@ -78,6 +78,17 @@ impl DesktopHost {
                 Ok(serde_json::to_value(cfg)?)
             }
 
+            "ink_apply_cursor" => {
+                let shape = args.get("shape").and_then(Value::as_str).unwrap_or("");
+                if !matches!(shape, "arrow" | "crosshair" | "cell" | "none") {
+                    return Err(CoreError::Config(format!(
+                        "Unknown screen ink cursor shape: {shape}"
+                    )));
+                }
+                // 真正的光标切换在宿主主线程完成；这里只校验形状，避免领域模块依赖 AppKit。
+                Ok(json!({ "shape": shape }))
+            }
+
             "ink_update_settings" => {
                 let mut cfg: ScreenInkConfig = serde_json::from_value(args).map_err(|e| {
                     CoreError::Config(format!("Invalid screen ink settings: {}", e))

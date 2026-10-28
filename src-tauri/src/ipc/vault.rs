@@ -50,6 +50,11 @@ struct GenerateArgs {
     policy: PasswordPolicy,
 }
 
+#[derive(Deserialize)]
+struct BiometricArgs {
+    enabled: bool,
+}
+
 fn parse<T: for<'de> Deserialize<'de>>(args: Value) -> Result<T, String> {
     serde_json::from_value(args).map_err(|error| format!("Invalid vault IPC payload: {}", error))
 }
@@ -59,10 +64,7 @@ fn vault_error(error: mod_password_vault::VaultError) -> String {
 }
 
 /// 用共享租约挡住剪贴板历史，30 秒后仅当内容仍是这次写入时才清除。
-fn copy_secret_with_lease(
-    ctx: &app_core::ModuleContext,
-    secret: &str,
-) -> Result<(), String> {
+fn copy_secret_with_lease(ctx: &app_core::ModuleContext, secret: &str) -> Result<(), String> {
     let lease = ctx.event_bus.acquire_clipboard_suppression(
         "password_vault",
         "secret_copy",
@@ -110,6 +112,18 @@ impl DesktopHost {
                         Zeroizing::new(args.password),
                         Zeroizing::new(args.confirmation),
                     )
+                    .await
+                    .map_err(vault_error)?;
+                to_json(status)
+            }
+            "vault_unlock_biometric" => {
+                let status = service.unlock_biometric(ctx).await.map_err(vault_error)?;
+                to_json(status)
+            }
+            "vault_set_biometric_enabled" => {
+                let args = parse::<BiometricArgs>(args)?;
+                let status = service
+                    .set_biometric_enabled(ctx, args.enabled)
                     .await
                     .map_err(vault_error)?;
                 to_json(status)

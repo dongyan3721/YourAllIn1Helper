@@ -140,7 +140,12 @@ impl Fixture {
 
     pub fn with_random(random: Arc<dyn VaultRandom>) -> Self {
         let temp = TempDir::new().expect("temporary vault directory");
-        Self::build(temp, None, random)
+        Self::build(temp, None, random, None)
+    }
+
+    pub fn with_keystore(keystore: Arc<dyn crate::keystore::VaultKeyStore>) -> Self {
+        let temp = TempDir::new().expect("temporary vault directory");
+        Self::build(temp, None, Arc::new(CountingRandom::new()), Some(keystore))
     }
 
     pub fn reopen(&self) -> Self {
@@ -149,6 +154,7 @@ impl Fixture {
             temp,
             Some(self._temp.path().to_path_buf()),
             Arc::new(CountingRandom::new()),
+            None,
         )
     }
 
@@ -156,9 +162,13 @@ impl Fixture {
         temp: TempDir,
         existing_path: Option<std::path::PathBuf>,
         random: Arc<dyn VaultRandom>,
+        keystore: Option<Arc<dyn crate::keystore::VaultKeyStore>>,
     ) -> Self {
         let watcher = Arc::new(FakeWatcher::default());
-        let service = Arc::new(VaultService::with_random(random));
+        let service = Arc::new(match keystore {
+            Some(keystore) => VaultService::with_parts(random, keystore),
+            None => VaultService::with_random(random),
+        });
         let module = Arc::new(PasswordVaultModule::with_service(
             watcher.clone(),
             service.clone(),

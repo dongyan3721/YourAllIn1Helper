@@ -15,7 +15,9 @@ fn sticky_windows_can_register_and_release_lifecycle_event_listeners() {
         let applies = value["windows"].as_array().is_some_and(|windows| {
             windows.iter().filter_map(|v| v.as_str()).any(|pattern| {
                 pattern == label
-                    || pattern.strip_suffix('*').is_some_and(|prefix| label.starts_with(prefix))
+                    || pattern
+                        .strip_suffix('*')
+                        .is_some_and(|prefix| label.starts_with(prefix))
             })
         });
         if applies {
@@ -27,6 +29,9 @@ fn sticky_windows_can_register_and_release_lifecycle_event_listeners() {
         }
     }
     for permission in ["core:event:allow-listen", "core:event:allow-unlisten"] {
-        assert!(permissions.contains(permission), "{label} lacks {permission}; shutdown acknowledgements cannot work");
+        assert!(
+            permissions.contains(permission),
+            "{label} lacks {permission}; shutdown acknowledgements cannot work"
+        );
     }
 }

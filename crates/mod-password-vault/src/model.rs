@@ -88,6 +88,8 @@ pub struct VaultStatus {
     pub epoch: u64,
     pub auto_lock_seconds: u64,
     pub biometric_available: bool,
+    /// 当前库已经登记设备槽。没有槽时不能用 Touch ID 解锁。
+    pub biometric_enrolled: bool,
     pub secret_copy_available: bool,
     pub capability_error: Option<String>,
 }

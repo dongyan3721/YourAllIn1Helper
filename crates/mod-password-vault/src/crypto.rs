@@ -191,24 +191,59 @@ pub(crate) fn decrypt_field(
     Ok(Zeroizing::new(plaintext))
 }
 
+pub(crate) fn device_aad(vault_id: &Uuid, slot_id: &Uuid, backend_id: u8) -> Vec<u8> {
+    let mut aad = Vec::with_capacity(7 + 2 + 16 + 16 + 1);
+    aad.extend_from_slice(b"AIOVDW1");
+    aad.extend_from_slice(&CRYPTO_VERSION.to_be_bytes());
+    aad.extend_from_slice(vault_id.as_bytes());
+    aad.extend_from_slice(slot_id.as_bytes());
+    aad.push(backend_id);
+    aad
+}
+
+fn seal(
+    kek: &[u8; KEY_LEN],
+    dek: &[u8; KEY_LEN],
+    nonce: &[u8; NONCE_LEN],
+    aad: &[u8],
+) -> VaultResult<[u8; KEY_LEN + TAG_LEN]> {
+    let encrypted = cipher(kek)?
+        .encrypt(Nonce::from_slice(nonce), Payload { msg: dek, aad })
+        .map_err(|_| VaultError::DataIntegrityError)?;
+    let mut wrapped = [0u8; KEY_LEN + TAG_LEN];
+    wrapped.copy_from_slice(&encrypted);
+    Ok(wrapped)
+}
+
+fn open(
+    kek: &[u8; KEY_LEN],
+    nonce: &[u8],
+    wrapped: &[u8],
+    aad: &[u8],
+    failure: fn() -> VaultError,
+) -> VaultResult<Zeroizing<[u8; KEY_LEN]>> {
+    if nonce.len() != NONCE_LEN || wrapped.len() != KEY_LEN + TAG_LEN {
+        return Err(failure());
+    }
+    let plaintext = cipher(kek)
+        .map_err(|_| failure())?
+        .decrypt(Nonce::from_slice(nonce), Payload { msg: wrapped, aad })
+        .map_err(|_| failure())?;
+    if plaintext.len() != KEY_LEN {
+        return Err(failure());
+    }
+    let mut dek = Zeroizing::new([0u8; KEY_LEN]);
+    dek.copy_from_slice(&plaintext);
+    Ok(dek)
+}
+
 pub(crate) fn wrap_dek(
     kek: &[u8; KEY_LEN],
     vault_id: &Uuid,
     dek: &[u8; KEY_LEN],
     nonce: &[u8; NONCE_LEN],
 ) -> VaultResult<[u8; KEY_LEN + TAG_LEN]> {
-    let encrypted = cipher(kek)?
-        .encrypt(
-            Nonce::from_slice(nonce),
-            Payload {
-                msg: dek,
-                aad: &master_aad(vault_id),
-            },
-        )
-        .map_err(|_| VaultError::DataIntegrityError)?;
-    let mut wrapped = [0u8; KEY_LEN + TAG_LEN];
-    wrapped.copy_from_slice(&encrypted);
-    Ok(wrapped)
+    seal(kek, dek, nonce, &master_aad(vault_id))
 }
 
 pub(crate) fn unwrap_dek(
@@ -217,25 +252,37 @@ pub(crate) fn unwrap_dek(
     nonce: &[u8],
     wrapped: &[u8],
 ) -> VaultResult<Zeroizing<[u8; KEY_LEN]>> {
-    if nonce.len() != NONCE_LEN || wrapped.len() != KEY_LEN + TAG_LEN {
-        return Err(VaultError::UnlockFailed);
-    }
-    let plaintext = cipher(kek)
-        .map_err(|_| VaultError::UnlockFailed)?
-        .decrypt(
-            Nonce::from_slice(nonce),
-            Payload {
-                msg: wrapped,
-                aad: &master_aad(vault_id),
-            },
-        )
-        .map_err(|_| VaultError::UnlockFailed)?;
-    if plaintext.len() != KEY_LEN {
-        return Err(VaultError::UnlockFailed);
-    }
-    let mut dek = Zeroizing::new([0u8; KEY_LEN]);
-    dek.copy_from_slice(&plaintext);
-    Ok(dek)
+    open(kek, nonce, wrapped, &master_aad(vault_id), || {
+        VaultError::UnlockFailed
+    })
+}
+
+pub(crate) fn wrap_device_dek(
+    dkek: &[u8; KEY_LEN],
+    vault_id: &Uuid,
+    slot_id: &Uuid,
+    backend_id: u8,
+    dek: &[u8; KEY_LEN],
+    nonce: &[u8; NONCE_LEN],
+) -> VaultResult<[u8; KEY_LEN + TAG_LEN]> {
+    seal(dkek, dek, nonce, &device_aad(vault_id, slot_id, backend_id))
+}
+
+pub(crate) fn unwrap_device_dek(
+    dkek: &[u8; KEY_LEN],
+    vault_id: &Uuid,
+    slot_id: &Uuid,
+    backend_id: u8,
+    nonce: &[u8],
+    wrapped: &[u8],
+) -> VaultResult<Zeroizing<[u8; KEY_LEN]>> {
+    open(
+        dkek,
+        nonce,
+        wrapped,
+        &device_aad(vault_id, slot_id, backend_id),
+        || VaultError::BiometricKeyInvalid,
+    )
 }
 
 pub(crate) fn plaintext_to_string(mut plaintext: Zeroizing<Vec<u8>>) -> VaultResult<SecretString> {

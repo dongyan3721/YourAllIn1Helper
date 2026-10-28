@@ -3106,6 +3106,7 @@ dependencies = [
  "os-hal",
  "parking_lot",
  "rusqlite",
+ "security-framework",
  "serde",
  "serde_json",
  "tempfile",

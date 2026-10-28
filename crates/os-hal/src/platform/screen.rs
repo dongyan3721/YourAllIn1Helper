@@ -61,7 +61,9 @@ impl ScreenCapturer for NativeOsHal {
                 let Ok(x) = monitor.x() else { return false };
                 let Ok(y) = monitor.y() else { return false };
                 let Ok(w) = monitor.width() else { return false };
-                let Ok(h) = monitor.height() else { return false };
+                let Ok(h) = monitor.height() else {
+                    return false;
+                };
                 bounds.x >= x
                     && bounds.y >= y
                     && (bounds.x as i64) < x as i64 + w as i64
@@ -247,7 +249,9 @@ fn capture_below_window(bounds: SelectionBox, below_window_id: u32) -> HalResult
     let width = CGImage::width(Some(&*cg_image));
     let height = CGImage::height(Some(&*cg_image));
     if width == 0 || height == 0 {
-        return Err(HalError::NativeCallFailed("采集到的区域尺寸为 0".to_string()));
+        return Err(HalError::NativeCallFailed(
+            "采集到的区域尺寸为 0".to_string(),
+        ));
     }
     let data_provider = CGImage::data_provider(Some(&*cg_image))
         .ok_or_else(|| HalError::NativeCallFailed("获取 CGDataProvider 失败".to_string()))?;

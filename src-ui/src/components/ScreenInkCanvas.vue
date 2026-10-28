@@ -12,7 +12,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, nextTick, onMounted, onUnmounted } from 'vue';
 import {
   type InkTool,
   type InkPoint,
@@ -30,6 +30,7 @@ let ctx: CanvasRenderingContext2D | null = null;
 const currentTool = ref<InkTool>('pen');
 const currentColor = ref<string>('#ef4444');
 const currentWidth = ref<number>(4);
+const canvasPassthrough = ref(false);
 
 // 历史记录与激光笔管理器
 const historyManager = new InkHistoryManager();
@@ -57,13 +58,20 @@ onMounted(async () => {
 
   // 先读取已生效的模块配置，避免默认 pen/red 覆盖工具栏的自定义初始状态。
   try {
-    const status = await invokeIpc<{ active_tool: InkTool; color: string; stroke_width: number }>('ink_get_status');
+    const status = await invokeIpc<{
+      active_tool: InkTool;
+      color: string;
+      stroke_width: number;
+      is_passthrough: boolean;
+    }>('ink_get_status');
     currentTool.value = status.active_tool;
     currentColor.value = status.color;
     currentWidth.value = status.stroke_width;
+    canvasPassthrough.value = status.is_passthrough;
   } catch (_) {}
   // 通知工具栏画布已就绪
   notifyToolbar();
+  void applyNativeCursor();
 
   // 监听原生 Tauri 事件总线（支持快捷键或主控台直接触发清屏/穿透）
   const tauriListen = (window as any).__TAURI__?.event?.listen;
@@ -75,8 +83,12 @@ onMounted(async () => {
         redrawAll();
         notifyToolbar();
       });
-      unlistenMode = await tauriListen('screen-ink://mode-changed', () => {
+      unlistenMode = await tauriListen('screen-ink://mode-changed', (event: { payload?: { is_passthrough?: boolean } }) => {
+        if (typeof event?.payload?.is_passthrough === 'boolean') {
+          canvasPassthrough.value = event.payload.is_passthrough;
+        }
         notifyToolbar();
+        void applyNativeCursor();
       });
     } catch (_) {}
   }
@@ -131,6 +143,7 @@ async function handleToolbarMessage(data: any) {
   switch (data.type) {
     case 'set_tool':
       currentTool.value = data.tool;
+      void applyNativeCursor();
       break;
     case 'set_color':
       currentColor.value = data.color;
@@ -161,6 +174,26 @@ async function handleToolbarMessage(data: any) {
       await handleExportSnapshot(data.copyToClipboard);
       break;
   }
+}
+
+/** 穿透用箭头；橡皮是单元格光标，激光笔隐藏，其余绘制工具用十字。 */
+function cursorShape(): 'arrow' | 'crosshair' | 'cell' | 'none' {
+  if (canvasPassthrough.value) return 'arrow';
+  if (currentTool.value === 'eraser') return 'cell';
+  if (currentTool.value === 'laser') return 'none';
+  return 'crosshair';
+}
+
+/**
+ * CSS cursor 只在下一次鼠标事件里生效。等 DOM 类名落地后再让宿主立刻设置 NSCursor，
+ * 这样切换穿透或工具时，停在画布上的指针不用再点一下空白处。
+ */
+async function applyNativeCursor() {
+  await nextTick();
+  const shape = cursorShape();
+  try {
+    await invokeIpc('ink_apply_cursor', { shape });
+  } catch (_) {}
 }
 
 function notifyToolbar() {

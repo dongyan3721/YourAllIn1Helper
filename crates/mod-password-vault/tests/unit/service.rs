@@ -116,7 +116,7 @@ async fn wrong_password_and_every_sensitive_operation_fail_when_locked() {
         fixture
             .service
             .change_master_password(
-                ctx,
+                ctx.clone(),
                 Zeroizing::new(MASTER.to_string()),
                 Zeroizing::new("another-fiction-master".to_string()),
             )
@@ -128,8 +128,8 @@ async fn wrong_password_and_every_sensitive_operation_fail_when_locked() {
         Err(VaultError::FeatureDisabled(_))
     ));
     assert!(matches!(
-        fixture.service.biometric_disabled(),
-        Err(VaultError::FeatureDisabled(_))
+        fixture.service.set_biometric_enabled(ctx, true).await,
+        Err(VaultError::BiometricUnavailable)
     ));
 }
 
@@ -553,6 +553,111 @@ fn migration_preserves_legacy_tables_and_checksum_changes_fail_closed() {
         store::validate_storage(&conn),
         Err(VaultError::UnsupportedFormat)
     ));
+}
+
+#[tokio::test]
+async fn explicit_memory_device_slot_unlocks_and_cancel_does_not() {
+    let fixture = Fixture::with_keystore(Arc::new(crate::keystore::MemoryKeyStore::new()));
+    fixture.initialize().await;
+    fixture.unlock().await;
+    let ctx = fixture.kernel.context().clone();
+    let entry = fixture
+        .service
+        .create_entry(ctx.clone(), input("touch"))
+        .await
+        .expect("entry");
+    let enabled = fixture
+        .service
+        .set_biometric_enabled(ctx.clone(), true)
+        .await
+        .expect("enroll memory slot");
+    assert!(enabled.biometric_enrolled);
+    {
+        let conn = fixture.kernel.context().db.lock();
+        let protected: Option<Vec<u8>> = conn
+            .query_row(
+                "SELECT os_protected_dkek FROM vault_device_slots",
+                [],
+                |row| row.get(0),
+            )
+            .expect("device slot row");
+        assert!(protected.is_none());
+    }
+    fixture.service.lock(LockReason::Manual);
+    let unlocked = fixture
+        .service
+        .unlock_biometric(ctx.clone())
+        .await
+        .expect("memory unprotect");
+    assert!(!unlocked.locked);
+    let revealed = fixture
+        .service
+        .reveal_password(ctx.clone(), &entry.id)
+        .await
+        .expect("reveal");
+    assert_eq!(revealed.as_str(), "not-a-real-password-touch");
+    fixture.service.lock(LockReason::Manual);
+    fixture.unlock().await;
+    fixture
+        .service
+        .set_biometric_enabled(ctx.clone(), false)
+        .await
+        .expect("revoke");
+    fixture.service.lock(LockReason::Manual);
+    assert!(matches!(
+        fixture.service.unlock_biometric(ctx).await,
+        Err(VaultError::BiometricKeyInvalid)
+    ));
+
+    let canceled = Fixture::with_keystore(Arc::new(CancelStore));
+    canceled.initialize().await;
+    canceled.unlock().await;
+    let ctx = canceled.kernel.context().clone();
+    canceled
+        .service
+        .set_biometric_enabled(ctx.clone(), true)
+        .await
+        .expect("record slot");
+    canceled.service.lock(LockReason::Manual);
+    assert!(matches!(
+        canceled.service.unlock_biometric(ctx.clone()).await,
+        Err(VaultError::BiometricCanceled)
+    ));
+    assert!(canceled.service.status().locked);
+    canceled.unlock().await;
+    assert!(!canceled.service.status().locked);
+}
+
+struct CancelStore;
+
+impl crate::keystore::VaultKeyStore for CancelStore {
+    fn backend_id(&self) -> &'static str {
+        crate::keystore::MACOS_BIOMETRY_BACKEND
+    }
+
+    fn backend_byte(&self) -> u8 {
+        crate::keystore::MACOS_BIOMETRY_BACKEND_ID
+    }
+
+    fn available(&self) -> bool {
+        true
+    }
+
+    fn gate(&self) -> crate::VaultResult<()> {
+        Ok(())
+    }
+
+    fn protect(&self, _slot_id: &uuid::Uuid, _dkek: &[u8; 32]) -> crate::VaultResult<()> {
+        Ok(())
+    }
+
+    fn unprotect(&self, _slot_id: &uuid::Uuid) -> crate::VaultResult<zeroize::Zeroizing<[u8; 32]>> {
+        Err(VaultError::BiometricCanceled)
+    }
+
+    fn revoke(&self, _slot_id: &uuid::Uuid) -> crate::VaultResult<()> {
+        Ok(())
+    }
 }
 
 #[test]

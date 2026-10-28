@@ -1,15 +1,17 @@
 use crate::{
     crypto::{
         decrypt_field, derive_kek, encrypt_field, plaintext_to_string, random_nonce, random_uuid,
-        unwrap_dek, wrap_dek, KdfProfile, OsRandom, VaultRandom, KEY_LEN, NONCE_LEN,
+        unwrap_dek, unwrap_device_dek, wrap_dek, wrap_device_dek, KdfProfile, OsRandom,
+        VaultRandom, KEY_LEN, NONCE_LEN,
     },
     error::{VaultError, VaultResult},
+    keystore::{self, production_keystore, VaultKeyStore},
     model::{
         FieldId, LockReason, PasswordPolicy, SecretString, VaultEntry, VaultEntryInput,
         VaultEntryPage, VaultEntrySummary, VaultEvent, VaultMutationResult, VaultStatus,
         AUTO_LOCK_SECONDS,
     },
-    store::{self, EntryMetadata, FieldEnvelope, MasterSlot, StoredEntry},
+    store::{self, DeviceSlot, EntryMetadata, FieldEnvelope, MasterSlot, StoredEntry},
 };
 use app_core::ModuleContext;
 use chrono::Utc;
@@ -35,6 +37,7 @@ struct VaultState {
     epoch: u64,
     accepting: bool,
     vault_id: Option<Uuid>,
+    device_slot: Option<Uuid>,
     dek: Option<Zeroizing<[u8; KEY_LEN]>>,
     used_nonces: HashSet<[u8; NONCE_LEN]>,
     capability_error: Option<String>,
@@ -47,20 +50,22 @@ impl VaultState {
             epoch: 0,
             accepting: false,
             vault_id: None,
+            device_slot: None,
             dek: None,
             used_nonces: HashSet::new(),
             capability_error: None,
         }
     }
 
-    fn status(&self) -> VaultStatus {
+    fn status(&self, biometric_available: bool) -> VaultStatus {
         VaultStatus {
             initialized: self.phase != VaultPhase::Uninitialized,
             locked: self.phase != VaultPhase::Unlocked,
             unlocking: self.phase == VaultPhase::Unlocking,
             epoch: self.epoch,
             auto_lock_seconds: AUTO_LOCK_SECONDS,
-            biometric_available: false,
+            biometric_available,
+            biometric_enrolled: self.device_slot.is_some(),
             secret_copy_available: true,
             capability_error: self.capability_error.clone(),
         }
@@ -71,6 +76,7 @@ impl VaultState {
 pub struct VaultService {
     state: Mutex<VaultState>,
     random: Arc<dyn VaultRandom>,
+    keystore: Arc<dyn VaultKeyStore>,
     sink: RwLock<Option<Arc<dyn VaultEventSink>>>,
 }
 
@@ -82,17 +88,31 @@ impl Default for VaultService {
 
 impl VaultService {
     pub fn new() -> Self {
-        Self::with_random(Arc::new(OsRandom))
+        Self::with_parts(Arc::new(OsRandom), production_keystore())
     }
 
-    /// 显式测试/装配入口；生产 new 固定使用 OsRandom，不存在 Mock 回退。
+    /// 显式测试入口。随机源可替换，但设备槽固定为不可用，避免测试写系统钥匙串。
     #[doc(hidden)]
     pub fn with_random(random: Arc<dyn VaultRandom>) -> Self {
+        Self::with_parts(random, Arc::new(keystore::UnavailableKeyStore))
+    }
+
+    /// 显式注入设备槽。生产构造不会传入内存槽。
+    #[doc(hidden)]
+    pub(crate) fn with_parts(
+        random: Arc<dyn VaultRandom>,
+        keystore: Arc<dyn VaultKeyStore>,
+    ) -> Self {
         Self {
             state: Mutex::new(VaultState::new()),
             random,
+            keystore,
             sink: RwLock::new(None),
         }
+    }
+
+    fn view(&self, state: &VaultState) -> VaultStatus {
+        state.status(self.keystore.available())
     }
 
     pub fn set_event_sink(&self, sink: Option<Arc<dyn VaultEventSink>>) {
@@ -131,7 +151,7 @@ impl VaultService {
     }
 
     pub fn status(&self) -> VaultStatus {
-        self.state.lock().status()
+        self.view(&self.state.lock())
     }
 
     pub(crate) fn set_accepting(&self, accepting: bool) {
@@ -147,11 +167,19 @@ impl VaultService {
         store::validate_storage(&conn)?;
         let slot = store::load_master_slot(&conn)?;
         let used_nonces = store::load_used_nonces(&conn)?;
+        let device_slot = match slot.as_ref() {
+            Some(master) => {
+                store::load_device_slot(&conn, &master.vault_id, self.keystore.backend_id())?
+                    .map(|device| device.slot_id)
+            }
+            None => None,
+        };
         drop(conn);
         let mut state = self.state.lock();
         state.dek.take();
         state.used_nonces = used_nonces;
-        state.vault_id = slot.map(|slot| slot.vault_id);
+        state.vault_id = slot.as_ref().map(|slot| slot.vault_id);
+        state.device_slot = device_slot;
         state.phase = if state.vault_id.is_some() {
             VaultPhase::Locked
         } else {
@@ -232,7 +260,7 @@ impl VaultService {
             state.vault_id = Some(vault_id);
             state.phase = VaultPhase::Locked;
             state.epoch = state.epoch.wrapping_add(1);
-            Ok(state.status())
+            Ok(service.view(&state))
         })
         .await
         .map_err(|_| VaultError::TaskJoin)?
@@ -296,7 +324,7 @@ impl VaultService {
                 state.used_nonces = used_nonces;
                 state.phase = VaultPhase::Unlocked;
                 state.capability_error = None;
-                Ok(state.status())
+                Ok(self.view(&state))
             }
             Err(_) => {
                 state.phase = VaultPhase::Locked;
@@ -756,7 +784,7 @@ impl VaultService {
                 return Err(result.err().unwrap_or(VaultError::DataIntegrityError));
             }
             let event = Self::lock_state(&mut state, LockReason::PasswordChanged);
-            let status = state.status();
+            let status = service.view(&state);
             drop(state);
             service.emit(event);
             Ok(status)
@@ -828,11 +856,206 @@ impl VaultService {
         ))
     }
 
-    /// M1 不读取认证结果、不写 Keychain/DPAPI，也不暴露设备槽开关。
-    pub fn biometric_disabled(&self) -> VaultResult<()> {
-        Err(VaultError::FeatureDisabled(
-            "biometric device key protection is an M2 capability",
-        ))
+    pub async fn set_biometric_enabled(
+        self: &Arc<Self>,
+        ctx: ModuleContext,
+        enabled: bool,
+    ) -> VaultResult<VaultStatus> {
+        if enabled {
+            self.enable_biometric(ctx).await
+        } else {
+            self.disable_biometric(ctx).await
+        }
+    }
+
+    fn prepare_biometric_enrollment(
+        &self,
+    ) -> VaultResult<Option<(Uuid, Zeroizing<[u8; KEY_LEN]>, u64)>> {
+        let state = self.state.lock();
+        if state.device_slot.is_some() {
+            return Ok(None);
+        }
+        let (vault_id, dek, epoch) = Self::unlocked_parts(&state)?;
+        let mut copy = Zeroizing::new([0u8; KEY_LEN]);
+        copy.copy_from_slice(dek);
+        Ok(Some((vault_id, copy, epoch)))
+    }
+
+    fn commit_biometric_enrollment(
+        &self,
+        ctx: &ModuleContext,
+        created: &DeviceSlot,
+        epoch: u64,
+    ) -> Result<VaultStatus, (VaultError, Uuid)> {
+        let mut state = self.state.lock();
+        if state.phase != VaultPhase::Unlocked || state.epoch != epoch || !state.accepting {
+            return Err((VaultError::Locked, created.slot_id));
+        }
+        let inserted = (|| {
+            let mut conn = ctx.db.lock();
+            let tx = conn.transaction()?;
+            store::insert_device_slot(&tx, created, Utc::now().timestamp_millis())?;
+            tx.commit()?;
+            Ok(())
+        })();
+        if let Err(error) = inserted {
+            return Err((error, created.slot_id));
+        }
+        state.device_slot = Some(created.slot_id);
+        Ok(self.view(&state))
+    }
+
+    async fn enable_biometric(self: &Arc<Self>, ctx: ModuleContext) -> VaultResult<VaultStatus> {
+        self.keystore.gate()?;
+        // 锁不能跨过 await：parking_lot 的守卫不能在 Tauri 的异步命令里传递。
+        let Some((vault_id, dek, epoch)) = self.prepare_biometric_enrollment()? else {
+            return Ok(self.status());
+        };
+        let service = Arc::clone(self);
+        let created = tokio::task::spawn_blocking(move || {
+            let slot_id = random_uuid(service.random.as_ref())?;
+            let dkek = Zeroizing::new({
+                let mut bytes = [0u8; KEY_LEN];
+                service.random.fill(&mut bytes)?;
+                bytes
+            });
+            let wrap_nonce = random_nonce(service.random.as_ref())?;
+            let wrapped = wrap_device_dek(
+                &dkek,
+                &vault_id,
+                &slot_id,
+                service.keystore.backend_byte(),
+                &dek,
+                &wrap_nonce,
+            )?;
+            service.keystore.protect(&slot_id, &dkek)?;
+            Ok::<_, VaultError>(DeviceSlot {
+                slot_id,
+                vault_id,
+                backend: service.keystore.backend_id().to_string(),
+                wrap_nonce: wrap_nonce.to_vec(),
+                wrapped_dek: wrapped.to_vec(),
+            })
+        })
+        .await
+        .map_err(|_| VaultError::TaskJoin)??;
+        match self.commit_biometric_enrollment(&ctx, &created, epoch) {
+            Ok(status) => Ok(status),
+            Err((error, slot_id)) => {
+                let keystore = Arc::clone(&self.keystore);
+                let _ = tokio::task::spawn_blocking(move || keystore.revoke(&slot_id)).await;
+                Err(error)
+            }
+        }
+    }
+
+    async fn disable_biometric(self: &Arc<Self>, ctx: ModuleContext) -> VaultResult<VaultStatus> {
+        let slot_id = {
+            let state = self.state.lock();
+            Self::unlocked_parts(&state)?;
+            state.device_slot
+        };
+        let Some(slot_id) = slot_id else {
+            return Ok(self.status());
+        };
+        let keystore = Arc::clone(&self.keystore);
+        tokio::task::spawn_blocking(move || keystore.revoke(&slot_id))
+            .await
+            .map_err(|_| VaultError::TaskJoin)??;
+        let mut state = self.state.lock();
+        if state.phase != VaultPhase::Unlocked || !state.accepting {
+            return Err(VaultError::Locked);
+        }
+        {
+            let mut conn = ctx.db.lock();
+            let tx = conn.transaction()?;
+            store::delete_device_slot(&tx, &slot_id)?;
+            tx.commit()?;
+        }
+        if state.device_slot == Some(slot_id) {
+            state.device_slot = None;
+        }
+        Ok(self.view(&state))
+    }
+
+    pub async fn unlock_biometric(
+        self: &Arc<Self>,
+        ctx: ModuleContext,
+    ) -> VaultResult<VaultStatus> {
+        self.keystore.gate()?;
+        let (attempt, slot) = {
+            let mut state = self.state.lock();
+            Self::ensure_accepting(&state)?;
+            match state.phase {
+                VaultPhase::Uninitialized => return Err(VaultError::Uninitialized),
+                VaultPhase::Unlocking => return Err(VaultError::UnlockInProgress),
+                VaultPhase::Unlocked => return Err(VaultError::InvalidInput("already unlocked")),
+                VaultPhase::Locked => {}
+            }
+            let conn = ctx.db.lock();
+            let master = store::load_master_slot(&conn)?.ok_or(VaultError::Uninitialized)?;
+            let device =
+                store::load_device_slot(&conn, &master.vault_id, self.keystore.backend_id())?
+                    .ok_or(VaultError::BiometricKeyInvalid)?;
+            drop(conn);
+            state.phase = VaultPhase::Unlocking;
+            state.epoch = state.epoch.wrapping_add(1);
+            (state.epoch, (master.vault_id, device))
+        };
+        let keystore = Arc::clone(&self.keystore);
+        let task = tokio::task::spawn_blocking(move || {
+            let (vault_id, device) = slot;
+            let dkek = keystore.unprotect(&device.slot_id)?;
+            unwrap_device_dek(
+                &dkek,
+                &vault_id,
+                &device.slot_id,
+                keystore.backend_byte(),
+                &device.wrap_nonce,
+                &device.wrapped_dek,
+            )
+        });
+        let result = match task.await {
+            Ok(result) => result,
+            Err(_) => {
+                let mut state = self.state.lock();
+                if state.phase == VaultPhase::Unlocking && state.epoch == attempt {
+                    state.phase = VaultPhase::Locked;
+                }
+                return Err(VaultError::TaskJoin);
+            }
+        };
+        let mut state = self.state.lock();
+        if state.phase != VaultPhase::Unlocking || state.epoch != attempt || !state.accepting {
+            return Err(VaultError::Locked);
+        }
+        match result {
+            Ok(dek) => {
+                let used_nonces = {
+                    let conn = ctx.db.lock();
+                    match store::load_used_nonces(&conn) {
+                        Ok(nonces) => nonces,
+                        Err(_) => {
+                            let event = Self::lock_state(&mut state, LockReason::IntegrityError);
+                            drop(state);
+                            self.emit(event);
+                            return Err(VaultError::DataIntegrityError);
+                        }
+                    }
+                };
+                state.dek = Some(dek);
+                state.used_nonces = used_nonces;
+                state.phase = VaultPhase::Unlocked;
+                state.capability_error = None;
+                Ok(self.view(&state))
+            }
+            Err(error) => {
+                state.phase = VaultPhase::Locked;
+                state.dek.take();
+                state.used_nonces.clear();
+                Err(error)
+            }
+        }
     }
 }
 
