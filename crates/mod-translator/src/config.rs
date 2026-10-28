@@ -36,6 +36,10 @@ fn default_true() -> bool {
 /// 划词翻译全局配置。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TranslatorConfig {
+    /// 鼠标拖选后显示本地翻译入口，点击才发送文本。默认关闭。
+    #[serde(default)]
+    pub mouse_selection_enabled: bool,
+
     /// 默认启用的翻译源（"google" | "deepl" | "openai" 或自定义 ID）
     #[serde(default = "default_provider")]
     pub default_provider_id: String,
@@ -100,6 +104,7 @@ fn default_popover_height() -> f64 {
 impl Default for TranslatorConfig {
     fn default() -> Self {
         Self {
+            mouse_selection_enabled: false,
             default_provider_id: default_provider(),
             target_lang: default_target_lang(),
             source_lang: default_source_lang(),

@@ -18,6 +18,10 @@ impl DesktopHost {
             "translator_update_config" => {
                 let new_cfg: TranslatorConfig = serde_json::from_value(args)?;
                 self.translator.update_config(new_cfg)?;
+                if !self.translator.config().mouse_selection_enabled {
+                    self.translator
+                        .dismiss_mouse_selection(self.kernel.context())?;
+                }
                 let new_cfg = self.translator.config();
                 // 持久化非敏感设置到磁盘 config.json
                 self.kernel.update_config(|config| {
@@ -29,6 +33,11 @@ impl DesktopHost {
                     }
                 })?;
                 Ok(json!({ "updated": true }))
+            }
+            "translator_open_mouse_selection" => {
+                self.translator
+                    .open_mouse_selection(self.kernel.context())?;
+                Ok(json!({ "opened": true }))
             }
             "translator_take_selection" => {
                 Ok(serde_json::to_value(self.translator.take_selection())?)

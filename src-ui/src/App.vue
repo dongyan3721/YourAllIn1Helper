@@ -27,6 +27,7 @@
     <ScreenshotControl v-else-if="nativeWindowType === 'screenshot-control'" />
     <ScreenshotPreview v-else-if="nativeWindowType === 'screenshot-preview'" />
     <!-- 全局划词翻译浮动气泡独立窗口视图 -->
+    <TranslateTrigger v-else-if="nativeWindowType === 'translate-trigger'" />
     <TranslatePopover v-else-if="nativeWindowType === 'translate-popover'" />
 
     <!-- 默认主控台视图 -->
@@ -49,6 +50,7 @@ import PinImage from './components/PinImage.vue';
 import ScreenshotControl from './components/ScreenshotControl.vue';
 import ScreenshotPreview from './components/ScreenshotPreview.vue';
 import TranslatePopover from './components/TranslatePopover.vue';
+import TranslateTrigger from './components/TranslateTrigger.vue';
 import { initTheme } from './utils/theme';
 import { initI18n } from './utils/i18n';
 

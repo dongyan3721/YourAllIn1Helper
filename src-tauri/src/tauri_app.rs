@@ -144,7 +144,9 @@ impl WindowBackend for TauriWindowBackend {
                     .map_err(to_core_error)?;
             }
             window.show().map_err(to_core_error)?;
-            window.set_focus().map_err(to_core_error)?;
+            if spec.focus {
+                window.set_focus().map_err(to_core_error)?;
+            }
             if spec.label == "screen-ink-toolbar" {
                 crate::ink_window::elevate_toolbar(&self.app, &window)?;
             }
@@ -172,6 +174,11 @@ impl WindowBackend for TauriWindowBackend {
             builder = builder.min_inner_size(min_w, min_h);
         }
         if let (Some(x), Some(y)) = (spec.x, spec.y) {
+            let (x, y) = if spec.label == "translate-popover" {
+                crate::translator_mouse::popover_position(&self.app, x, y, spec.width, spec.height)
+            } else {
+                (x, y)
+            };
             builder = builder.position(x, y);
         }
         if spec.label == mod_screenshot::OVERLAY_LABEL {
@@ -1210,6 +1217,8 @@ pub fn run() {
             setup_tray(app.handle())?;
             start_clipboard_listener(app.handle());
             #[cfg(target_os = "macos")]
+            crate::translator_mouse::start(app.handle());
+            #[cfg(target_os = "macos")]
             if app
                 .state::<Arc<DesktopHost>>()
                 .os_hal
@@ -1319,6 +1328,10 @@ pub fn run() {
         .expect("failed to build Tauri application");
 
     app.run(|app, event| {
+        #[cfg(target_os = "macos")]
+        if matches!(event, RunEvent::Exit) {
+            crate::translator_mouse::stop();
+        }
         if let RunEvent::ExitRequested { api, code, .. } = event {
             let exit = app.state::<Arc<ExitCoordinator>>().inner().clone();
             match exit.request() {

@@ -17,7 +17,7 @@ use app_core::{AppModule, CoreError, CoreResult, ModuleContext, ShortcutSpec, Wi
 use config::TranslatorConfig;
 use credentials::{CredentialStorage, SessionCredentialStore};
 use os_hal::{HalError, HalResult, SelectionExtractor, SelectionTextResult};
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use provider::{openai::OpenAIProvider, TranslationRequest};
 use serde::Serialize;
 use service::{StreamEventSink, TranslatorService};
@@ -25,6 +25,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
+use std::time::{Duration, Instant};
 
 /// 快捷键在前台应用仍聚焦时捕获的状态，由气泡就绪后一次性消费。
 #[derive(Clone, Serialize)]
@@ -42,6 +43,7 @@ pub struct TranslatorModule {
     event_sink: Arc<RwLock<Option<StreamEventSink>>>,
     is_active: Arc<AtomicBool>,
     pending_selection: RwLock<Option<SelectionInvocation>>,
+    mouse_selection: Mutex<Option<(SelectionInvocation, f64, f64, Instant)>>,
     selection_sink: RwLock<Option<Arc<dyn Fn() + Send + Sync>>>,
 }
 
@@ -63,6 +65,7 @@ impl TranslatorModule {
             event_sink: Arc::new(RwLock::new(None)),
             is_active: Arc::new(AtomicBool::new(false)),
             pending_selection: RwLock::new(None),
+            mouse_selection: Mutex::new(None),
             selection_sink: RwLock::new(None),
         }
     }
@@ -78,6 +81,91 @@ impl TranslatorModule {
 
     pub fn take_selection(&self) -> Option<SelectionInvocation> {
         self.pending_selection.write().take()
+    }
+
+    /// 只暂存本机选区；直到用户点击入口才唤起翻译页。
+    pub fn offer_mouse_selection(
+        &self,
+        ctx: &ModuleContext,
+        selection: SelectionTextResult,
+        x: f64,
+        y: f64,
+    ) -> CoreResult<()> {
+        if !self.is_active()
+            || !self.config().mouse_selection_enabled
+            || selection.text.trim().is_empty()
+        {
+            return Ok(());
+        }
+        self.dismiss_mouse_selection(ctx)?;
+        let invocation = SelectionInvocation {
+            text: Some(selection.text),
+            permission_denied: false,
+            guidance: None,
+            unsupported: false,
+        };
+        *self.mouse_selection.lock() = Some((invocation, x, y, Instant::now()));
+        let mut spec = WindowSpec::translate_popover(x, y);
+        spec.label = "translate-trigger".into();
+        spec.route = "/translate-trigger".into();
+        spec.width = 20.0;
+        spec.height = 20.0;
+        spec.min_width = None;
+        spec.min_height = None;
+        spec.resizable = false;
+        spec.focus = false;
+        spec.policy = app_core::WindowLifecyclePolicy::Transient {
+            destroy_on_blur: false,
+        };
+        if let Err(error) = ctx.window_pool.open_window(spec) {
+            self.mouse_selection.lock().take();
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    pub fn dismiss_mouse_selection(&self, ctx: &ModuleContext) -> CoreResult<()> {
+        self.mouse_selection.lock().take();
+        ctx.window_pool
+            .destroy_window("translate-trigger")
+            .map(|_| ())
+    }
+
+    pub fn open_mouse_selection(&self, ctx: &ModuleContext) -> CoreResult<()> {
+        let offered = self.mouse_selection.lock().take();
+        ctx.window_pool.destroy_window("translate-trigger")?;
+        if !self.is_active() || !self.config().mouse_selection_enabled {
+            return Err(CoreError::Config("划词翻译已关闭".into()));
+        }
+        let (selection, x, y, created) =
+            offered.ok_or_else(|| CoreError::Config("选区已失效，请重新划词".into()))?;
+        if created.elapsed() > Duration::from_secs(8) {
+            return Err(CoreError::Config("选区已失效，请重新划词".into()));
+        }
+        self.open_invocation(ctx, selection, x, y)
+    }
+
+    fn open_invocation(
+        &self,
+        ctx: &ModuleContext,
+        invocation: SelectionInvocation,
+        x: f64,
+        y: f64,
+    ) -> CoreResult<()> {
+        self.service.cancel_current();
+        *self.pending_selection.write() = Some(invocation);
+        let mut spec = WindowSpec::translate_popover(x, y);
+        let cfg = self.config();
+        spec.width = cfg.popover_width;
+        spec.height = cfg.popover_height;
+        if let Err(error) = ctx.window_pool.open_window(spec) {
+            self.pending_selection.write().take();
+            return Err(error);
+        }
+        if let Some(sink) = self.selection_sink.read().clone() {
+            sink();
+        }
+        Ok(())
     }
 
     /// 获取底层翻译调度服务。
@@ -238,20 +326,8 @@ impl AppModule for TranslatorModule {
             }
             Err(e) => return Err(CoreError::Internal(anyhow::anyhow!("选区读取失败: {}", e))),
         }
-        *self.pending_selection.write() = Some(invocation);
-        if let Err(error) = ctx
-            .window_pool
-            .open_window(WindowSpec::translate_popover(300.0, 200.0))
-        {
-            self.pending_selection.write().take();
-            return Err(error);
-        }
-        // 初次打开由 mounted 主动消费；已存在窗口由事件唤醒，消费操作保证不重复提交。
-        if let Some(sink) = self.selection_sink.read().clone() {
-            sink();
-        }
-
-        Ok(())
+        self.dismiss_mouse_selection(ctx)?;
+        self.open_invocation(ctx, invocation, 300.0, 200.0)
     }
 
     fn on_shutdown(&self, ctx: &ModuleContext) -> CoreResult<()> {
@@ -259,6 +335,7 @@ impl AppModule for TranslatorModule {
         self.service.cancel_current();
         self.pending_selection.write().take();
 
+        self.dismiss_mouse_selection(ctx)?;
         // 销毁浮动气泡窗口，防止孤儿残留
         ctx.window_pool.destroy_window("translate-popover")?;
         self.is_active.store(false, Ordering::SeqCst);

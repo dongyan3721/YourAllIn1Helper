@@ -18,6 +18,7 @@ extern "C" {
         attribute: *const c_void,
         value: *mut *mut c_void,
     ) -> i32;
+    fn AXUIElementSetMessagingTimeout(element: *mut c_void, timeout: f32) -> i32;
     fn CFRelease(cf: *const c_void);
     fn CFGetTypeID(cf: *const c_void) -> usize;
     fn CFStringGetTypeID() -> usize;
@@ -75,6 +76,9 @@ pub fn extract_selected_text_macos(
         if app_elem.is_null() {
             return Ok(None);
         }
+
+        // 非响应应用不应无限拖住翻译工作线程与模块停用。
+        let _ = AXUIElementSetMessagingTimeout(app_elem, 1.0);
 
         // 构造属性常量 CFString
         use objc2_core_foundation::CFString;

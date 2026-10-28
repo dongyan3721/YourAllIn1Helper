@@ -19,6 +19,7 @@ use std::sync::{
 #[test]
 fn test_config_sanitization() {
     let mut cfg = TranslatorConfig {
+        mouse_selection_enabled: false,
         default_provider_id: "".to_string(),
         target_lang: "invalid-lang".to_string(),
         source_lang: "".to_string(),

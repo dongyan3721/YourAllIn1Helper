@@ -213,3 +213,23 @@ test('Dashboard: applyDashboardRoute navigates to /translator tab and queues pen
   run("applyDashboardRoute('/translator')");
   assert.equal(run('currentTab.value'), 'translator');
 });
+
+test('TranslateTrigger: never sends selection text and ignores repeated clicks while opening', async () => {
+  const source = await readFile(new URL('../../src/components/TranslateTrigger.vue', import.meta.url), 'utf8');
+  const script = source.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1].replace(/^import .*;$/gm, '');
+  const calls = [];
+  let finish;
+  const context = vm.createContext({
+    ref: (value) => ({ value }), t: (key) => key,
+    invokeIpc: (...args) => { calls.push(args); return new Promise((resolve) => { finish = resolve; }); },
+  });
+  vm.runInContext(ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText, context);
+  const run = (expression) => vm.runInContext(expression, context);
+  assert.equal(calls.length, 0);
+  const first = run('open()');
+  await run('open()');
+  assert.deepEqual(calls, [['translator_open_mouse_selection']]);
+  finish({ opened: true });
+  await first;
+  assert.equal(run('opening.value'), false);
+});

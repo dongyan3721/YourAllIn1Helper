@@ -13,6 +13,7 @@ struct TestWindowBackend {
     opened_windows: Arc<parking_lot::RwLock<Vec<String>>>,
     closed_windows: Arc<parking_lot::RwLock<Vec<String>>>,
     fail_open: AtomicBool,
+    specs: parking_lot::RwLock<Vec<WindowSpec>>,
 }
 
 impl TestWindowBackend {
@@ -21,6 +22,7 @@ impl TestWindowBackend {
             opened_windows: Arc::new(parking_lot::RwLock::new(Vec::new())),
             closed_windows: Arc::new(parking_lot::RwLock::new(Vec::new())),
             fail_open: AtomicBool::new(false),
+            specs: Default::default(),
         }
     }
 }
@@ -33,6 +35,7 @@ impl WindowBackend for TestWindowBackend {
             )));
         }
         self.opened_windows.write().push(spec.label.clone());
+        self.specs.write().push(spec.clone());
         Ok(())
     }
 
@@ -135,7 +138,7 @@ fn denied_selection_is_delivered_after_window_opens_without_runtime() {
     }));
     let kernel = AppKernelBuilder::new(dir.path())
         .with_in_memory_db(true)
-        .with_window_backend(backend)
+        .with_window_backend(backend.clone())
         .register_module_arc(module.clone())
         .unwrap()
         .bootstrap()
@@ -148,4 +151,104 @@ fn denied_selection_is_delivered_after_window_opens_without_runtime() {
     assert!(state.permission_denied);
     assert!(state.text.is_none());
     assert_eq!(state.guidance.as_deref(), Some("Owned permission fixture"));
+}
+
+#[test]
+fn mouse_selection_requires_opt_in_then_click_and_is_cleared_on_disable() {
+    let dir = tempdir().unwrap();
+    let backend = Arc::new(TestWindowBackend::new());
+    let opened = backend.opened_windows.clone();
+    let closed = backend.closed_windows.clone();
+    let module = Arc::new(TranslatorModule::new(Arc::new(MockOsHal::new())));
+    let kernel = AppKernelBuilder::new(dir.path())
+        .with_in_memory_db(true)
+        .with_target_os(TargetOs::current())
+        .with_window_backend(backend.clone())
+        .register_module_arc(module.clone())
+        .unwrap()
+        .bootstrap()
+        .unwrap();
+    let selection = || os_hal::SelectionTextResult {
+        text: "Owned mouse selection".into(),
+        source: os_hal::SelectionSource::AccessibilityApi,
+        source_app_name: Some("Fixture".into()),
+    };
+    let ctx = kernel.context();
+    module
+        .offer_mouse_selection(ctx, selection(), 12.0, 24.0)
+        .unwrap();
+    assert!(opened.read().is_empty(), "默认不开启鼠标选区读取入口");
+    let mut cfg = module.config();
+    cfg.mouse_selection_enabled = true;
+    cfg.popover_width = 500.0;
+    module.update_config(cfg).unwrap();
+    module
+        .offer_mouse_selection(ctx, selection(), 12.0, 24.0)
+        .unwrap();
+    assert_eq!(opened.read().as_slice(), &["translate-trigger"]);
+    let trigger = backend.specs.read().last().unwrap().clone();
+    assert!(!trigger.focus, "划词入口不得抢走目标应用焦点");
+    assert_eq!((trigger.width, trigger.height), (20.0, 20.0));
+    assert!(
+        module.take_selection().is_none(),
+        "点击前不得开始翻译或把选区交给页面"
+    );
+    module.open_mouse_selection(ctx).unwrap();
+    assert_eq!(opened.read().last().unwrap(), "translate-popover");
+    assert_eq!(backend.specs.read().last().unwrap().width, 500.0);
+    assert_eq!(
+        module.take_selection().unwrap().text.as_deref(),
+        Some("Owned mouse selection")
+    );
+    assert!(
+        module.open_mouse_selection(ctx).is_err(),
+        "入口只能消费一次"
+    );
+    module
+        .offer_mouse_selection(ctx, selection(), 12.0, 24.0)
+        .unwrap();
+    kernel.set_module_enabled("translator", false).unwrap();
+    assert!(module.open_mouse_selection(ctx).is_err());
+    assert!(module.take_selection().is_none());
+    assert!(closed.read().contains(&"translate-trigger".into()));
+    kernel.set_module_enabled("translator", true).unwrap();
+    assert!(
+        module.open_mouse_selection(ctx).is_err(),
+        "重新启用不能恢复旧选区"
+    );
+}
+
+#[test]
+fn dismissed_or_failed_mouse_offer_cannot_translate_stale_selection() {
+    let dir = tempdir().unwrap();
+    let backend = Arc::new(TestWindowBackend::new());
+    let module = Arc::new(TranslatorModule::new(Arc::new(MockOsHal::new())));
+    let kernel = AppKernelBuilder::new(dir.path())
+        .with_in_memory_db(true)
+        .with_window_backend(backend.clone())
+        .register_module_arc(module.clone())
+        .unwrap()
+        .bootstrap()
+        .unwrap();
+    let mut cfg = module.config();
+    cfg.mouse_selection_enabled = true;
+    module.update_config(cfg).unwrap();
+    let selection = || os_hal::SelectionTextResult {
+        text: "Owned fixture".into(),
+        source: os_hal::SelectionSource::AccessibilityApi,
+        source_app_name: None,
+    };
+    let ctx = kernel.context();
+    module
+        .offer_mouse_selection(ctx, selection(), 0.0, 0.0)
+        .unwrap();
+    module.dismiss_mouse_selection(ctx).unwrap();
+    assert!(module.open_mouse_selection(ctx).is_err());
+    backend.fail_open.store(true, Ordering::SeqCst);
+    assert!(module
+        .offer_mouse_selection(ctx, selection(), 0.0, 0.0)
+        .is_err());
+    backend.fail_open.store(false, Ordering::SeqCst);
+    assert!(module.open_mouse_selection(ctx).is_err());
+    assert!(module.take_selection().is_none());
 }

@@ -131,6 +131,14 @@
           </p>
         </div>
 
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input v-model="config.mouse_selection_enabled" type="checkbox" @change="saveConfig" />
+            <span>{{ t('translator.mouseSelection') }}</span>
+          </label>
+          <p class="form-hint">{{ t('translator.mouseSelectionHint') }}</p>
+        </div>
+
         <!-- 通用选项 -->
         <h3 class="settings-section-title" style="margin-top: 18px;">常规偏好</h3>
         <div class="form-group">
@@ -198,6 +206,7 @@ const inputApiKey = ref('');
 const showAddCustom = ref(false);
 
 const config = ref({
+  mouse_selection_enabled: false,
   default_provider_id: 'google',
   target_lang: 'zh-CN',
   source_lang: 'auto',
