@@ -1,0 +1,35 @@
+$ node --experimental-strip-types --disable-warning=ExperimentalWarning --test tests/unit/i18n.test.mjs tests/unit/ink.test.mjs tests/unit/screenshot.test.mjs tests/unit/capture-overlay.test.mjs tests/unit/translator.test.mjs tests/unit/vault.test.mjs
+✔ hidden overlay presents after writing pixels without waiting for an animation frame (87.96575ms)
+✔ invalid frozen frame shows a visible error instead of leaving a hidden session (34.529166ms)
+✔ zh-CN, en-US, and ja-JP locale files have identical key schemas and non-empty translations (3.624708ms)
+✔ high-fidelity SVG product logo exists in both public and assets directories and contains valid vector geometry (0.602792ms)
+✔ InkHistoryManager maintains undo/redo stack properly (0.902416ms)
+✔ LaserPointerManager automatically prunes points older than 2000ms (0.256625ms)
+✔ drag points normalize in any direction and selections serialize like SelectionBox (0.882ms)
+✔ intersect and clamp keep selections inside the frozen frame (0.176334ms)
+✔ eight handles resize the expected edges (0.458167ms)
+✔ dragging a handle past the opposite edge flips it and stays at least 1px (0.168875ms)
+✔ keyboard nudges move 1px and Shift resizes width/height within bounds (0.103375ms)
+✔ css to frame mapping handles Retina and non-uniform window sizes (0.213291ms)
+✔ hit test, drag threshold and toolbar placement (0.127292ms)
+✔ edit history supports undo, redo, update, remove and drops redo after new edits (0.213834ms)
+✔ counter numbers follow existing values, tiny drags are discarded, sizes scale with DPR (0.335292ms)
+✔ mosaic blocks are true averages of the frozen frame and clip at frame edges (0.792916ms)
+✔ color picker reads raw pixels and formats HEX/RGB like the backend expects (0.446666ms)
+✔ pin zoom stays within 10%-500%, opacity within 10%-100%, collapse uses mini block (0.383167ms)
+✔ M3 scroll utils: format pixel height and confidence percentage (18.356459ms)
+✔ M3 gif utils: format duration, file size and presets (1.101916ms)
+✔ TranslatePopover: buffers early events, isolates requests and ignores unsolicited events (35.7645ms)
+✔ TranslatorPanel: buffers early events, isolates requests and ignores unsolicited events (14.351625ms)
+✔ VaultPanel clears every local secret on unmount and requests backend lock (42.913333ms)
+✔ VaultPanel drops a late reveal result after lock or route cleanup (18.453209ms)
+✔ VaultPanel expires reveal and generated values with the same 15 second timer contract (12.374292ms)
+✔ VaultPanel never persists secrets or enables M2/clipboard IPC (0.986875ms)
+ℹ tests 26
+ℹ suites 0
+ℹ pass 26
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 416.428417

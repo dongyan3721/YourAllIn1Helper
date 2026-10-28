@@ -1,0 +1,422 @@
+   Compiling mod-app-usage v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/mod-app-usage)
+   Compiling all-in-one-host v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/src-tauri)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.13s
+     Running unittests src/lib.rs (target/debug/deps/all_in_one_host-5193fd767320fecf)
+
+running 12 tests
+test exit_coordinator::tests::duplicate_requests_wait_and_reissued_exit_is_allowed_after_shutdown ... ok
+test exit_coordinator::tests::concurrent_exit_sources_start_exactly_one_shutdown ... ok
+test native_dialog::platform::tests::file_urls_preserve_unicode_spaces_and_multiple_selection_order ... ok
+test secure_credentials::tests::unavailable_system_store_keeps_session_backend ... ok
+test native_dialog::tests::cancel_and_selection_payloads_match_the_media_ipc_contract ... ok
+test secure_credentials::tests::defaults_to_session_and_switches_to_system_store ... ok
+test tests::translator_ipc_without_runtime_reports_error_instead_of_panicking ... ok
+test tests::test_kernel_open_dashboard_translator_route_and_rejects_kernel_open_window ... ok
+test native_dialog::tests::module_disable_is_rejected_before_any_native_dialog_work ... ok
+test tests::test_translator_ipc_workflow_and_disabled_rejection ... ok
+test tests::translator_ipc_translation_supports_current_thread_runtime ... ok
+test tests::test_desktop_host_ipc_full_workflow ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.65s
+
+     Running unittests src/main.rs (target/debug/deps/all_in_one_desktop-a86c438e854d1c8b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/feature_integration.rs (target/debug/deps/feature_integration-0d63f890713434c1)
+
+running 1 test
+test upgrade_preserves_old_data_and_new_feature_switches_are_independent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.98s
+
+     Running tests/modules.rs (target/debug/deps/modules-5fc12668380d15ea)
+
+running 15 tests
+test script_ipc_crud_run_and_disable_cleanup ... ok
+test disabling_window_pin_restores_external_windows_and_closes_picker ... ok
+test host_script_save_reports_and_rolls_back_native_hotkey_failure ... ok
+test screen_ink_disable_blocks_ipc_and_cleans_windows ... ok
+test clipboard_disable_blocks_ipc_and_shortcuts_without_losing_data ... ok
+test media_native_pickers_require_async_desktop_adapter_and_enabled_module ... ok
+test catalog_has_ten_slots_and_all_feature_modules_are_mounted ... ok
+test script_save_uses_applescript_and_powershell_json_contract_with_legacy_aliases ... ok
+test v2_config_migration_preserves_existing_settings_and_unknown_fields ... ok
+test vault_async_ipc_enforces_lock_and_module_switch ... ok
+test media_ipc_runs_real_image_jobs_persists_settings_and_honors_disable ... ok
+test general_config_language_update_persists_across_restarts ... ok
+test app_usage_ipc_reports_capabilities_persists_config_and_blocks_when_disabled ... ok
+test sticky_switch_is_durable_and_restores_windows_only_when_enabled ... ok
+test script_settings_validate_and_persist_across_restarts ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.34s
+
+     Running tests/screenshot.rs (target/debug/deps/screenshot-1a05e505a59e5750)
+
+running 4 tests
+test disabling_screenshot_rejects_json_and_binary_ipc_and_releases_everything ... ok
+test ocr_ipc_uses_injected_provider_and_intent_round_trips ... ok
+test capture_save_pin_flow_through_json_and_binary_entry_points ... ok
+test settings_update_is_atomic_persistent_and_keeps_unknown_fields ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.63s
+
+     Running unittests src/lib.rs (target/debug/deps/app_core-3ae718eb5963ffac)
+
+running 11 tests
+test clipboard_guard::tests::overlapping_leases_keep_suppression_until_the_last_release ... ok
+test clipboard_guard::tests::legacy_switch_cannot_release_leases_and_leases_do_not_clear_legacy ... ok
+test clipboard_guard::tests::event_bus_keeps_legacy_api_compatible_and_exposes_leases ... ok
+test tests::test_snipaste_smart_region_detection_and_wheel_hierarchy ... ok
+test tests::test_cross_platform_shortcut_normalization ... ok
+test tests::visual_edge_box_handles_full_white_pixels_without_overflow ... ok
+test tests::test_config_migration_v1_to_v2_preserves_unknown_fields ... ok
+test clipboard_guard::tests::lease_is_released_on_early_return_and_panic_unwind ... ok
+test clipboard_guard::tests::leaked_lease_expires_and_ttl_is_capped ... ok
+test clipboard_guard::tests::extend_renews_live_lease_and_reports_expired_one ... ok
+test tests::test_kernel_bootstrap_zero_webview_and_shortcut_dispatch ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.66s
+
+     Running tests/module_lifecycle.rs (target/debug/deps/module_lifecycle-86658c9d2298e43e)
+
+running 5 tests
+test shortcut_conflicts_prevent_enable_before_starting_the_block ... ok
+test failed_enable_rolls_back_lifecycle_shortcuts_and_persisted_switch ... ok
+test failed_persistence_keeps_memory_and_module_state_unchanged ... ok
+test disable_waits_for_inflight_work_then_rejects_new_work ... ok
+test failed_disable_only_restores_enabled_state_after_confirmed_recovery ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.67s
+
+     Running tests/window_cleanup.rs (target/debug/deps/window_cleanup-dd04ab30801f6ccf)
+
+running 1 test
+test failed_native_cleanup_keeps_window_tracked_until_retry_succeeds ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/mod_app_usage-3985adc9bce00ae2)
+
+running 29 tests
+test config::tests::config_normalizes_out_of_range_values ... ok
+test config::tests::legacy_config_without_audio_flag_defaults_to_enabled ... ok
+test tests::capabilities_report_audio_limit_when_probe_is_unsupported ... ok
+test config::tests::category_accepts_only_known_values ... ok
+test store::tests::date_ranges_are_validated_and_filled ... ok
+test tests::audio_probe_failure_keeps_plain_idle_pause ... ok
+test tests::audio_playback_keeps_idle_time_active ... ok
+test tests::disabling_audio_exception_restores_plain_idle_pause ... ok
+test tests::paused_samples_do_not_create_or_write_empty_sessions ... ok
+test tests::focus_switch_flushes_and_splits_across_hour_boundary ... ok
+test tests::lock_and_sleep_take_priority_over_audio_exception ... ok
+test tests::reliability::half_hour_timezone_splits_at_local_midnight ... ok
+test tests::idle_and_lock_pause_without_recording ... ok
+test tests::active_time_is_accumulated_with_monotonic_clock ... ok
+test tests::ignored_apps_stop_counting_but_keep_history ... ok
+test tests::reliability::accepted_wall_clock_drift_does_not_change_billed_duration ... ok
+test tests::repeated_enable_disable_starts_and_stops_event_monitor ... ok
+test tracker::tests::split_interval_crosses_hour_and_day_boundaries ... ok
+test tracker::tests::split_interval_handles_dst_like_offset_changes_without_losing_time ... ok
+test tests::sessions_list_reports_day_sessions_and_hides_titles_when_disabled ... ok
+test tracker::tests::split_interval_ignores_reversed_ranges ... ok
+test tests::reliability::disabling_titles_scrubs_the_active_session_and_pending_metadata ... ok
+test tests::reliability::failed_session_write_is_atomic_and_retried_once ... ok
+test tests::sleep_wake_gap_is_not_counted ... ok
+test tests::window_titles_can_be_disabled_before_persisting ... ok
+test tests::reliability::unavailable_idle_or_lock_state_never_counts_as_active_usage ... ok
+test tests::restart_does_not_recount_or_add_offline_time ... ok
+test tests::module_shutdown_flushes_pending_usage_and_stops_sampler ... ok
+test tests::reliability::failed_disable_recovers_sampling_and_preserves_unflushed_usage ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.66s
+
+     Running unittests src/lib.rs (target/debug/deps/mod_clipboard-f29ea635b3edacdc)
+
+running 2 tests
+test tests::test_clipboard_deduplication_lru_eviction_and_suppression ... ok
+test tests::test_clipboard_image_capture_and_blob_storage ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.76s
+
+     Running unittests src/lib.rs (target/debug/deps/mod_media_proc-3edd4ea2b9df7e2b)
+
+running 5 tests
+test tests::ffmpeg_progress_parser_accepts_real_pipe_keys ... ok
+test tests::config_and_parameters_are_validated ... ok
+test tests::trim_and_volume_validation_rejects_invalid_ranges ... ok
+test tests::output_names_handle_unicode_spaces_and_conflicts ... ok
+test tests::real_rust_codecs_convert_resize_and_never_overwrite ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/lifecycle.rs (target/debug/deps/lifecycle-3e4c576c263c4bec)
+
+running 1 test
+test image_jobs_survive_restart_and_module_can_restart_cleanly ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.33s
+
+     Running tests/process_control.rs (target/debug/deps/process_control-5d5f88dd4140933a)
+
+running 3 tests
+test nonzero_ffmpeg_exit_preserves_actionable_failure_reason ... ok
+test cancellation_and_shutdown_kill_children_and_remove_partial_outputs ... ok
+test semaphore_enforces_configured_concurrency_for_queued_processes ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.13s
+
+     Running tests/real_ffmpeg.rs (target/debug/deps/real_ffmpeg-bb3623400bc62148)
+
+running 1 test
+test installed_ffmpeg_executes_all_media_operations_and_produces_probeable_outputs ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.59s
+
+     Running unittests src/lib.rs (target/debug/deps/mod_password_vault-d4b324b6628db133)
+
+running 17 tests
+test unit_tests::crypto::kdf_profile_rejects_unknown_or_unbounded_parameters ... ok
+test unit_tests::crypto::ciphertext_tag_and_nonce_tampering_release_no_plaintext ... ok
+test unit_tests::crypto::master_wrap_is_bound_to_vault_and_key ... ok
+test unit_tests::crypto::field_envelopes_use_independent_nonces_and_authenticate_context ... ok
+test unit_tests::service::migration_preserves_legacy_tables_and_checksum_changes_fail_closed ... ok
+test unit_tests::service::input_limits_and_generator_policy_fail_closed ... ok
+test unit_tests::crypto::argon2id_project_vector_matches_independent_phc_example ... ok
+test unit_tests::service::crud_search_reveal_and_password_generator_use_only_fictional_values ... ok
+test unit_tests::service::lock_invalidates_a_late_unlock_result ... ok
+test unit_tests::service::ciphertext_tampering_locks_session_and_releases_no_secret ... ok
+test unit_tests::service::disabled_module_rejects_calls_and_restart_stays_locked ... ok
+test unit_tests::service::update_reencrypts_every_field_and_rejects_stale_version ... ok
+test unit_tests::service::wrong_password_and_every_sensitive_operation_fail_when_locked ... ok
+test unit_tests::service::initialize_persists_only_ciphertext_and_reopen_unlocks ... ok
+test unit_tests::service::real_idle_values_and_capability_failures_control_locking ... ok
+test unit_tests::service::repeated_nonce_and_random_failure_abort_without_second_ciphertext ... ok
+test unit_tests::service::master_password_change_rewraps_same_dek_and_forces_lock ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 13.99s
+
+     Running unittests src/lib.rs (target/debug/deps/mod_screen_ink-57a748333e90ee21)
+
+running 9 tests
+test tests::test_screen_ink_config_serde_defaults_and_sanitization ... ok
+test tests::test_screen_ink_initial_state_and_shortcuts ... ok
+test tests::clean_capture_visibility_failure_restores_windows_and_can_retry ... ok
+test tests::test_composite_screen_with_ink_exact_and_resized ... ok
+test tests::test_screen_ink_repeated_start_resets_passthrough ... ok
+test tests::test_screen_ink_config_applied_on_init ... ok
+test tests::test_screen_ink_dual_window_session_and_passthrough_lifecycle ... ok
+test tests::test_screen_ink_composite_and_save_snapshot ... ok
+test tests::test_screen_ink_save_snapshot_exclusive_naming_no_overwrite ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.22s
+
+     Running tests/lifecycle.rs (target/debug/deps/lifecycle-1545332dcd41b54a)
+
+running 3 tests
+test test_screen_ink_start_session_rollback_on_failure ... ok
+test test_screen_ink_exit_session_error_handling_and_retry ... ok
+test test_screen_ink_module_registration_and_disable_lifecycle ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.87s
+
+     Running unittests src/lib.rs (target/debug/deps/mod_screenshot-251f3f36c4552084)
+
+running 39 tests
+test export::tests::timestamped_stem_uses_sortable_local_time ... ok
+test config::tests::merge_rejects_non_object_and_wrong_types ... ok
+test config::tests::hex_color_validation ... ok
+test geometry::tests::frame_points_map_back_to_desktop_units_including_negative_origin ... ok
+test geometry::tests::invalid_scale_factor_falls_back_to_frame_ratio_and_zero_size_is_rejected ... ok
+test geometry::tests::monitor_region_is_root_of_hierarchy ... ok
+test geometry::tests::negative_origin_secondary_display_is_relative_to_its_own_frame ... ok
+test geometry::tests::normalize_crop_clips_overflow_and_rejects_outside_or_empty ... ok
+test export::tests::write_exclusive_never_overwrites_existing_files ... ok
+test geometry::tests::retina_frame_maps_points_to_double_pixels ... ok
+test geometry::tests::windows_high_dpi_desktop_units_are_physical_pixels ... ok
+test geometry::tests::crop_rgba_copies_exact_rows_and_validates_bounds ... ok
+test config::tests::sanitize_repairs_invalid_values ... ok
+test config::tests::merge_keeps_untouched_and_unknown_fields ... ok
+test gif::tests::test_gif_resolution_presets ... ok
+test export::tests::render_without_overlay_is_exact_crop ... ok
+test export::tests::write_exclusive_creates_missing_directory_and_reports_unwritable_target ... ok
+test scroll::tests::test_scroll_duplicate_frame_and_zero_displacement ... ok
+test scroll::tests::test_scroll_low_confidence_stops_and_preserves_canvas ... ok
+test export::tests::encoded_png_round_trips_pixels ... ok
+test export::tests::overlay_with_wrong_size_or_garbage_is_rejected ... ok
+test scroll::tests::test_scroll_length_and_memory_limit ... ok
+test export::tests::overlay_is_alpha_blended_and_transparent_pixels_keep_base ... ok
+test scroll::tests::test_scroll_fixed_header_and_footer_detection_and_retention ... ok
+test session::tests::describe_reports_pixels_logical_size_and_honest_capabilities ... ok
+test session::tests::projection_keeps_only_visible_top_level_windows_in_frame_pixels ... ok
+test session::tests::frontmost_window_wins_over_smaller_occluded_window ... ok
+test session::tests::ui_chain_climbs_leaf_container_window_monitor_and_is_clipped_to_window ... ok
+test session::tests::wheel_steps_climb_from_window_to_monitor_and_stop_at_root ... ok
+test tests::rgb_text_validation_accepts_only_color_values ... ok
+test tests::pick_monitor_prefers_requested_then_primary_then_first ... ok
+test session::tests::visual_edge_fallback_snaps_to_card_inside_window_when_ui_chain_is_empty ... ok
+test session::tests::visual_edge_is_skipped_when_disabled_tiny_or_covering_the_window ... ok
+test tests::only_implemented_capture_shortcut_is_declared ... ok
+test scroll::tests::test_scroll_stitch_known_displacement_pixel_perfect ... ok
+test gif::tests::test_gif_encoder_round_trip_and_decode_validation ... ok
+test gif::tests::test_gif_recording_session_cancellation_deletes_temp_file ... ok
+test gif::tests::test_gif_recording_session_completion_and_file_creation ... ok
+test scroll::tests::test_scroll_session_cancellation_releases_all ... ok
+
+test result: ok. 39 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s
+
+     Running tests/lifecycle.rs (target/debug/deps/lifecycle-d3297c74a7b40c23)
+
+running 18 tests
+test permission_denied_reports_guidance_without_overlay_and_shortcut_opens_dashboard ... ok
+test ocr_without_provider_reports_unsupported_and_shortcut_sets_intent ... ok
+test cancel_releases_frame_and_destroys_overlay_and_stale_cancel_is_ignored ... ok
+test frozen_frame_is_captured_before_hidden_overlay_is_created_and_shown_once ... ok
+test copy_export_writes_selection_sized_image_and_finishes_session ... ok
+test init_does_not_capture_or_create_windows ... ok
+test copy_failure_keeps_session_and_reshows_overlay_for_retry ... ok
+test disabling_module_destroys_overlay_and_pins_and_reenable_works ... ok
+test copy_color_accepts_only_color_text ... ok
+test ocr_recognizes_cropped_original_frame_without_ending_session ... ok
+test permission_polling_is_passive_and_revocation_blocks_next_capture ... ok
+test save_export_never_overwrites_and_annotations_are_composited ... ok
+test smart_region_uses_frame_pixels_and_detector_failure_degrades_honestly ... ok
+test pin_window_failure_rolls_back_record_and_keeps_session ... ok
+test ui_hierarchy_is_reported_honestly_and_used_only_when_trusted ... ok
+test pin_export_creates_resident_window_at_capture_position_and_close_frees_it ... ok
+test shortcut_conflict_on_enable_rolls_back_and_reports_error ... ok
+test settings_and_switch_survive_restart_with_unknown_fields_preserved ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.98s
+
+     Running tests/m3_lifecycle.rs (target/debug/deps/m3_lifecycle-ffcc6a7e6e1c81f4)
+
+running 3 tests
+test test_shutdown_cancels_and_waits_for_workers ... ok
+test test_gif_full_lifecycle_and_file_creation ... ok
+test test_scroll_full_lifecycle_and_export_reusing_m1 ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.15s
+
+     Running unittests src/lib.rs (target/debug/deps/mod_script_runner-b8ec758e465a198d)
+
+running 20 tests
+test tests::command_builder_uses_argument_arrays_for_every_supported_type ... ok
+test tests::failing_native_hotkey_sync_rolls_back_new_script_and_core_registration ... ok
+test tests::inline_script_file_names_are_derived_from_the_type_only ... ok
+test tests::failing_native_hotkey_sync_restores_updated_script_and_previous_shortcut ... ok
+test tests::failing_native_hotkey_sync_restores_deleted_script_and_shortcut ... ok
+test tests::hotkeys_follow_module_lifecycle_and_conflicts_are_rejected ... ok
+test tests::file_script_with_spaces_runs_from_its_directory_and_is_not_modified ... ok
+test tests::delete_removes_script_and_releases_hotkey_but_keeps_run_history ... ok
+test tests::script_type_json_contract_matches_ui_and_reads_legacy_aliases ... ok
+test tests::execution_streams_stdout_stderr_and_records_exit_code ... ok
+test tests::final_output_mode_suppresses_live_entries_but_keeps_final_tail ... ok
+test tests::incremental_logs_have_monotonic_sequence_numbers ... ok
+test tests::invalid_inputs_and_output_modes_are_rejected ... ok
+test tests::log_cache_is_bounded_even_when_script_writes_a_lot ... ok
+test tests::stored_and_runtime_arguments_preserve_spaces_and_quotes ... ok
+test tests::environment_values_are_injected_only_when_the_adapter_reports_them ... ok
+test tests::kill_cancels_running_script_and_shutdown_cleans_up ... ok
+test tests::python_node_and_applescript_run_when_interpreters_are_available ... ok
+test tests::script_crud_persists_across_restart_and_init_does_not_execute ... ok
+test tests::timeout_kills_sleeping_script_and_marks_timed_out ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.43s
+
+     Running unittests src/lib.rs (target/debug/deps/mod_sticky_note-5449d1865c8c1340)
+
+running 1 test
+test tests::test_sticky_note_lifecycle_and_zero_webview_when_closed ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.67s
+
+     Running unittests src/lib.rs (target/debug/deps/mod_translator-82873cda33ff3964)
+
+running 10 tests
+test tests::test_utf8_chunk_buffer_multibyte_cross_chunk_boundary ... ok
+test tests::openai_gateway_base_url_is_completed_to_chat_completions ... ok
+test tests::test_config_sanitization ... ok
+test tests::test_sse_openai_delta_parsing ... ok
+test tests::test_credentials_security_and_isolation ... ok
+test tests::test_translator_module_selection_reading_with_mock_hal ... ok
+test tests::test_sequence_ordering_and_late_result_discard ... ok
+test tests::test_missing_credentials_realistically_notified ... ok
+test tests::custom_endpoints_cannot_override_builtins_or_survive_removal ... ok
+test tests::cancellation_waits_for_request_registration ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/fixtures.rs (target/debug/deps/fixtures-d4c7c31d1eca0639)
+
+running 7 tests
+test test_deepl_protocol_fixture ... ok
+test test_google_protocol_fixture ... ok
+test test_sse_service_error_and_truncated_stream_are_not_success ... ok
+test test_https_transport_attempts_tls_handshake ... ok
+test test_openai_sse_streaming_protocol_fixture ... ok
+test test_cancellation_and_discard_late_fixture ... ok
+test test_sse_done_completes_before_connection_closes ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.51s
+
+     Running tests/lifecycle.rs (target/debug/deps/lifecycle-543e886d8d06de9d)
+
+running 2 tests
+test denied_selection_is_delivered_after_window_opens_without_runtime ... ok
+test test_translator_lifecycle_and_shutdown_cleanup ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.75s
+
+     Running unittests src/lib.rs (target/debug/deps/mod_window_pin-31c79aa4fbb4411d)
+
+running 1 test
+test tests::test_window_pin_toggle_and_auto_restore_on_shutdown ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.80s
+
+     Running unittests src/lib.rs (target/debug/deps/os_hal-07c08358a4ba658e)
+
+running 6 tests
+test tests::test_native_windows_list ... ignored, requires a logged-in desktop session
+test platform::usage::tests::polling_result_remains_authoritative_when_events_are_incomplete ... ok
+test platform::usage::tests::sleep_wake_requires_both_workspace_and_screen_wake ... ok
+test platform::usage::tests::system_events_pause_and_only_resume_after_confirmed_unlock ... ok
+test tests::test_selection_extractor_contracts ... ok
+test tests::test_mock_os_hal_window_topmost_and_paste ... ok
+
+test result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/capabilities.rs (target/debug/deps/capabilities-813e876911a020f3)
+
+running 7 tests
+test macos_active_app_watcher_reports_real_state ... ignored, requires a live desktop session with available CGSession state; run explicitly for native QA
+test macos_ui_hierarchy_reports_real_chain_or_permission_denied ... ignored, 需要桌面会话；读取前台外部窗口的无障碍层级（只读），显式运行
+test macos_usage_event_monitor_start_stop_is_idempotent ... ignored, requires an AppKit process with a live desktop session; run explicitly for native QA
+test macos_external_topmost_reports_unsupported_without_touching_windows ... ok
+test macos_capture_permission_preflight_only_reports_granted_or_denied ... ok
+test macos_audio_activity_probe_returns_a_real_boolean ... ok
+test unimplemented_native_capabilities_do_not_return_mock_results ... ok
+
+test result: ok. 4 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
+     Running tests/native_ocr.rs (target/debug/deps/native_ocr-df615293e524d0a2)
+
+running 2 tests
+test vision_returns_empty_result_for_blank_image ... ok
+test vision_recognizes_rendered_text_with_pixel_coordinates ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s
+
+     Running tests/secure_services.rs (target/debug/deps/secure_services-d5ccad5d10f63a9a)
+
+running 5 tests
+test native_keychain_round_trip_uses_dedicated_test_item ... ignored, 写入并删除登录钥匙串中的专用测试条目，需显式运行
+test native_pasteboard_clears_only_unchanged_content ... ignored, 会覆盖真实系统剪贴板内容，需显式运行
+test clear_only_when_clipboard_still_holds_our_write ... ok
+test later_user_copy_is_never_cleared_even_with_identical_text ... ok
+test mock_secret_store_round_trip_and_unavailable_reporting ... ok
+
+test result: ok. 3 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s

@@ -1,0 +1,49 @@
+$ node --experimental-strip-types --disable-warning=ExperimentalWarning --test tests/unit/i18n.test.mjs tests/unit/ink.test.mjs tests/unit/screenshot.test.mjs tests/unit/capture-overlay.test.mjs tests/unit/translator.test.mjs tests/unit/vault.test.mjs tests/unit/app-usage.test.mjs
+✔ recent range is recalculated from the current local date across midnight (4.816791ms)
+✔ seven and thirty day ranges are inclusive of the current day (0.298583ms)
+✔ date helpers keep leap days and year boundaries local (0.096583ms)
+✔ hidden overlay presents after writing pixels without waiting for an animation frame (126.559542ms)
+✔ invalid frozen frame shows a visible error instead of leaving a hidden session (47.046ms)
+✔ zh-CN, en-US, and ja-JP locale files have identical key schemas and non-empty translations (5.028708ms)
+✔ high-fidelity SVG product logo exists in both public and assets directories and contains valid vector geometry (0.567542ms)
+✔ InkHistoryManager maintains undo/redo stack properly (0.590458ms)
+✔ LaserPointerManager automatically prunes points older than 2000ms (0.106833ms)
+✔ drag points normalize in any direction and selections serialize like SelectionBox (3.30175ms)
+✔ intersect and clamp keep selections inside the frozen frame (0.243667ms)
+✔ eight handles resize the expected edges (0.444792ms)
+✔ dragging a handle past the opposite edge flips it and stays at least 1px (0.399583ms)
+✔ keyboard nudges move 1px and Shift resizes width/height within bounds (0.187333ms)
+✔ css to frame mapping handles Retina and non-uniform window sizes (0.219333ms)
+✔ hit test, drag threshold and toolbar placement (0.1275ms)
+✔ edit history supports undo, redo, update, remove and drops redo after new edits (0.1985ms)
+✔ counter numbers follow existing values, tiny drags are discarded, sizes scale with DPR (0.291041ms)
+✔ mosaic blocks are true averages of the frozen frame and clip at frame edges (0.352083ms)
+✔ color picker reads raw pixels and formats HEX/RGB like the backend expects (0.160875ms)
+✔ pin zoom stays within 10%-500%, opacity within 10%-100%, collapse uses mini block (0.170875ms)
+✔ M3 scroll utils: format pixel height and confidence percentage (32.78975ms)
+✔ M3 gif utils: format duration, file size and presets (1.641125ms)
+✔ TranslatePopover: buffers early events, isolates requests and ignores unsolicited events (43.239042ms)
+✔ TranslatorPanel: buffers early events, isolates requests and ignores unsolicited events (16.054417ms)
+✔ TranslatePopover: openDashboardSettings invokes kernel_open_dashboard with /translator route (15.323458ms)
+✔ TranslatePopover: detects missing API Key and coexists with permissionDenied alert (13.22125ms)
+✔ Dashboard: applyDashboardRoute navigates to /translator tab and queues pending route (25.431584ms)
+✔ VaultPanel clears every local secret on unmount and requests backend lock (53.625042ms)
+✔ VaultPanel drops a late reveal result after lock or route cleanup (22.656667ms)
+✔ VaultPanel expires reveal and generated values with the same 15 second timer contract (22.499ms)
+✔ revealPassword('fiction-entry') expires after refresh and search change the operation epoch (10.759875ms)
+✔ generatePassword() expires after refresh and search change the operation epoch (17.23025ms)
+✔ VaultPanel keeps the latest secret when reveals are consecutive and a stale timer fires (10.770959ms)
+✔ VaultPanel ignores an out-of-order reveal response without replacing the latest secret or timer (9.978416ms)
+✔ revealPassword('fiction-entry') timer is cancelled by lockNow (12.141958ms)
+✔ revealPassword('fiction-entry') timer is cancelled by unmount (11.972417ms)
+✔ generatePassword() timer is cancelled by lockNow (7.752166ms)
+✔ generatePassword() timer is cancelled by unmount (6.146791ms)
+✔ VaultPanel never persists secrets or enables M2/clipboard IPC (1.618375ms)
+ℹ tests 40
+ℹ suites 0
+ℹ pass 40
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 593.653
