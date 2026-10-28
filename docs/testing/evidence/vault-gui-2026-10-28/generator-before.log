@@ -1,0 +1,42 @@
+✔ VaultPanel clears every local secret on unmount and requests backend lock (37.874875ms)
+✔ VaultPanel drops a late reveal result after lock or route cleanup (14.092834ms)
+✔ VaultPanel expires reveal and generated values with the same 15 second timer contract (10.195417ms)
+✔ revealPassword('fiction-entry') expires after refresh and search change the operation epoch (8.511292ms)
+✔ generatePassword() expires after refresh and search change the operation epoch (7.153583ms)
+✔ VaultPanel keeps the latest secret when reveals are consecutive and a stale timer fires (7.384875ms)
+✔ VaultPanel ignores an out-of-order reveal response without replacing the latest secret or timer (5.946083ms)
+✔ revealPassword('fiction-entry') timer is cancelled by lockNow (6.687917ms)
+✔ revealPassword('fiction-entry') timer is cancelled by unmount (9.011958ms)
+✔ generatePassword() timer is cancelled by lockNow (5.778459ms)
+✔ generatePassword() timer is cancelled by unmount (5.428542ms)
+✔ VaultPanel never persists secrets or enables M2/clipboard IPC (1.462417ms)
+✖ VaultPanel transfers generated password into a newly opened editor before clearing it (5.311834ms)
+✔ VaultPanel transfers generated password without resetting an existing entry (4.998916ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 13
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 350.835291
+
+✖ failing tests:
+
+test at src-ui/tests/unit/vault.test.mjs:203:1
+✖ VaultPanel transfers generated password into a newly opened editor before clearing it (5.311834ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + ''
+  - 'fiction-generated-new'
+
+      at TestContext.<anonymous> (file:///Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/team/codex-gui-vault-generator-20261028/src-ui/tests/unit/vault.test.mjs:213:10)
+      at async Test.run (node:internal/test_runner/test:1054:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:744:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '',
+    expected: 'fiction-generated-new',
+    operator: 'strictEqual'
+  }

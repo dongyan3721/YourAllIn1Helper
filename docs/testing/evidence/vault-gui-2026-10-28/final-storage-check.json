@@ -1,0 +1,27 @@
+{
+  "app.db": {
+    "fiction-M1-master-2026": false,
+    "fiction-M1-renewed-2026": false,
+    "fiction-entry-password": false,
+    "FICTION-TOTP-NOT-REAL": false,
+    "Fiction M1 Account edited": false
+  },
+  "config.json": {
+    "fiction-M1-master-2026": false,
+    "fiction-M1-renewed-2026": false,
+    "fiction-entry-password": false,
+    "FICTION-TOTP-NOT-REAL": false,
+    "Fiction M1 Account edited": false
+  },
+  "app.db-wal": {
+    "fiction-M1-master-2026": false,
+    "fiction-M1-renewed-2026": true,
+    "fiction-entry-password": false,
+    "FICTION-TOTP-NOT-REAL": false,
+    "Fiction M1 Account edited": false
+  },
+  "structural_result": {
+    "remaining_entry_count": 1,
+    "encrypted_field_count": 7
+  }
+}

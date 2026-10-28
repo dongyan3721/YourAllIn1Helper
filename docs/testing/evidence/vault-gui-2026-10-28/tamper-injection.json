@@ -1,0 +1,8 @@
+{
+  "method": "SQLite consistent backup of fictional GUI data; flip one bit of password ciphertext",
+  "entry_id": "8fee91ba-4417-4e50-89e2-175b52012bd8",
+  "field_id": 5,
+  "before_sha256": "ac204cf5c9f7f2d7c045d42f7268f97f4bb5ce179a6dc98c090af69f55949db5",
+  "after_sha256": "86c373f79ce24ecaf9ad0605a6dc96455b8125c32b02e2fc473e97b2178bc51c",
+  "master_fixture": "initial virtual master from GUI test plan"
+}

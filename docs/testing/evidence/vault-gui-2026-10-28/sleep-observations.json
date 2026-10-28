@@ -1,0 +1,12 @@
+{
+  "window_start_utc": "2026-10-28T10:01:42.428938+00:00",
+  "power_log_exit": 0,
+  "selected_system_power_events": [
+    "2026-10-28 18:01:51 +0800 Sleep               \tEntering Sleep state due to 'Software Sleep pid=403':TCPKeepAlive=active Using AC (Charge:97%) 42 secs",
+    "2026-10-28 18:02:33 +0800 Wake                \tWake from Deep Idle [CDNVA] : due to MTP.DOCK.CHANNELS.AP0.IRQ nub-spmi-a0.0x25 RTP.keyboard/UserActivity Assertion Using AC (Charge:97%)"
+  ],
+  "user_report": "Sleep/wake completed; vault locked normally",
+  "gui_locked": true,
+  "fixture_visible": false,
+  "window_start_local": "2026-10-28T18:01:42.428938+08:00"
+}

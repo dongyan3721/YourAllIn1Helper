@@ -1,0 +1,18 @@
+{
+  "fictional_master_found_in_clipboard_metadata": [
+    [
+      2,
+      23,
+      1793181696672,
+      1793181696672
+    ]
+  ],
+  "fictional_master_found_in_vault_tables": {
+    "vault_meta": false,
+    "password_vault_entries": false,
+    "password_vault_fields": false,
+    "vault_device_slots": false
+  },
+  "note": "User confirmed copying/pasting the fictional renewed master from chat while preparing sleep. Clipboard metadata timestamp matches; no known master plaintext in vault tables.",
+  "user_confirmed_external_copy": true
+}

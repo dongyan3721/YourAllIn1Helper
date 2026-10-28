@@ -1,0 +1,94 @@
+✔ VaultPanel clears every local secret on unmount and requests backend lock (35.102792ms)
+✔ VaultPanel drops a late reveal result after lock or route cleanup (11.075167ms)
+✔ VaultPanel expires reveal and generated values with the same 15 second timer contract (10.047583ms)
+✔ revealPassword('fiction-entry') expires after refresh and search change the operation epoch (7.414709ms)
+✔ generatePassword() expires after refresh and search change the operation epoch (6.844166ms)
+✔ VaultPanel keeps the latest secret when reveals are consecutive and a stale timer fires (6.204541ms)
+✔ VaultPanel ignores an out-of-order reveal response without replacing the latest secret or timer (5.447125ms)
+✔ revealPassword('fiction-entry') timer is cancelled by lockNow (7.223458ms)
+✔ revealPassword('fiction-entry') timer is cancelled by unmount (7.945959ms)
+✔ generatePassword() timer is cancelled by lockNow (4.9605ms)
+✔ generatePassword() timer is cancelled by unmount (4.629667ms)
+✔ VaultPanel never persists secrets or enables M2/clipboard IPC (1.1895ms)
+✔ VaultPanel transfers generated password into a newly opened editor before clearing it (3.990375ms)
+✔ VaultPanel transfers generated password without resetting an existing entry (3.7225ms)
+✖ VaultPanel does not delete before an explicit confirmation request (4.94075ms)
+✖ VaultPanel cancels pending deletion and rejects a changed target or version (6.492625ms)
+✖ VaultPanel deletes the confirmed version once and closes the editor (3.576334ms)
+✖ VaultPanel clears delete confirmation on lock and editor replacement (3.477917ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 14
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 334.803709
+
+✖ failing tests:
+
+test at src-ui/tests/unit/vault.test.mjs:233:1
+✖ VaultPanel does not delete before an explicit confirmation request (4.94075ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+  + [
+  +   'vault_delete_entry',
+  +   'vault_list_entries'
+  + ]
+  - []
+
+      at TestContext.<anonymous> (file:///Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/team/codex-gui-vault-delete-20261028/src-ui/tests/unit/vault.test.mjs:241:10)
+      at async Test.run (node:internal/test_runner/test:1054:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:744:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 'vault_delete_entry', 'vault_list_entries' ],
+    expected: [],
+    operator: 'deepStrictEqual'
+  }
+
+test at src-ui/tests/unit/vault.test.mjs:245:1
+✖ VaultPanel cancels pending deletion and rejects a changed target or version (6.492625ms)
+  evalmachine.<anonymous>:1
+  form.value.id = 'fiction-delete'; form.value.record_version = 4; requestDelete(); cancelDelete()
+                                                                   ^
+
+  ReferenceError: requestDelete is not defined
+      at evalmachine.<anonymous>:1:66
+      at Script.runInContext (node:vm:149:12)
+      at Object.runInContext (node:vm:301:6)
+      at run (file:///Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/team/codex-gui-vault-delete-20261028/src-ui/tests/unit/vault.test.mjs:41:34)
+      at TestContext.<anonymous> (file:///Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/team/codex-gui-vault-delete-20261028/src-ui/tests/unit/vault.test.mjs:248:3)
+      at async Test.run (node:internal/test_runner/test:1054:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+
+test at src-ui/tests/unit/vault.test.mjs:257:1
+✖ VaultPanel deletes the confirmed version once and closes the editor (3.576334ms)
+  evalmachine.<anonymous>:1
+  form.value.id = 'fiction-delete'; form.value.record_version = 4; requestDelete()
+                                                                   ^
+
+  ReferenceError: requestDelete is not defined
+      at evalmachine.<anonymous>:1:66
+      at Script.runInContext (node:vm:149:12)
+      at Object.runInContext (node:vm:301:6)
+      at run (file:///Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/team/codex-gui-vault-delete-20261028/src-ui/tests/unit/vault.test.mjs:41:34)
+      at TestContext.<anonymous> (file:///Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/team/codex-gui-vault-delete-20261028/src-ui/tests/unit/vault.test.mjs:263:3)
+      at async Test.run (node:internal/test_runner/test:1054:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+
+test at src-ui/tests/unit/vault.test.mjs:273:1
+✖ VaultPanel clears delete confirmation on lock and editor replacement (3.477917ms)
+  evalmachine.<anonymous>:1
+  form.value.id = 'fiction-delete'; form.value.record_version = 4; requestDelete()
+                                                                   ^
+
+  ReferenceError: requestDelete is not defined
+      at evalmachine.<anonymous>:1:66
+      at Script.runInContext (node:vm:149:12)
+      at Object.runInContext (node:vm:301:6)
+      at run (file:///Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/team/codex-gui-vault-delete-20261028/src-ui/tests/unit/vault.test.mjs:41:34)
+      at TestContext.<anonymous> (file:///Users/santa_antilles/Desktop/your_all_in_one/.runtime_data/team/codex-gui-vault-delete-20261028/src-ui/tests/unit/vault.test.mjs:276:5)
+      at async Test.run (node:internal/test_runner/test:1054:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:744:7)

@@ -1,0 +1,12 @@
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on build directory
+   Compiling all-in-one-host v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/src-tauri)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 23.51s
+     Running tests/modules.rs (target/debug/deps/modules-b41f4aba402d24ef)
+
+running 1 test
+test vault_async_ipc_enforces_lock_and_module_switch ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 2.10s

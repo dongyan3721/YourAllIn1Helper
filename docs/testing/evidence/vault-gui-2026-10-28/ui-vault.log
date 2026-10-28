@@ -1,0 +1,20 @@
+✔ VaultPanel clears every local secret on unmount and requests backend lock (130.246208ms)
+✔ VaultPanel drops a late reveal result after lock or route cleanup (88.863375ms)
+✔ VaultPanel expires reveal and generated values with the same 15 second timer contract (29.967542ms)
+✔ revealPassword('fiction-entry') expires after refresh and search change the operation epoch (98.065666ms)
+✔ generatePassword() expires after refresh and search change the operation epoch (28.336125ms)
+✔ VaultPanel keeps the latest secret when reveals are consecutive and a stale timer fires (18.497209ms)
+✔ VaultPanel ignores an out-of-order reveal response without replacing the latest secret or timer (26.072667ms)
+✔ revealPassword('fiction-entry') timer is cancelled by lockNow (18.966625ms)
+✔ revealPassword('fiction-entry') timer is cancelled by unmount (79.966542ms)
+✔ generatePassword() timer is cancelled by lockNow (18.621125ms)
+✔ generatePassword() timer is cancelled by unmount (11.646667ms)
+✔ VaultPanel never persists secrets or enables M2/clipboard IPC (4.379334ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1117.40625

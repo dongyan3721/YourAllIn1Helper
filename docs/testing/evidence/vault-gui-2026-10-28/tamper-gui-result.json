@@ -1,0 +1,7 @@
+{
+  "before_reveal_unlocked": true,
+  "after_reveal_locked": true,
+  "secret_returned": false,
+  "idle_seconds_after_reveal": 42.81,
+  "scope": "password ciphertext bit-flip in separate fictional backup"
+}

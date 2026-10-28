@@ -1,0 +1,51 @@
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling block2 v0.6.2
+   Compiling app-core v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/app-core)
+   Compiling dispatch2 v0.3.1
+   Compiling objc2-core-foundation v0.3.2
+   Compiling objc2-foundation v0.3.2
+   Compiling objc2-core-text v0.3.2
+   Compiling objc2-media-toolbox v0.3.2
+   Compiling objc2-image-io v0.3.2
+   Compiling objc2-metal v0.3.2
+   Compiling objc2-quartz-core v0.3.2
+   Compiling objc2-core-image v0.3.2
+   Compiling objc2-core-data v0.3.2
+   Compiling objc2-cloud-kit v0.3.2
+   Compiling objc2-avf-audio v0.3.2
+   Compiling objc2-core-audio v0.3.2
+   Compiling objc2-core-graphics v0.3.2
+   Compiling objc2-core-video v0.3.2
+   Compiling objc2-vision v0.3.2
+   Compiling objc2-app-kit v0.3.2
+   Compiling objc2-core-media v0.3.2
+   Compiling objc2-av-foundation v0.3.2
+   Compiling enigo v0.6.1
+   Compiling xcap v0.9.8
+   Compiling os-hal v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/os-hal)
+   Compiling mod-password-vault v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/crates/mod-password-vault)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 20.48s
+     Running unittests src/lib.rs (target/debug/deps/mod_password_vault-d96d18ad8de92fc3)
+
+running 17 tests
+test unit_tests::crypto::kdf_profile_rejects_unknown_or_unbounded_parameters ... ok
+test unit_tests::crypto::master_wrap_is_bound_to_vault_and_key ... ok
+test unit_tests::crypto::ciphertext_tag_and_nonce_tampering_release_no_plaintext ... ok
+test unit_tests::crypto::field_envelopes_use_independent_nonces_and_authenticate_context ... ok
+test unit_tests::service::migration_preserves_legacy_tables_and_checksum_changes_fail_closed ... ok
+test unit_tests::service::input_limits_and_generator_policy_fail_closed ... ok
+test unit_tests::crypto::argon2id_project_vector_matches_independent_phc_example ... ok
+test unit_tests::service::lock_invalidates_a_late_unlock_result ... ok
+test unit_tests::service::crud_search_reveal_and_password_generator_use_only_fictional_values ... ok
+test unit_tests::service::ciphertext_tampering_locks_session_and_releases_no_secret ... ok
+test unit_tests::service::update_reencrypts_every_field_and_rejects_stale_version ... ok
+test unit_tests::service::disabled_module_rejects_calls_and_restart_stays_locked ... ok
+test unit_tests::service::wrong_password_and_every_sensitive_operation_fail_when_locked ... ok
+test unit_tests::service::initialize_persists_only_ciphertext_and_reopen_unlocks ... ok
+test unit_tests::service::real_idle_values_and_capability_failures_control_locking ... ok
+test unit_tests::service::repeated_nonce_and_random_failure_abort_without_second_ciphertext ... ok
+test unit_tests::service::master_password_change_rewraps_same_dek_and_forces_lock ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.87s

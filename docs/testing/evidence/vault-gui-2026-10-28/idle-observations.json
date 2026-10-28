@@ -1,0 +1,28 @@
+[
+  {
+    "stage": "start",
+    "time_utc": "2026-10-28T09:57:45.229732+00:00",
+    "system_idle_seconds": 36.64,
+    "gui_unlocked": true
+  },
+  {
+    "stage": "first_read",
+    "time_utc": "2026-10-28T09:58:58.021330+00:00",
+    "system_idle_seconds": 109.43,
+    "gui_unlocked": true
+  },
+  {
+    "stage": "before_threshold",
+    "time_utc": "2026-10-28T10:00:02.069144+00:00",
+    "system_idle_seconds": 173.48,
+    "gui_unlocked": true
+  },
+  {
+    "stage": "after_threshold",
+    "time_utc": "2026-10-28T10:00:27.343622+00:00",
+    "system_idle_seconds": 198.76,
+    "gui_unlocked": false,
+    "lock_notice": true,
+    "fixture_visible": false
+  }
+]

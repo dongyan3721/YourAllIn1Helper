@@ -1,0 +1,20 @@
+{
+  "app.db": {
+    "fiction-M1-master-2026": false,
+    "Fiction M1 Account": false,
+    "fiction-entry-password": false,
+    "FICTION-TOTP-NOT-REAL": false
+  },
+  "config.json": {
+    "fiction-M1-master-2026": false,
+    "Fiction M1 Account": false,
+    "fiction-entry-password": false,
+    "FICTION-TOTP-NOT-REAL": false
+  },
+  "app.db-wal": {
+    "fiction-M1-master-2026": false,
+    "Fiction M1 Account": false,
+    "fiction-entry-password": false,
+    "FICTION-TOTP-NOT-REAL": false
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "date": "2026-10-28",
+  "evidence": [
+    {
+      "file": "delete-after.log",
+      "sha256": "ae7300b78d711623a791bc99386f0d3bf6611aeb2f3173af1e7cfe9ee2b18922"
+    },
+    {
+      "file": "delete-before.log",
+      "sha256": "8f8b9651954e0f1037ac59f11171228eb52bdeb3d5a6846bd6f9f9950040bbb9"
+    },
+    {
+      "file": "delete-build.log",
+      "sha256": "f3562b65d48c2042ca7c90933f42f50d1d1ca8224cc2a87c80144495cc7ba973"
+    },
+    {
+      "file": "final-build.json",
+      "sha256": "ec3dd6f01658e424634c35d45f22666c8f4afa70aae94248d81f1146efa39cb6"
+    },
+    {
+      "file": "final-plaintext-attribution.json",
+      "sha256": "81d148aeaac40f9718a800f473ebb6d3b18cc17f2ad6455486f63e6b1a9b948f"
+    },
+    {
+      "file": "final-storage-check.json",
+      "sha256": "185ebdb1618412eb697782292e1316d7cd19e0b0b29d59ec9623182295f77581"
+    },
+    {
+      "file": "generator-after.log",
+      "sha256": "e0df1a9263ae2c19e98901bee9db8adc1bbc679af6e724cb2532a2ed636787aa"
+    },
+    {
+      "file": "generator-before.log",
+      "sha256": "ad5bf664169d94f1a9f0451e99509102b40605588906e309ce962568fc55e008"
+    },
+    {
+      "file": "generator-build.json",
+      "sha256": "822035a901f6529a6bb70a8cedc624ba148daaa800a6c8b76189ab06c749d62e"
+    },
+    {
+      "file": "generator-build.log",
+      "sha256": "c598b7e36146bbd791511a288895c6aad5bf903a998c1ec2b7f5be8f5787828c"
+    },
+    {
+      "file": "host-vault.log",
+      "sha256": "c7649038e796dcfd79645de2308039c3cde61c10213cc62521d8c42c083bf256"
+    },
+    {
+      "file": "idle-observations.json",
+      "sha256": "886894bea9e5a00edb50b9be278367d854315b23bec2c7d9bbe5606e83a01ce3"
+    },
+    {
+      "file": "plaintext-check.json",
+      "sha256": "4c790686319cd36827e334daa26d1c9688d7cd8e77728ce64c409482d00470b5"
+    },
+    {
+      "file": "rust-vault.log",
+      "sha256": "2c4078159806f1b056c3b9eea751ef3b4d955b9e4f6b301be5acedc7a15594f6"
+    },
+    {
+      "file": "sleep-observations.json",
+      "sha256": "a82dd2a2b8b8cb7c776bcf61b1740e47421dc59a72b8d86d0d0f1b562c190e77"
+    },
+    {
+      "file": "tamper-gui-result.json",
+      "sha256": "a838a3f454199b955d8d9f449e863d5e30f04957f8d18bfccde5c2d2f41446d8"
+    },
+    {
+      "file": "tamper-injection.json",
+      "sha256": "bb92a056d32faea16452b225a4233101e55ccc4ab89aeb2417a2261de80dfa90"
+    },
+    {
+      "file": "ui-deletion-build.log",
+      "sha256": "361c432acadc528fea34b874f9958f373b09e7dee8e245aa8b515ac8be0e3463"
+    },
+    {
+      "file": "ui-deletion-integrated.log",
+      "sha256": "31c5aed898e93842da4eb36f96853f3a53030b8337daa9b1e43cbfce53dc584a"
+    },
+    {
+      "file": "ui-integrated-build.log",
+      "sha256": "99096c355f6cf13de20f2671736d44e10c29e979cdbfbab9ead0e2c0f9f0c880"
+    },
+    {
+      "file": "ui-integrated.log",
+      "sha256": "79a34aa429628c2d1760b20d97654acd9f9a943497c7216230047e2d0e4ecca1"
+    },
+    {
+      "file": "ui-vault.log",
+      "sha256": "30bf72f80693bfd5c4e7c449ed35e2a9f0c6d9e81afa15a3b3868d5a00d2c738"
+    }
+  ]
+}
