@@ -1,0 +1,7 @@
+{
+  "old_pid_terminated": 31330,
+  "reason": "Normal exit did not terminate the previous build; stopped it to load the new binary",
+  "new_processes": [
+    "32540 Wed Oct 28 20:28:59 2026     /Users/santa_antilles/Desktop/your_all_in_one/dist/All-in-One Toolbox.app/Contents/MacOS/all-in-one-desktop"
+  ]
+}

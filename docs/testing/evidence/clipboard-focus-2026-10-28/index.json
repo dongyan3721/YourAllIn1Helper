@@ -6,11 +6,15 @@
     },
     {
       "file": "host-tests.log",
-      "sha256": "1a6473d40b05b720b596b0258a9debd31a53f73241309171ea28267076448cf5"
+      "sha256": "d46e18a76f59871e83e86328139c432518cd8ea7572f746407fadd43cd2d386d"
     },
     {
       "file": "no-flash-build.json",
       "sha256": "47f5ba7192e9337b14e7348be28f5d427d3edc281688acc1710a32c8b0405f04"
+    },
+    {
+      "file": "runtime-restart.json",
+      "sha256": "3a627e76b42a7285851aa0ae296a20ed278d1a0214c5ef290e22916b9f17ede7"
     },
     {
       "file": "tests.log",
