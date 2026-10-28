@@ -23,6 +23,7 @@ async function loadComponent(invokeIpc, timers = []) {
     }),
     VAULT_REVEAL_MS: 15_000,
     vaultText: (key) => key,
+    vaultErrorText: (reason) => `localized:${String(reason)}`,
     setTimeout: (callback, delay) => {
       const timer = { callback, delay, cleared: false };
       timers.push(timer);
@@ -46,6 +47,24 @@ async function loadComponent(invokeIpc, timers = []) {
   }; busy.value = false`);
   return { run, unmount: () => unmounted() };
 }
+
+test('vault errors use localized keys for known failures and a localized fallback', async () => {
+  const source = await readFile(new URL('../../src/utils/vault/text.ts', import.meta.url), 'utf8');
+  const script = source.replace(/^import\s+[^;]+?;\s*/gm, '');
+  const context = vm.createContext({ t: (key) => key, exports: {} });
+  vm.runInContext(
+    ts.transpileModule(script, {
+      compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS },
+    }).outputText,
+    context,
+  );
+  const translate = (message) => context.exports.vaultErrorText(message);
+  assert.equal(translate('master password unlock failed'), 'vault.errors.unlockFailed');
+  assert.equal(translate('invalid vault input: title is required'), 'vault.errors.titleRequired');
+  assert.equal(translate('invalid vault input: master password confirmation differs'), 'vault.errors.confirmationMismatch');
+  assert.equal(translate('database operation failed: internal detail'), 'vault.errors.database');
+  assert.equal(translate('Failed to fetch'), 'vault.errors.unknown');
+});
 
 test('VaultPanel clears every local secret on unmount and requests backend lock', async () => {
   const calls = [];

@@ -1181,10 +1181,12 @@ pub fn run() {
 
             if !ui_smoke_test && !std::env::args().any(|arg| arg == "--silent") {
                 let host = app.state::<Arc<DesktopHost>>();
+                let initial_route = std::env::var("ALL_IN_ONE_DASHBOARD_ROUTE")
+                    .unwrap_or_else(|_| "/overview".to_string());
                 host.kernel()
                     .context()
                     .window_pool
-                    .open_window(WindowSpec::dashboard("/overview"))?;
+                    .open_window(WindowSpec::dashboard(&initial_route))?;
             }
             if ui_smoke_test {
                 ui_smoke::run_ui_smoke_checks(app.handle().clone(), keep_open);

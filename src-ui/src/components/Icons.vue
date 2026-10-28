@@ -264,6 +264,45 @@
       <path d="M14 18h6" />
     </g>
 
+    <!-- 密码本/安全 shield 图标 -->
+    <g v-else-if="name === 'shield'">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <path d="m9 12 2 2 4-4" />
+    </g>
+
+    <!-- 锁定图标 -->
+    <g v-else-if="name === 'lock'">
+      <rect x="4" y="10" width="16" height="11" rx="2" />
+      <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+      <circle cx="12" cy="15" r="1" />
+    </g>
+
+    <!-- 密钥图标 -->
+    <g v-else-if="name === 'key'">
+      <circle cx="8" cy="15" r="4" />
+      <path d="m11 12 9-9" />
+      <path d="m16 7 3 3" />
+      <path d="m14 9 2 2" />
+    </g>
+
+    <!-- 显示/隐藏秘密图标 -->
+    <g v-else-if="name === 'eye'">
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+      <circle cx="12" cy="12" r="3" />
+    </g>
+    <g v-else-if="name === 'eye-off'">
+      <path d="m3 3 18 18" />
+      <path d="M10.6 5.2A10.8 10.8 0 0 1 12 5c6.5 0 10 7 10 7a17.4 17.4 0 0 1-3 3.8" />
+      <path d="M6.2 6.2C3.4 8.2 2 12 2 12s3.5 7 10 7c1.7 0 3.2-.4 4.5-1" />
+      <path d="M10 10a3 3 0 0 0 4 4" />
+    </g>
+
+    <!-- 新建图标 -->
+    <g v-else-if="name === 'plus'">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </g>
+
     <!-- 默认点点点 -->
     <g v-else>
       <circle cx="12" cy="12" r="1" />
