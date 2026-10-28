@@ -6,6 +6,14 @@
       "sha256": "58967c2888fe06f7f015d188e6887333baed2e49efd6be42666fefe3b1aebf1a"
     },
     {
+      "file": "final-build.json",
+      "sha256": "357343087d66f47df36053bc66251b35f187df174b36294694b7318c9a5d15e7"
+    },
+    {
+      "file": "gui-final-observations.json",
+      "sha256": "8252be4f867798155afbad8bac1e884b2ec6dcedf190105a6902a69526f1065c"
+    },
+    {
       "file": "integrated-build.json",
       "sha256": "fa226fcb5d98cdefd671c44499df0f236fe46f40613429b9e0702a75faffc30e"
     },
@@ -32,6 +40,14 @@
     {
       "file": "rust-tests.log",
       "sha256": "3b1afb4836cfd5ce6abcc7162aff5517eee90e2512a8723b6d1fe9fe9464872e"
+    },
+    {
+      "file": "sticky-acl-after.log",
+      "sha256": "4279ce36410192ae5ecd70508b5be2f794e2094841fd26d41565cc664ee665c4"
+    },
+    {
+      "file": "sticky-acl-before.log",
+      "sha256": "d4831298d0db91f5e9ee876de9df402620e5411ea00d4286ad4bbf5e034129d6"
     },
     {
       "file": "sticky-close-before.log",

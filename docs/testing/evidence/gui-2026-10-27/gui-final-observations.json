@@ -1,0 +1,66 @@
+{
+  "date": "2026-10-28",
+  "source_commit": "d3f50be1f3a123e20e6d417aa75eee678e16d399",
+  "method": "Computer Use native UI; process inspection only for confirming exit",
+  "environment": "User-directed dist app with existing production data",
+  "synthetic_note_id": "53128c69-edeb-43ba-a10f-36dfc7ad7c41",
+  "results": [
+    {
+      "case": "GUI-12",
+      "status": "passed",
+      "observed": "Disable: windows 2 to 1, sticky navigation removed, switch off; reenable restores same note"
+    },
+    {
+      "case": "GUI-18",
+      "status": "passed",
+      "observed": "Restart while sticky disabled: one window, sticky switch remains off, no sticky navigation"
+    },
+    {
+      "case": "sticky-dashboard-close",
+      "status": "passed",
+      "observed": "Dashboard close archives test note, windows 2 to 1; reopen retains latest confirmed text"
+    },
+    {
+      "case": "GUI-10",
+      "status": "passed",
+      "observed": "Green theme and 45 percent opacity visibly applied and retained after close/reopen"
+    },
+    {
+      "case": "GUI-19",
+      "status": "passed",
+      "observed": "Quit with open saved note ends process; restart restores two windows, note body and 45 percent opacity"
+    },
+    {
+      "case": "sticky-exit-within-debounce",
+      "status": "inconclusive",
+      "observed": "Unobserved immediately queued input absent after restart; input delivery before quit not confirmed; no GUI boundary pass claimed"
+    },
+    {
+      "case": "GUI-05",
+      "status": "passed",
+      "observed": "Clipboard module off removes navigation and shortcut record, on restores both"
+    },
+    {
+      "case": "GUI-06",
+      "status": "not_verified",
+      "observed": "Tool-sent shortcut did not open popup in enabled or disabled state; no positive control"
+    },
+    {
+      "case": "GUI-20",
+      "status": "partial",
+      "observed": "All ten modules restored on; synthetic note archived; dashboard Exit ends process; production-data exception prevents isolation criterion"
+    }
+  ],
+  "remaining_limitations": [
+    "No real vault initialization or secret CRUD",
+    "No real translation API request",
+    "No screen-lock/sleep/audio/midnight GUI boundary",
+    "No full specialist GUI suite completion"
+  ],
+  "side_effects": {
+    "synthetic_note": "Archived GUI QA 2026-10-28",
+    "synthetic_script": "GUI QA synthetic shell 2026-10-28 retained",
+    "clipboard_history_observed": 34,
+    "synthetic_export": "~/Downloads/便笺_53128c69.md"
+  }
+}

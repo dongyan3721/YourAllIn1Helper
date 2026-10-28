@@ -1,0 +1,22 @@
+   Compiling all-in-one-host v0.1.0 (/Users/santa_antilles/Desktop/your_all_in_one/src-tauri)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 10.84s
+     Running tests/sticky_capabilities.rs (target/debug/deps/sticky_capabilities-616db972384cd03a)
+
+running 1 test
+test sticky_windows_can_register_and_release_lifecycle_event_listeners ... FAILED
+
+failures:
+
+---- sticky_windows_can_register_and_release_lifecycle_event_listeners stdout ----
+
+thread 'sticky_windows_can_register_and_release_lifecycle_event_listeners' (766073) panicked at src-tauri/tests/sticky_capabilities.rs:30:9:
+sticky-note-qa-note lacks core:event:allow-listen; shutdown acknowledgements cannot work
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    sticky_windows_can_register_and_release_lifecycle_event_listeners
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p all-in-one-host --test sticky_capabilities`
