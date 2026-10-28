@@ -1,5 +1,6 @@
 {
   "app": {
+    "dragWindow": "拖动窗口",
     "name": "All-in-One Toolbox",
     "subtitle": "全能桌面效率百宝袋",
     "nativeWindowCount": "{count} 个原生窗口",

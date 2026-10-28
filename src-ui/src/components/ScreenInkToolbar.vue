@@ -1,8 +1,8 @@
 <template>
-  <div class="screen-ink-toolbar-root" data-tauri-drag-region>
+  <div class="screen-ink-toolbar-root" @mousedown="startWindowDrag">
     <div class="capsule-toolbar" :class="{ 'passthrough-active': isPassthrough }">
       <!-- 拖拽手柄 -->
-      <div class="drag-grip" data-tauri-drag-region :title="t('screen_ink.dragTooltip')">
+      <div class="drag-grip" :title="t('screen_ink.dragTooltip')">
         <span class="grip-line"></span>
         <span class="grip-line"></span>
       </div>
@@ -134,6 +134,7 @@
 </template>
 
 <script setup lang="ts">
+import { startWindowDrag } from '../utils/windowDrag';
 import { ref, onMounted, onUnmounted } from 'vue';
 import { type InkTool } from '../utils/ink';
 import Icons from './Icons.vue';

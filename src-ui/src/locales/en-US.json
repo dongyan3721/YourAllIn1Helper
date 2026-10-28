@@ -1,5 +1,6 @@
 {
   "app": {
+    "dragWindow": "Drag window",
     "name": "All-in-One Toolbox",
     "subtitle": "Pocket Efficiency Suite",
     "nativeWindowCount": "{count} Native Windows",

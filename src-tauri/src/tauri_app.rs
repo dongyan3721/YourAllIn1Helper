@@ -143,6 +143,9 @@ impl WindowBackend for TauriWindowBackend {
                     .emit("dashboard://navigate", spec.route.clone())
                     .map_err(to_core_error)?;
             }
+            if spec.label == "dashboard" {
+                window.unminimize().map_err(to_core_error)?;
+            }
             window.show().map_err(to_core_error)?;
             if spec.focus {
                 window.set_focus().map_err(to_core_error)?;
@@ -1054,10 +1057,11 @@ fn setup_tray(app: &AppHandle) -> Result<(), tauri::Error> {
 
     TrayIconBuilder::with_id("main-tray")
         .icon(tauri::image::Image::from_bytes(include_bytes!(
-            "../icons/icon.png"
+            "../icons/32x32.png"
         ))?)
         .menu(&menu)
         .tooltip("All-in-One Toolbox")
+        .show_menu_on_left_click(true)
         .on_menu_event(|app, event| {
             if is_exiting(app) {
                 return;
@@ -1255,7 +1259,13 @@ pub fn run() {
                 WindowEvent::CloseRequested { api, .. } => {
                     let label = window.label();
                     if label == "dashboard" {
+                        // 红点关闭主界面只隐藏；守护进程、快捷键和菜单栏保持运行。
+                        api.prevent_close();
                         host.password_vault.notify_page_close();
+                        if let Err(error) = window.hide() {
+                            tracing::warn!(%error, "Failed to hide dashboard");
+                        }
+                        return;
                     }
                     if label == "translate-popover" {
                         host.translator.cancel_current_translation();
@@ -1332,7 +1342,19 @@ pub fn run() {
         if matches!(event, RunEvent::Exit) {
             crate::translator_mouse::stop();
         }
+        #[cfg(target_os = "macos")]
+        if matches!(event, RunEvent::Reopen { .. }) && !is_exiting(app) {
+            if let Some(host) = app.try_state::<Arc<DesktopHost>>() {
+                let _ = host.kernel().context().window_pool.open_window(WindowSpec::dashboard("/overview"));
+            }
+        }
         if let RunEvent::ExitRequested { api, code, .. } = event {
+            // Tauri 在最后一个原生窗口销毁后发送无退出码事件。
+            // 显式退出（菜单栏或界面退出）走带退出码的关闭事务。
+            if code.is_none() && !is_exiting(app) {
+                api.prevent_exit();
+                return;
+            }
             let exit = app.state::<Arc<ExitCoordinator>>().inner().clone();
             match exit.request() {
                 ExitDecision::Allow => {}

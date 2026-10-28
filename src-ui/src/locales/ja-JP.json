@@ -1,5 +1,6 @@
 {
   "app": {
+    "dragWindow": "ウィンドウを移動",
     "name": "All-in-One Toolbox",
     "subtitle": "四次元ポケット効率ツール",
     "nativeWindowCount": "{count} 個のネイティブウィンドウ",

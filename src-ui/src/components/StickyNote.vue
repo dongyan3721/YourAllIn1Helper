@@ -6,7 +6,8 @@
     :aria-busy="frozen"
   >
     <!-- 便笺标题栏 -->
-    <header class="sticky-header">
+    <header class="sticky-header" @mousedown="startWindowDrag">
+      <span class="window-drag-grip" :title="t('app.dragWindow')" aria-hidden="true">⠿</span>
       <div class="header-left">
         <input
           v-model="note.title"
@@ -124,6 +125,7 @@
 </template>
 
 <script setup lang="ts">
+import { startWindowDrag } from '../utils/windowDrag';
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { marked } from 'marked';
 import katex from 'katex';
@@ -704,12 +706,11 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   padding: 0 10px;
-  -webkit-app-region: drag;
+  cursor: grab;
 }
 
-.sticky-header button,
-.sticky-header input {
-  -webkit-app-region: no-drag;
+.window-drag-grip {
+  flex-shrink: 0; padding: 0 7px; cursor: grab; user-select: none; opacity: 0.55;
 }
 
 .header-left {

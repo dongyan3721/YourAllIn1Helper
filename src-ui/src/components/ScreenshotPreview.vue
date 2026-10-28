@@ -1,7 +1,7 @@
 <template>
   <div class="preview-root">
     <!-- 顶部状态栏与操作按钮 -->
-    <header class="preview-header" data-tauri-drag-region>
+    <header class="preview-header" @mousedown="startWindowDrag">
       <div class="title-info">
         <span class="type-tag">{{ isScroll ? t('screenshot.scroll.previewTitle') : t('screenshot.gif.previewTitle') }}</span>
         <span v-if="dimensions" class="dim-badge">{{ dimensions.w }} × {{ dimensions.h }}</span>
@@ -63,6 +63,7 @@
 </template>
 
 <script setup lang="ts">
+import { startWindowDrag } from '../utils/windowDrag';
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import Icons from './Icons.vue';
 import { t } from '../utils/i18n';

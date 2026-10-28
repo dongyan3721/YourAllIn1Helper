@@ -1,7 +1,7 @@
 <template>
   <div class="translate-popover-container" :class="{ 'is-pinned': isPinned }">
     <!-- 顶部拖拽栏与控制条 -->
-    <header class="popover-header" data-tauri-drag-region>
+    <header class="popover-header" @mousedown="startWindowDrag">
       <div class="header-left">
         <Icons name="translate" :size="15" class="header-icon" />
         <span class="header-title">{{ t('translator.title') }}</span>
@@ -109,6 +109,7 @@
 </template>
 
 <script setup lang="ts">
+import { startWindowDrag } from '../utils/windowDrag';
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import Icons from './Icons.vue';
 import { invokeIpc } from '../api/ipc';

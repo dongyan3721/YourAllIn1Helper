@@ -1,5 +1,5 @@
 <template>
-  <div class="control-root" tabindex="0" data-tauri-drag-region @keydown="onControlKey">
+  <div class="control-root" tabindex="0" @keydown="onControlKey" @mousedown="startWindowDrag">
     <!-- 模式 1：长截图进行中 -->
     <template v-if="mode === 'scroll'">
       <div class="status-indicator scroll-indicator">
@@ -60,6 +60,7 @@
 </template>
 
 <script setup lang="ts">
+import { startWindowDrag } from '../utils/windowDrag';
 import { ref, onMounted, onUnmounted } from 'vue';
 import Icons from './Icons.vue';
 import { t } from '../utils/i18n';

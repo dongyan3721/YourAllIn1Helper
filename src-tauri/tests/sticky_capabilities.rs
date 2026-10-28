@@ -28,7 +28,11 @@ fn sticky_windows_can_register_and_release_lifecycle_event_listeners() {
             }
         }
     }
-    for permission in ["core:event:allow-listen", "core:event:allow-unlisten"] {
+    for permission in [
+        "core:event:allow-listen",
+        "core:event:allow-unlisten",
+        "core:window:allow-start-dragging",
+    ] {
         assert!(
             permissions.contains(permission),
             "{label} lacks {permission}; shutdown acknowledgements cannot work"

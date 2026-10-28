@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "window-drag",
+  "description": "仅允许便笺、翻译浮窗、标注工具栏及截图控制/预览窗口启动自身拖动。",
+  "windows": [
+    "sticky-note-*",
+    "translate-popover",
+    "screen-ink-toolbar",
+    "screenshot-control",
+    "screenshot-preview"
+  ],
+  "permissions": [
+    "core:window:allow-start-dragging"
+  ]
+}
