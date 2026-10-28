@@ -129,6 +129,11 @@ impl TauriWindowBackend {
 
 impl WindowBackend for TauriWindowBackend {
     fn create_or_focus_window(&self, spec: &WindowSpec) -> CoreResult<()> {
+        if spec.label == "clipboard-popup" {
+            crate::clipboard_window::prepare_popup(&self.app).map_err(|error| {
+                CoreError::Internal(anyhow::anyhow!(error))
+            })?;
+        }
         if let Some(window) = self.app.get_webview_window(&spec.label) {
             if spec.label == mod_screenshot::OVERLAY_LABEL {
                 // 截图遮罩只能在前端绘制冻结帧后由 overlay_ready 显示，避免露出未绘制的窗口。
