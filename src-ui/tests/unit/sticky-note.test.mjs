@@ -61,6 +61,9 @@ async function loadSticky(options = {}) {
         isPinned: payload.is_pinned,
         writeSeq: payload.write_seq,
         sessionId: payload.session_id,
+        ok: payload.ok,
+        error: payload.error,
+        requestId: payload.request_id,
       });
       if (name === 'sticky_close_note') {
         destroyed = true;
@@ -494,6 +497,85 @@ test('native or library flush-close saves pending edits before destroying the no
     ['sticky_save_content', 'sticky_close_note'],
   );
   assert.equal(sticky.calls.find((call) => call.name === 'sticky_save_content').content, 'flush body');
+});
+
+test('shutdown flush saves pending edits and acknowledges without closing the note', async () => {
+  const sticky = await loadSticky({ noteId: 'qa-note' });
+  await sticky.hooks.mounted[0]();
+  const listener = sticky.listeners.find((item) => item.name === 'sticky://flush-save');
+  assert.ok(listener, 'shutdown flush listener is registered');
+  sticky.run('note.value.title = "shutdown title"');
+  sticky.run('note.value.content_md = "shutdown body"');
+  sticky.scheduleSave();
+  listener.callback({ payload: { id: 'qa-note', request_id: 7 } });
+  await sticky.until(() => sticky.calls.some((call) => call.name === 'sticky_flush_result'));
+  assert.deepEqual(
+    sticky.calls
+      .filter((call) => call.name !== 'sticky_get_note' && call.name !== 'sticky_begin_session')
+      .map((call) => call.name),
+    ['sticky_save_content', 'sticky_flush_result'],
+  );
+  assert.equal(sticky.calls.find((call) => call.name === 'sticky_save_content').content, 'shutdown body');
+  const ack = sticky.calls.find((call) => call.name === 'sticky_flush_result');
+  assert.equal(ack.ok, true);
+  assert.equal(ack.requestId, 7);
+  assert.equal(sticky.run('frozen.value'), true);
+  assert.equal(sticky.run('shutdownFlushRequestId'), 7);
+  assert.equal(sticky.destroyed, false);
+
+  sticky.run('saveContentDebounced()');
+  await sticky.until(() => sticky.pendingTimers === 0);
+  assert.equal(
+    sticky.calls.filter((call) => call.name === 'sticky_save_content').length,
+    1,
+    'frozen pages must not accept new edits',
+  );
+
+  const cancel = sticky.listeners.find((item) => item.name === 'sticky://flush-cancel');
+  assert.ok(cancel, 'cancel listener is registered');
+  cancel.callback({ payload: { id: 'qa-note', request_id: 8 } });
+  assert.equal(sticky.run('frozen.value'), true, 'stale cancel must not unfreeze a newer request');
+  cancel.callback({ payload: { id: 'qa-note', request_id: 7 } });
+  assert.equal(sticky.run('frozen.value'), false);
+});
+
+test('a cancel that arrives before its flush event prevents a stale freeze', async () => {
+  const sticky = await loadSticky({ noteId: 'qa-note' });
+  await sticky.hooks.mounted[0]();
+  const cancel = sticky.listeners.find((item) => item.name === 'sticky://flush-cancel');
+  const save = sticky.listeners.find((item) => item.name === 'sticky://flush-save');
+  cancel.callback({ payload: { id: 'qa-note', request_id: 12 } });
+  save.callback({ payload: { id: 'qa-note', request_id: 12 } });
+  await sticky.until(() => sticky.calls.length >= 0);
+  assert.equal(sticky.run('frozen.value'), false);
+  assert.equal(
+    sticky.calls.some((call) => call.name === 'sticky_flush_result'),
+    false,
+    'a cancelled request must not acknowledge or freeze',
+  );
+});
+
+test('shutdown flush reports failure and keeps the note open with its edits', async () => {
+  const sticky = await loadSticky({
+    noteId: 'qa-note',
+    fail: new Set(['sticky_save_content']),
+  });
+  await sticky.hooks.mounted[0]();
+  const listener = sticky.listeners.find((item) => item.name === 'sticky://flush-save');
+  sticky.run('note.value.title = "kept shutdown title"');
+  sticky.run('note.value.content_md = "kept shutdown body"');
+  sticky.scheduleSave();
+  listener.callback({ payload: { id: 'qa-note', request_id: 9 } });
+  await sticky.until(() => sticky.calls.some((call) => call.name === 'sticky_flush_result'));
+  const result = sticky.calls.find((call) => call.name === 'sticky_flush_result');
+  assert.equal(result.ok, false);
+  assert.equal(result.requestId, 9);
+  assert.match(result.error, /forced failure/);
+  assert.equal(sticky.run('frozen.value'), true);
+  assert.equal(sticky.destroyed, false);
+  assert.equal(sticky.run('note.value.title'), 'kept shutdown title');
+  assert.equal(sticky.run('note.value.content_md'), 'kept shutdown body');
+  assert.equal(sticky.run('saveError.value'), true);
 });
 
 test('a reopened note begins a new write session and restarts title, body, theme, and window sequences', async () => {

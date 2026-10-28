@@ -31,6 +31,13 @@ impl ExitCoordinator {
         }
     }
 
+    /// Cancels an in-progress shutdown before any module has been torn down.
+    pub(crate) fn abort(&self) -> bool {
+        self.0
+            .compare_exchange(SHUTTING_DOWN, RUNNING, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+    }
+
     pub(crate) fn finish_shutdown(&self) {
         self.0.store(READY_TO_EXIT, Ordering::Release);
     }

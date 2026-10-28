@@ -47,3 +47,16 @@ fn concurrent_exit_sources_start_exactly_one_shutdown() {
     exit.finish_shutdown();
     assert_eq!(exit.request(), ExitDecision::Allow);
 }
+
+#[test]
+fn aborted_shutdown_can_be_requested_again_and_finishes_normally() {
+    let exit = ExitCoordinator::default();
+    assert_eq!(exit.request(), ExitDecision::StartShutdown);
+    assert_eq!(exit.request(), ExitDecision::Wait);
+    assert!(exit.abort());
+    assert!(!exit.is_shutting_down());
+    assert_eq!(exit.request(), ExitDecision::StartShutdown);
+    exit.finish_shutdown();
+    assert_eq!(exit.request(), ExitDecision::Allow);
+    assert!(!exit.abort(), "a completed shutdown cannot be rewound");
+}

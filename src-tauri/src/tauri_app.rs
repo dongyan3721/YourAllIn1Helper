@@ -4,8 +4,11 @@
 //! microkernel stays UI-framework agnostic through `app_core::WindowBackend`.
 
 use std::sync::Arc;
+use std::time::Duration;
 
-use app_core::{CoreError, CoreResult, WindowBackend, WindowSpec};
+use app_core::{
+    CloseFlushOutcome, CloseFlushReport, CoreError, CoreResult, WindowBackend, WindowSpec,
+};
 use os_hal::ExternalWindowInfo;
 use serde_json::{json, Value};
 use tauri::{
@@ -19,6 +22,7 @@ use crate::exit_coordinator::{ExitCoordinator, ExitDecision};
 use crate::script_env::AioScriptEnvironment;
 use crate::script_events::TauriScriptEventSink;
 use crate::script_hotkeys::TauriScriptHotkeySync;
+use crate::sticky_flush::StickyFlushCoordinator;
 use crate::{DesktopHost, IpcRequest, IpcResponse};
 
 const ACTION_CLIPBOARD: &str = "clipboard:toggle_popup";
@@ -93,11 +97,20 @@ fn to_core_error(error: impl std::fmt::Display) -> CoreError {
 /// Maps the microkernel's declarative window specs to real Tauri `WebviewWindow`s.
 pub struct TauriWindowBackend {
     app: AppHandle,
+    sticky_flush: Arc<StickyFlushCoordinator>,
 }
 
 impl TauriWindowBackend {
+    #[allow(dead_code)]
     pub fn new(app: AppHandle) -> Self {
-        Self { app }
+        Self::with_flush_coordinator(app, Arc::new(StickyFlushCoordinator::new()))
+    }
+
+    pub(crate) fn with_flush_coordinator(
+        app: AppHandle,
+        sticky_flush: Arc<StickyFlushCoordinator>,
+    ) -> Self {
+        Self { app, sticky_flush }
     }
 
     fn frontend_url(spec: &WindowSpec) -> String {
@@ -221,6 +234,58 @@ impl WindowBackend for TauriWindowBackend {
         Ok(())
     }
 
+    fn request_close_flush(&self, label: &str, timeout: Duration) -> CoreResult<CloseFlushReport> {
+        let Some(note_id) = label.strip_prefix("sticky-note-") else {
+            return Ok(CloseFlushReport {
+                request_id: 0,
+                outcome: CloseFlushOutcome::NotNeeded,
+            });
+        };
+        let Some(window) = self.app.get_webview_window(label) else {
+            return Ok(CloseFlushReport {
+                request_id: 0,
+                outcome: CloseFlushOutcome::NotNeeded,
+            });
+        };
+        if self.sticky_flush.is_main_thread() {
+            // Waiting for WebView JS/IPC on the AppKit main thread would deadlock the page.
+            return Ok(CloseFlushReport {
+                request_id: 0,
+                outcome: CloseFlushOutcome::Failed("不能在原生主线程等待便笺保存".to_string()),
+            });
+        }
+        let (request_id, signal) = self.sticky_flush.begin(note_id);
+        if let Err(error) = window.emit(
+            "sticky://flush-save",
+            json!({ "id": note_id, "request_id": request_id }),
+        ) {
+            self.sticky_flush.cancel(note_id, request_id, &signal);
+            return Ok(CloseFlushReport {
+                request_id,
+                outcome: CloseFlushOutcome::Failed(format!("无法请求便笺保存：{}", error)),
+            });
+        }
+        Ok(CloseFlushReport {
+            request_id,
+            outcome: self.sticky_flush.wait(note_id, request_id, signal, timeout),
+        })
+    }
+
+    fn cancel_close_flush(&self, label: &str, request_id: u64) -> CoreResult<()> {
+        let Some(note_id) = label.strip_prefix("sticky-note-") else {
+            return Ok(());
+        };
+        if let Some(window) = self.app.get_webview_window(label) {
+            window
+                .emit(
+                    "sticky://flush-cancel",
+                    json!({ "id": note_id, "request_id": request_id }),
+                )
+                .map_err(to_core_error)?;
+        }
+        Ok(())
+    }
+
     fn set_ignore_cursor_events(&self, label: &str, ignore: bool) -> CoreResult<()> {
         let window =
             self.app
@@ -295,6 +360,37 @@ async fn ipc(app: AppHandle, mut request: IpcRequest) -> IpcResponse {
         }
         request.cmd = "sticky_close_note".to_string();
     }
+    if request.cmd == "sticky_flush_result" {
+        let id = request.args.get("id").and_then(Value::as_str).unwrap_or("");
+        let request_id = request
+            .args
+            .get("request_id")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        let ok = request
+            .args
+            .get("ok")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let result = if ok {
+            Ok(())
+        } else {
+            Err(request
+                .args
+                .get("error")
+                .and_then(Value::as_str)
+                .unwrap_or("便笺页面报告保存失败")
+                .to_string())
+        };
+        let acknowledged = app
+            .try_state::<Arc<StickyFlushCoordinator>>()
+            .is_some_and(|coordinator| coordinator.complete(id, request_id, result));
+        return IpcResponse::success(json!({
+            "id": id,
+            "request_id": request_id,
+            "acknowledged": acknowledged
+        }));
+    }
     if request.cmd == "kernel_shutdown" {
         // 桌面退出统一交给 ExitRequested；这里不能在活动 IPC 中等待内核清理。
         app.exit(0);
@@ -320,6 +416,17 @@ async fn ipc(app: AppHandle, mut request: IpcRequest) -> IpcResponse {
         .get("module_id")
         .and_then(Value::as_str)
         .map(str::to_owned);
+    let module_enabled = request.args.get("enabled").and_then(Value::as_bool);
+    if request.cmd == "kernel_set_module_enabled"
+        && module_id.as_deref() == Some("sticky_note")
+        && module_enabled == Some(false)
+    {
+        // 页面仍处于启用状态时先完成落盘。失败则取消本次停用并保留窗口，
+        // 由 IPC 错误向界面反馈，而不是先禁用再盲销毁。
+        if let Err(error) = host.sticky_note.flush_open_windows(host.kernel().context()) {
+            return IpcResponse::err(format!("便笺保存未完成，已取消停用：{}", error));
+        }
+    }
     let previous = module_id
         .as_deref()
         .map(|id| host.kernel().registry().is_enabled(id));
@@ -429,6 +536,27 @@ async fn ipc(app: AppHandle, mut request: IpcRequest) -> IpcResponse {
 
 fn emit_update(app: &AppHandle) {
     let _ = app.emit("kernel://updated", Value::Null);
+}
+
+/// Exit was cancelled because a sticky note could not confirm persistence.
+/// Keep the note window visible so its own save-error state is user-visible.
+fn report_sticky_shutdown_blocked(app: &AppHandle, reason: &str) {
+    tracing::warn!(%reason, "Application exit cancelled: sticky note save is incomplete");
+    let _ = app.emit("sticky://shutdown-blocked", json!({ "reason": reason }));
+    if let Some(dashboard) = app.get_webview_window("dashboard") {
+        let _ = dashboard.show();
+    }
+    if let Some(host) = app.try_state::<Arc<DesktopHost>>() {
+        // Bring the affected note forward last so its save-error footer stays visible.
+        for window in host.kernel().context().window_pool.list_active_windows() {
+            if window.spec.label.starts_with("sticky-note-") {
+                if let Some(native) = app.get_webview_window(&window.spec.label) {
+                    let _ = native.show();
+                    let _ = native.set_focus();
+                }
+            }
+        }
+    }
 }
 
 pub(crate) fn is_exiting(app: &AppHandle) -> bool {
@@ -953,7 +1081,12 @@ pub fn run() {
             } else {
                 app.path().app_data_dir()?
             };
-            let backend = Arc::new(TauriWindowBackend::new(app.handle().clone()));
+            let sticky_flush = Arc::new(StickyFlushCoordinator::new());
+            app.manage(sticky_flush.clone());
+            let backend = Arc::new(TauriWindowBackend::with_flush_coordinator(
+                app.handle().clone(),
+                sticky_flush,
+            ));
             let native_hal = os_hal::NativeOsHal::new().into_bundle();
             let script_environment = Arc::new(AioScriptEnvironment::new(
                 native_hal.selection_extractor.clone(),
@@ -1154,7 +1287,38 @@ pub fn run() {
                     }
                     let host = app.try_state::<Arc<DesktopHost>>().map(|host| host.inner().clone());
                     let app = app.clone();
+                    let exit = exit.clone();
                     tauri::async_runtime::spawn(async move {
+                        // 先把便笺页面未落盘的 400 ms 防抖内容冲刷完，再开始拆内核。
+                        // 任何失败都撤销退出，保留窗口与内容；此路径尚未停用其他模块。
+                        let flush_host = host.clone();
+                        let flush = tauri::async_runtime::spawn_blocking(move || {
+                            flush_host
+                                .map(|host| {
+                                    host.sticky_note
+                                        .flush_open_windows(host.kernel().context())
+                                })
+                                .transpose()
+                        })
+                        .await;
+                        let flush_error = match flush {
+                            Ok(Ok(_)) => None,
+                            Ok(Err(error)) => Some(error.to_string()),
+                            Err(error) => {
+                                Some(format!("便笺保存工作线程意外失败：{}", error))
+                            }
+                        };
+                        if let Some(reason) = flush_error {
+                            let app_for_main = app.clone();
+                            let exit_for_main = exit.clone();
+                            let _ = app.run_on_main_thread(move || {
+                                exit_for_main.abort();
+                                let _ = register_global_shortcuts(&app_for_main);
+                                sync_vault_native_observer(&app_for_main);
+                                report_sticky_shutdown_blocked(&app_for_main, &reason);
+                            });
+                            return;
+                        }
                         // shutdown 等待现有活动租约及窗口操作；主线程必须继续处理 AppKit 事件。
                         let result = tauri::async_runtime::spawn_blocking(move || {
                             host.map(|host| host.kernel().shutdown()).transpose()

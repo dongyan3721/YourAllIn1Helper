@@ -49,6 +49,7 @@ mod script_env;
 mod script_events;
 mod script_hotkeys;
 mod secure_credentials;
+mod sticky_flush;
 mod tauri_app;
 pub use legacy_http::serve_desktop_ui;
 pub use tauri_app::run;

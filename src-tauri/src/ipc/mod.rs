@@ -43,6 +43,14 @@ impl DesktopHost {
             } else {
                 return Err(CoreError::Config(format!("Unknown IPC command: {}", cmd)));
             };
+        if module_id == "sticky_note" && is_sticky_flushing_write(cmd) {
+            let note_id = args.get("id").and_then(Value::as_str).unwrap_or("");
+            if self.sticky_note.is_flushing(note_id) {
+                // 停用/退出冲刷时模块已不在 enabled 集合中；只放行页面最后一批保存，
+                // 不重新开放创建、打开或删除等新操作。
+                return handler(self, cmd, args);
+            }
+        }
         self.kernel
             .registry()
             .with_enabled(module_id, || handler(self, cmd, args))
@@ -59,4 +67,14 @@ impl DesktopHost {
             })
         }).collect())
     }
+}
+
+fn is_sticky_flushing_write(cmd: &str) -> bool {
+    matches!(
+        cmd,
+        "sticky_begin_session"
+            | "sticky_save_content"
+            | "sticky_update_theme"
+            | "sticky_update_window_state"
+    )
 }

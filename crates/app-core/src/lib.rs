@@ -49,8 +49,8 @@ pub use storage::{
     CURRENT_CONFIG_VERSION,
 };
 pub use window_manager::{
-    ActiveWindowEntry, HeadlessWindowBackend, WindowBackend, WindowLifecyclePolicy,
-    WindowPoolManager, WindowSpec,
+    ActiveWindowEntry, CloseFlushOutcome, CloseFlushReport, HeadlessWindowBackend, WindowBackend,
+    WindowLifecyclePolicy, WindowPoolManager, WindowSpec,
 };
 
 /// Builder for assembling and bootstrapping the `AppKernel` daemon.
@@ -278,7 +278,12 @@ impl AppKernel {
     /// Gracefully shuts down all modules in reverse registration order and destroys all open WebViews.
     pub fn shutdown(&self) -> CoreResult<()> {
         let res = self.registry.shutdown_all(&self.context);
-        let _ = self.context.window_pool.destroy_all();
+        // A failed shutdown may still own unsaved page state. Do not blind-destroy
+        // the remaining windows, otherwise a module that kept its window alive to
+        // preserve unsaved input would lose it during the fallback cleanup.
+        if res.is_ok() {
+            let _ = self.context.window_pool.destroy_all();
+        }
         res
     }
 }
