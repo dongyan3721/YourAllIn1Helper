@@ -13,6 +13,7 @@
           class="title-input"
           :readonly="frozen"
           :placeholder="t('sticky.window.untitledPlaceholder')"
+          @input="saveContentDebounced"
           @blur="saveContentDebounced"
         />
       </div>
