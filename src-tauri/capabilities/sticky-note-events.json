@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "sticky-note-events",
+  "description": "允许便笺窗口订阅及清理关闭、停用和退出时的保存确认事件。",
+  "windows": ["sticky-note-*"],
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"]
+}
