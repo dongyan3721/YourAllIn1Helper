@@ -116,15 +116,14 @@ impl DesktopHost {
                         .and_then(Value::as_f64)
                         .unwrap_or(current.opacity),
                 };
-                self.sticky_note.update_window_state(
+                let updated = self.sticky_note.update_window_state(
                     ctx,
                     id,
                     update,
                     write_seq(&args),
                     session_id(&args),
                 )?;
-                let refreshed = self.sticky_note.get_note(ctx, id)?;
-                Ok(serde_json::to_value(refreshed)?)
+                Ok(serde_json::to_value(updated)?)
             }
 
             "sticky_update_theme" => {
@@ -133,15 +132,14 @@ impl DesktopHost {
                     .get("theme_color")
                     .and_then(Value::as_str)
                     .unwrap_or("amber");
-                self.sticky_note.update_theme(
+                let updated = self.sticky_note.update_theme(
                     ctx,
                     id,
                     theme_color,
                     write_seq(&args),
                     session_id(&args),
                 )?;
-                let refreshed = self.sticky_note.get_note(ctx, id)?;
-                Ok(serde_json::to_value(refreshed)?)
+                Ok(serde_json::to_value(updated)?)
             }
 
             "sticky_request_close" => {

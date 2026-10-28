@@ -51,6 +51,24 @@ pub struct StickyNoteRecord {
     pub updated_at: i64,
 }
 
+/// 一次标题、主题或窗口写入的结果。`applied == false` 表示序号或会话被拒绝，数据库保持原值。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StickyNoteWrite {
+    /// 这次请求是否真正落盘。
+    pub applied: bool,
+    /// 拒绝时是当前记录，接受时是写入后的记录。
+    #[serde(flatten)]
+    pub note: StickyNoteRecord,
+}
+
+impl std::ops::Deref for StickyNoteWrite {
+    type Target = StickyNoteRecord;
+
+    fn deref(&self) -> &Self::Target {
+        &self.note
+    }
+}
+
 /// 接收来自前端原生窗口拖拽调整大小、移动位置、置顶或透明度修改的同步载荷
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct StickyNoteWindowStateUpdate {
@@ -255,6 +273,18 @@ impl StickyNoteModule {
         })
     }
 
+    fn write_result(
+        &self,
+        ctx: &ModuleContext,
+        note_id: &str,
+        applied: bool,
+    ) -> CoreResult<StickyNoteWrite> {
+        Ok(StickyNoteWrite {
+            applied,
+            note: self.read_required(ctx, note_id)?,
+        })
+    }
+
     /// 根据便笺 ID 生成规范的 WebView 原生窗口 Label
     pub fn window_label_for(note_id: &str) -> String {
         format!("sticky-note-{}", note_id)
@@ -402,6 +432,7 @@ impl StickyNoteModule {
     /// `write_seq` 在同一个 `session_id` 内按发送顺序比较。序号更小的请求不会覆盖已提交内容；
     /// 相等序号允许重试。显式会话开始后，不带会话或属于旧会话的写入都不会覆盖它。
     /// 两者都为 `None` 时保持旧调用方的直接写入行为。
+    /// 返回的 `applied` 标明这次请求是落盘还是被拒绝，拒绝不会伪装成成功。
     pub fn save_content(
         &self,
         ctx: &ModuleContext,
@@ -410,7 +441,7 @@ impl StickyNoteModule {
         content_md: &str,
         write_seq: Option<u64>,
         session_id: Option<u64>,
-    ) -> CoreResult<StickyNoteRecord> {
+    ) -> CoreResult<StickyNoteWrite> {
         let mut writes = self.lock_writes();
         let gate = Self::prepare_write(
             &mut writes,
@@ -421,7 +452,7 @@ impl StickyNoteModule {
         );
         if !gate.apply {
             drop(writes);
-            return self.read_required(ctx, note_id);
+            return self.write_result(ctx, note_id, false);
         }
 
         let now = Utc::now().timestamp_millis();
@@ -463,12 +494,13 @@ impl StickyNoteModule {
         );
         drop(writes);
 
-        self.read_required(ctx, note_id)
+        self.write_result(ctx, note_id, true)
     }
 
     /// 更新便笺窗口大小、坐标位置、透明度与置顶状态。
     ///
     /// 过期序号、旧会话和不带会话的写入都不会改写数据库，也不会把窗口层级退回到旧的置顶状态。
+    /// `applied == false` 表示调用方必须保留自己的待保存状态。
     pub fn update_window_state(
         &self,
         ctx: &ModuleContext,
@@ -476,7 +508,7 @@ impl StickyNoteModule {
         state: StickyNoteWindowStateUpdate,
         write_seq: Option<u64>,
         session_id: Option<u64>,
-    ) -> CoreResult<()> {
+    ) -> CoreResult<StickyNoteWrite> {
         let mut writes = self.lock_writes();
         let gate = Self::prepare_write(
             &mut writes,
@@ -486,7 +518,8 @@ impl StickyNoteModule {
             WriteField::Window,
         );
         if !gate.apply {
-            return Ok(());
+            drop(writes);
+            return self.write_result(ctx, note_id, false);
         }
 
         let now = Utc::now().timestamp_millis();
@@ -529,10 +562,11 @@ impl StickyNoteModule {
             ctx.window_pool.set_always_on_top(&label, state.is_pinned)?;
         }
         drop(writes);
-        Ok(())
+        self.write_result(ctx, note_id, true)
     }
 
     /// 更新便笺主题色。过期序号和旧会话都保留已经提交的颜色。
+    /// `applied == false` 表示颜色没有改变，调用方不能把这次请求当成已保存。
     pub fn update_theme(
         &self,
         ctx: &ModuleContext,
@@ -540,7 +574,7 @@ impl StickyNoteModule {
         theme_color: &str,
         write_seq: Option<u64>,
         session_id: Option<u64>,
-    ) -> CoreResult<()> {
+    ) -> CoreResult<StickyNoteWrite> {
         let mut writes = self.lock_writes();
         let gate = Self::prepare_write(
             &mut writes,
@@ -550,7 +584,8 @@ impl StickyNoteModule {
             WriteField::Theme,
         );
         if !gate.apply {
-            return Ok(());
+            drop(writes);
+            return self.write_result(ctx, note_id, false);
         }
 
         let saved = ctx.db.with_conn(|conn| {
@@ -571,7 +606,8 @@ impl StickyNoteModule {
             write_seq,
             WriteField::Theme,
         );
-        Ok(())
+        drop(writes);
+        self.write_result(ctx, note_id, true)
     }
 
     /// 关闭便笺（标记 `is_open = 0` 并立即销毁对应的 WebView 窗口归还系统内存）

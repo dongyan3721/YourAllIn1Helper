@@ -220,18 +220,23 @@ let nextWindowSeq = 0;
 let writeSessionId: number | null = null;
 let sessionReady: Promise<void> = Promise.resolve();
 let sessionPending = false;
+let sessionRequired = false;
+let sessionNoteId = '';
 let unlistenFlush: (() => void) | undefined;
 
 function startWriteSession(noteId: string) {
   if (!noteId) return sessionReady;
+  sessionRequired = true;
+  sessionNoteId = noteId;
   sessionPending = true;
+  writeSessionId = null;
   sessionReady = invokeIpc<{ session_id?: number }>('sticky_begin_session', { id: noteId })
     .then((res) => {
       const sessionId = Number(res?.session_id);
-      if (Number.isFinite(sessionId) && sessionId > 0) writeSessionId = sessionId;
-    })
-    .catch((err) => {
-      console.error('开始便笺写入会话失败:', err);
+      if (!Number.isFinite(sessionId) || sessionId <= 0) {
+        throw new Error('便笺写入会话无效');
+      }
+      writeSessionId = sessionId;
     })
     .finally(() => {
       sessionPending = false;
@@ -239,9 +244,28 @@ function startWriteSession(noteId: string) {
   return sessionReady;
 }
 
+/** 只有显式开过会话时才等待。未开会话的旧调用不插入额外异步节拍。 */
+function prepareSession(): Promise<void> | null {
+  if (!sessionRequired || writeSessionId != null) return null;
+  return (async () => {
+    if (sessionPending) {
+      try {
+        await sessionReady;
+      } catch (err) {
+        console.error('开始便笺写入会话失败:', err);
+      }
+    }
+    if (writeSessionId == null) await startWriteSession(sessionNoteId || note.value.id);
+  })();
+}
+
 function withSession<T extends Record<string, unknown>>(payload: T) {
   if (writeSessionId == null) return payload;
   return { ...payload, session_id: writeSessionId };
+}
+
+function assertApplied(saved: { applied?: boolean } | null | undefined) {
+  if (saved?.applied === false) throw new Error('便笺写入已被拒绝');
 }
 
 function enqueue(task: () => Promise<void>): Promise<void> {
@@ -287,8 +311,17 @@ function saveContentDebounced() {
 
 function persistContent() {
   return enqueue(async () => {
-    if (sessionPending) await sessionReady;
     if (!contentDirty) return;
+    const pendingSession = prepareSession();
+    if (pendingSession) {
+      try {
+        await pendingSession;
+      } catch (err) {
+        saving.value = false;
+        saveError.value = true;
+        throw err;
+      }
+    }
     if (!note.value.id) {
       saving.value = false;
       saveError.value = true;
@@ -302,12 +335,13 @@ function persistContent() {
     const writeSeq = ++nextContentSeq;
     contentDirty = false;
     try {
-      const saved = await invokeIpc<StickyNoteRecord>('sticky_save_content', withSession({
+      const saved = await invokeIpc<StickyNoteRecord & { applied?: boolean }>('sticky_save_content', withSession({
         id: snapshot.id,
         title: snapshot.title,
         content_md: snapshot.content,
         write_seq: writeSeq,
       }));
+      assertApplied(saved);
       const localMoved = note.value.title !== snapshot.title || note.value.content_md !== snapshot.content;
       const storedMoved = !!saved
         && (saved.title !== snapshot.title || saved.content_md !== snapshot.content);
@@ -331,8 +365,16 @@ function persistContent() {
 
 function persistTheme() {
   return enqueue(async () => {
-    if (sessionPending) await sessionReady;
     if (!themeDirty) return;
+    const pendingSession = prepareSession();
+    if (pendingSession) {
+      try {
+        await pendingSession;
+      } catch (err) {
+        saveError.value = true;
+        throw err;
+      }
+    }
     if (!note.value.id) {
       saveError.value = true;
       throw new Error('便笺尚未加载，无法保存');
@@ -341,11 +383,12 @@ function persistTheme() {
     const writeSeq = ++nextThemeSeq;
     themeDirty = false;
     try {
-      await invokeIpc('sticky_update_theme', withSession({
+      const saved = await invokeIpc<{ applied?: boolean }>('sticky_update_theme', withSession({
         id: snapshot.id,
         theme_color: snapshot.theme,
         write_seq: writeSeq,
       }));
+      assertApplied(saved);
       if (note.value.theme_color !== snapshot.theme) themeDirty = true;
       else clearSaveErrorIfClean();
     } catch (err) {
@@ -358,8 +401,16 @@ function persistTheme() {
 
 function persistWindow() {
   return enqueue(async () => {
-    if (sessionPending) await sessionReady;
     if (!windowDirty) return;
+    const pendingSession = prepareSession();
+    if (pendingSession) {
+      try {
+        await pendingSession;
+      } catch (err) {
+        saveError.value = true;
+        throw err;
+      }
+    }
     if (!note.value.id) {
       saveError.value = true;
       throw new Error('便笺尚未加载，无法保存');
@@ -372,12 +423,13 @@ function persistWindow() {
     const writeSeq = ++nextWindowSeq;
     windowDirty = false;
     try {
-      await invokeIpc('sticky_update_window_state', withSession({
+      const saved = await invokeIpc<{ applied?: boolean }>('sticky_update_window_state', withSession({
         id: snapshot.id,
         opacity: snapshot.opacity,
         is_pinned: snapshot.isPinned,
         write_seq: writeSeq,
       }));
+      assertApplied(saved);
       if (note.value.opacity !== snapshot.opacity || note.value.is_pinned !== snapshot.isPinned) {
         windowDirty = true;
       } else {
@@ -500,6 +552,14 @@ if (typeof onUnmounted === 'function') {
 /** 初始化加载便笺，并在系统或主面板请求关闭时先保存再销毁。 */
 onMounted(async () => {
   const targetId = props.noteId || new URLSearchParams(window.location.search).get('id') || '';
+  // 必须在任何 await 之前记下占位值。会话或监听尚未完成时的输入不能被当成初始状态。
+  const baseline = {
+    title: note.value.title,
+    content: note.value.content_md,
+    theme: note.value.theme_color,
+    opacity: note.value.opacity,
+    pinned: note.value.is_pinned,
+  };
   if (targetId) startWriteSession(targetId);
   const eventApi = (window as any).__TAURI__?.event;
   if (typeof eventApi?.listen === 'function') {
@@ -518,15 +578,13 @@ onMounted(async () => {
     }
   }
   if (!targetId) return;
-  await sessionReady;
+  try {
+    await sessionReady;
+  } catch (err) {
+    saveError.value = true;
+    console.error('开始便笺写入会话失败:', err);
+  }
 
-  const baseline = {
-    title: note.value.title,
-    content: note.value.content_md,
-    theme: note.value.theme_color,
-    opacity: note.value.opacity,
-    pinned: note.value.is_pinned,
-  };
   try {
     const data = await invokeIpc<StickyNoteRecord>('sticky_get_note', { id: targetId });
     if (!data) return;

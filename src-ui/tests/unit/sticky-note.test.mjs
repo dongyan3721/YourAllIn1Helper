@@ -71,7 +71,9 @@ async function loadSticky(options = {}) {
         return new Promise((resolve, reject) => pending.push({ name, payload, resolve, reject }));
       }
       if (name === 'sticky_begin_session') {
-        return { id: payload.id, session_id: options.sessionId ?? 1 };
+        const configured = options.sessionId;
+        const sessionId = typeof configured === 'function' ? configured() : (configured ?? 1);
+        return { id: payload.id, session_id: sessionId };
       }
       if (name === 'sticky_get_note') {
         return {
@@ -406,6 +408,44 @@ test('initial load keeps typed fields and does not save placeholders before the 
   assert.equal(sticky.calls.at(-1).name, 'sticky_close_note');
 });
 
+test('typing while the write session is still starting survives the later note load', async () => {
+  const sticky = await loadSticky({
+    noteId: 'qa-note',
+    defer: new Set(['sticky_begin_session', 'sticky_get_note']),
+    sessionId: 3,
+  });
+  const mounted = sticky.hooks.mounted[0]();
+  await sticky.until(() => sticky.calls.some((call) => call.name === 'sticky_begin_session'));
+  sticky.run('note.value.title = "会话期间标题"');
+  sticky.run('note.value.content_md = "会话期间正文"');
+  sticky.run('note.value.theme_color = "rose"');
+  sticky.run('note.value.opacity = 0.4');
+  sticky.run('note.value.is_pinned = false');
+  sticky.scheduleSave();
+  sticky.resolveHead({ id: 'qa-note', session_id: 3 });
+  await sticky.until(() => sticky.calls.some((call) => call.name === 'sticky_get_note'));
+  sticky.resolveHead({
+    id: 'qa-note',
+    title: '服务器标题',
+    content_md: '服务器正文',
+    theme_color: 'sky',
+    opacity: 0.95,
+    pos_x: 10,
+    pos_y: 20,
+    width: 320,
+    height: 300,
+    is_pinned: true,
+    is_open: true,
+    updated_at: 1,
+  });
+  await mounted;
+  assert.equal(sticky.run('note.value.title'), '会话期间标题');
+  assert.equal(sticky.run('note.value.content_md'), '会话期间正文');
+  assert.equal(sticky.run('note.value.theme_color'), 'rose');
+  assert.equal(sticky.run('note.value.opacity'), 0.4);
+  assert.equal(sticky.run('note.value.is_pinned'), false);
+});
+
 test('a title edit during load keeps the untouched server body', async () => {
   const sticky = await loadSticky({
     noteId: 'qa-note',
@@ -498,4 +538,121 @@ test('a reopened note begins a new write session and restarts title, body, theme
   assert.equal(windowCall.opacity, 0.8);
   assert.equal(windowCall.writeSeq, 1);
   assert.equal(windowCall.sessionId, 11);
+});
+
+function writesOf(sticky) {
+  return sticky.calls.filter((call) => (
+    call.name === 'sticky_save_content'
+    || call.name === 'sticky_update_theme'
+    || call.name === 'sticky_update_window_state'
+  ));
+}
+
+test('a failed write session keeps title, body, theme, and window edits unsaved and open', async () => {
+  const fail = new Set(['sticky_begin_session']);
+  const sticky = await loadSticky({ noteId: 'qa-note', fail });
+  await sticky.hooks.mounted[0]();
+  sticky.run('note.value.title = "未保存标题"');
+  sticky.run('note.value.content_md = "未保存正文"');
+  sticky.scheduleSave();
+  sticky.setTheme('rose');
+  sticky.togglePin();
+  await sticky.close();
+  assert.equal(sticky.destroyed, false);
+  assert.equal(sticky.run('saveError.value'), true);
+  assert.equal(sticky.run('note.value.title'), '未保存标题');
+  assert.equal(sticky.run('note.value.content_md'), '未保存正文');
+  assert.equal(sticky.run('note.value.theme_color'), 'rose');
+  assert.equal(sticky.run('note.value.is_pinned'), false);
+  assert.equal(sticky.calls.some((call) => call.name === 'sticky_close_note'), false);
+  assert.equal(writesOf(sticky).length, 0);
+  assert.match(sticky.errors.join('\n'), /开始便笺写入会话失败/);
+
+  fail.delete('sticky_begin_session');
+  await sticky.close();
+  assert.equal(sticky.destroyed, true);
+  const save = sticky.calls.find((call) => call.name === 'sticky_save_content');
+  assert.equal(save.title, '未保存标题');
+  assert.equal(save.content, '未保存正文');
+  assert.equal(save.sessionId, 1);
+  const theme = sticky.calls.find((call) => call.name === 'sticky_update_theme');
+  assert.equal(theme.theme, 'rose');
+  assert.equal(theme.sessionId, 1);
+  const windowCall = sticky.calls.find((call) => call.name === 'sticky_update_window_state');
+  assert.equal(windowCall.isPinned, false);
+  assert.equal(windowCall.sessionId, 1);
+});
+
+test('an invalid write session id keeps pending edits unsaved and does not close', async () => {
+  let sessionId = 0;
+  const sticky = await loadSticky({
+    noteId: 'qa-note',
+    sessionId: () => sessionId,
+  });
+  await sticky.hooks.mounted[0]();
+  sticky.run('note.value.title = "无效会话标题"');
+  sticky.run('note.value.content_md = "无效会话正文"');
+  sticky.scheduleSave();
+  sticky.setTheme('violet');
+  sticky.setOpacityPercent(40);
+  await sticky.close();
+  assert.equal(sticky.destroyed, false);
+  assert.equal(sticky.run('saveError.value'), true);
+  assert.equal(sticky.calls.some((call) => call.name === 'sticky_close_note'), false);
+  assert.equal(writesOf(sticky).length, 0);
+  assert.match(sticky.errors.join('\n'), /便笺写入会话无效/);
+
+  sessionId = 6;
+  await sticky.close();
+  assert.equal(sticky.destroyed, true);
+  const save = sticky.calls.find((call) => call.name === 'sticky_save_content');
+  assert.equal(save.title, '无效会话标题');
+  assert.equal(save.content, '无效会话正文');
+  assert.equal(save.sessionId, 6);
+  assert.equal(sticky.calls.find((call) => call.name === 'sticky_update_theme').sessionId, 6);
+  assert.equal(sticky.calls.find((call) => call.name === 'sticky_update_window_state').sessionId, 6);
+  assert.equal(sticky.calls.find((call) => call.name === 'sticky_update_window_state').opacity, 0.4);
+});
+
+test('a rejected content write is not treated as saved when the text matches', async () => {
+  const sticky = await loadSticky({
+    note: qaNote,
+    defer: new Set(['sticky_save_content']),
+  });
+  sticky.scheduleSave();
+  const closing = sticky.close();
+  await sticky.until(() => sticky.calls.some((call) => call.name === 'sticky_save_content'));
+  sticky.resolveHead({
+    applied: false,
+    title: qaNote.title,
+    content_md: qaNote.content,
+  });
+  await closing;
+  assert.equal(sticky.destroyed, false);
+  assert.equal(sticky.run('saveError.value'), true);
+  assert.equal(sticky.calls.some((call) => call.name === 'sticky_close_note'), false);
+  assert.match(sticky.errors.join('\n'), /便笺写入已被拒绝/);
+});
+
+test('a rejected theme or window write stays pending and blocks close', async () => {
+  const sticky = await loadSticky({
+    note: qaNote,
+    defer: new Set(['sticky_update_theme', 'sticky_update_window_state']),
+  });
+  sticky.setTheme('rose');
+  sticky.togglePin();
+  const closing = sticky.close();
+  await sticky.until(() => sticky.calls.some((call) => call.name === 'sticky_update_theme'));
+  sticky.resolveHead({ applied: false, theme_color: 'amber' });
+  await sticky.until(() => sticky.calls.some((call) => call.name === 'sticky_update_window_state'));
+  sticky.resolveHead({ applied: false, opacity: 0.95, is_pinned: true });
+  await sticky.until(() => sticky.calls.filter((call) => call.name === 'sticky_update_theme').length === 2);
+  sticky.resolveHead({ applied: false, theme_color: 'amber' });
+  await closing;
+  assert.equal(sticky.destroyed, false);
+  assert.equal(sticky.run('saveError.value'), true);
+  assert.equal(sticky.run('note.value.theme_color'), 'rose');
+  assert.equal(sticky.run('note.value.is_pinned'), false);
+  assert.equal(sticky.calls.some((call) => call.name === 'sticky_close_note'), false);
+  assert.match(sticky.errors.join('\n'), /便笺写入已被拒绝/);
 });

@@ -104,32 +104,42 @@ fn close_keeps_latest_text_theme_and_window_state_when_older_writes_arrive_later
         .create_note(ctx, Some("原标题"), Some("原正文"), Some("amber"))
         .unwrap();
 
-    sticky
+    let fresh = sticky
         .save_content(ctx, &note.id, Some("最新标题"), "最新正文", Some(2), None)
         .unwrap();
+    assert!(fresh.applied);
     let stale = sticky
         .save_content(ctx, &note.id, Some("旧标题"), "旧正文", Some(1), None)
         .unwrap();
+    assert!(!stale.applied);
     assert_eq!(stale.title, "最新标题");
     assert_eq!(stale.content_md, "最新正文");
     // 同一序号是同一次请求的重试，必须真正写入。
     let retried = sticky
         .save_content(ctx, &note.id, Some("重试标题"), "重试正文", Some(2), None)
         .unwrap();
+    assert!(retried.applied);
     assert_eq!(retried.content_md, "重试正文");
 
-    sticky
+    let theme = sticky
         .update_theme(ctx, &note.id, "rose", Some(3), None)
         .unwrap();
-    sticky
+    assert!(theme.applied);
+    let stale_theme = sticky
         .update_theme(ctx, &note.id, "sky", Some(1), None)
         .unwrap();
-    sticky
+    assert!(!stale_theme.applied);
+    assert_eq!(stale_theme.theme_color, "rose");
+    let window = sticky
         .update_window_state(ctx, &note.id, window_state(0.5, false), Some(5), None)
         .unwrap();
-    sticky
+    assert!(window.applied);
+    let stale_window = sticky
         .update_window_state(ctx, &note.id, window_state(0.75, true), Some(4), None)
         .unwrap();
+    assert!(!stale_window.applied);
+    assert!((stale_window.opacity - 0.5).abs() < f64::EPSILON);
+    assert!(!stale_window.is_pinned);
 
     let missing = sticky.save_content(ctx, "missing-note", Some("x"), "y", Some(1), None);
     assert!(missing.is_err());
@@ -293,14 +303,17 @@ fn reopened_note_in_the_same_process_saves_fresh_edits_and_ignores_the_closed_we
             Some(second),
         )
         .unwrap();
+    assert!(saved.applied);
     assert_eq!(saved.title, "第二轮标题");
     assert_eq!(saved.content_md, "第二轮正文");
-    sticky
+    let theme = sticky
         .update_theme(&ctx, &id, "violet", Some(1), Some(second))
         .unwrap();
-    sticky
+    assert!(theme.applied);
+    let window = sticky
         .update_window_state(&ctx, &id, window_state(0.8, false), Some(1), Some(second))
         .unwrap();
+    assert!(window.applied);
 
     let delayed = sticky
         .save_content(
@@ -312,17 +325,24 @@ fn reopened_note_in_the_same_process_saves_fresh_edits_and_ignores_the_closed_we
             Some(first),
         )
         .unwrap();
+    assert!(!delayed.applied);
     assert_eq!(delayed.title, "第二轮标题");
     assert_eq!(delayed.content_md, "第二轮正文");
-    sticky
+    let delayed_theme = sticky
         .update_theme(&ctx, &id, "sky", Some(99), Some(first))
         .unwrap();
-    sticky
+    assert!(!delayed_theme.applied);
+    assert_eq!(delayed_theme.theme_color, "violet");
+    let delayed_window = sticky
         .update_window_state(&ctx, &id, window_state(0.2, true), Some(99), Some(first))
         .unwrap();
+    assert!(!delayed_window.applied);
+    assert!((delayed_window.opacity - 0.8).abs() < f64::EPSILON);
+    assert!(!delayed_window.is_pinned);
     let unscoped = sticky
         .save_content(&ctx, &id, Some("无会话标题"), "无会话正文", Some(100), None)
         .unwrap();
+    assert!(!unscoped.applied);
     assert_eq!(unscoped.content_md, "第二轮正文");
 
     let stored = sticky.get_note(&ctx, &id).unwrap().unwrap();

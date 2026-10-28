@@ -178,6 +178,7 @@ fn sticky_ipc_keeps_latest_state_when_close_follows_a_stale_write() {
         }),
     );
     assert!(newer.ok, "{:?}", newer.error);
+    assert_eq!(newer.data.unwrap()["applied"], true);
     let older = host.invoke_ipc(
         "sticky_save_content",
         json!({
@@ -188,7 +189,9 @@ fn sticky_ipc_keeps_latest_state_when_close_follows_a_stale_write() {
         }),
     );
     assert!(older.ok, "{:?}", older.error);
-    assert_eq!(older.data.unwrap()["content_md"], "新正文");
+    let older_note = older.data.unwrap();
+    assert_eq!(older_note["applied"], false);
+    assert_eq!(older_note["content_md"], "新正文");
 
     let theme = host.invoke_ipc(
         "sticky_update_theme",
@@ -200,7 +203,9 @@ fn sticky_ipc_keeps_latest_state_when_close_follows_a_stale_write() {
         json!({ "id": id, "theme_color": "sky", "write_seq": 1 }),
     );
     assert!(stale_theme.ok, "{:?}", stale_theme.error);
-    assert_eq!(stale_theme.data.unwrap()["theme_color"], "rose");
+    let stale_theme_note = stale_theme.data.unwrap();
+    assert_eq!(stale_theme_note["applied"], false);
+    assert_eq!(stale_theme_note["theme_color"], "rose");
 
     let window = host.invoke_ipc(
         "sticky_update_window_state",
@@ -212,7 +217,9 @@ fn sticky_ipc_keeps_latest_state_when_close_follows_a_stale_write() {
         json!({ "id": id, "opacity": 0.75, "is_pinned": true, "write_seq": 4 }),
     );
     assert!(stale_window.ok, "{:?}", stale_window.error);
-    assert_eq!(stale_window.data.unwrap()["is_pinned"], false);
+    let stale_window_note = stale_window.data.unwrap();
+    assert_eq!(stale_window_note["applied"], false);
+    assert_eq!(stale_window_note["is_pinned"], false);
 
     let missing = host.invoke_ipc(
         "sticky_save_content",
@@ -321,7 +328,9 @@ fn sticky_ipc_reopen_accepts_a_new_session_and_ignores_the_closed_webview() {
         }),
     );
     assert!(fresh.ok, "{:?}", fresh.error);
-    assert_eq!(fresh.data.unwrap()["title"], "第二轮标题");
+    let fresh_note = fresh.data.unwrap();
+    assert_eq!(fresh_note["applied"], true);
+    assert_eq!(fresh_note["title"], "第二轮标题");
     assert!(
         host.invoke_ipc(
             "sticky_update_theme",
@@ -359,32 +368,36 @@ fn sticky_ipc_reopen_accepts_a_new_session_and_ignores_the_closed_webview() {
         }),
     );
     assert!(delayed.ok, "{:?}", delayed.error);
-    assert_eq!(delayed.data.unwrap()["content_md"], "第二轮正文");
-    assert!(
-        host.invoke_ipc(
-            "sticky_update_theme",
-            json!({
-                "id": id,
-                "theme_color": "sky",
-                "write_seq": 99,
-                "session_id": first_session
-            }),
-        )
-        .ok
+    let delayed_note = delayed.data.unwrap();
+    assert_eq!(delayed_note["applied"], false);
+    assert_eq!(delayed_note["content_md"], "第二轮正文");
+    let delayed_theme = host.invoke_ipc(
+        "sticky_update_theme",
+        json!({
+            "id": id,
+            "theme_color": "sky",
+            "write_seq": 99,
+            "session_id": first_session
+        }),
     );
-    assert!(
-        host.invoke_ipc(
-            "sticky_update_window_state",
-            json!({
-                "id": id,
-                "opacity": 0.75,
-                "is_pinned": true,
-                "write_seq": 99,
-                "session_id": first_session
-            }),
-        )
-        .ok
+    assert!(delayed_theme.ok, "{:?}", delayed_theme.error);
+    let delayed_theme_note = delayed_theme.data.unwrap();
+    assert_eq!(delayed_theme_note["applied"], false);
+    assert_eq!(delayed_theme_note["theme_color"], "violet");
+    let delayed_window = host.invoke_ipc(
+        "sticky_update_window_state",
+        json!({
+            "id": id,
+            "opacity": 0.75,
+            "is_pinned": true,
+            "write_seq": 99,
+            "session_id": first_session
+        }),
     );
+    assert!(delayed_window.ok, "{:?}", delayed_window.error);
+    let delayed_window_note = delayed_window.data.unwrap();
+    assert_eq!(delayed_window_note["applied"], false);
+    assert_eq!(delayed_window_note["is_pinned"], false);
     let unscoped = host.invoke_ipc(
         "sticky_save_content",
         json!({
@@ -395,7 +408,9 @@ fn sticky_ipc_reopen_accepts_a_new_session_and_ignores_the_closed_webview() {
         }),
     );
     assert!(unscoped.ok, "{:?}", unscoped.error);
-    assert_eq!(unscoped.data.unwrap()["content_md"], "第二轮正文");
+    let unscoped_note = unscoped.data.unwrap();
+    assert_eq!(unscoped_note["applied"], false);
+    assert_eq!(unscoped_note["content_md"], "第二轮正文");
 
     let stored = host.invoke_ipc("sticky_get_note", json!({ "id": id }));
     assert!(stored.ok, "{:?}", stored.error);
