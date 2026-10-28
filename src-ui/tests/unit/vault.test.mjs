@@ -229,3 +229,52 @@ test('VaultPanel transfers generated password without resetting an existing entr
   assert.equal(run('form.value.record_version'), 3);
   assert.equal(run('generatedPassword.value'), '');
 });
+
+test('VaultPanel does not delete before an explicit confirmation request', async () => {
+  const calls = [];
+  const { run } = await loadComponent(async (cmd) => {
+    calls.push(cmd);
+    return cmd === 'vault_list_entries' ? { entries: [] } : {};
+  });
+  run("form.value.id = 'fiction-delete'; form.value.record_version = 4");
+  await run('deleteEntry()');
+  assert.deepEqual(calls, []);
+  assert.equal(run('form.value.id'), 'fiction-delete');
+});
+
+test('VaultPanel cancels pending deletion and rejects a changed target or version', async () => {
+  const calls = [];
+  const { run } = await loadComponent(async (cmd) => { calls.push(cmd); return {}; });
+  run("form.value.id = 'fiction-delete'; form.value.record_version = 4; requestDelete(); cancelDelete()");
+  await run('deleteEntry()');
+  run("requestDelete(); form.value.id = 'fiction-other'");
+  await run('deleteEntry()');
+  run('requestDelete(); form.value.record_version = 5');
+  await run('deleteEntry()');
+  assert.deepEqual(calls, []);
+});
+
+test('VaultPanel deletes the confirmed version once and closes the editor', async () => {
+  const calls = [];
+  const { run } = await loadComponent(async (cmd, args) => {
+    calls.push({ cmd, args });
+    return cmd === 'vault_list_entries' ? { entries: [] } : {};
+  });
+  run("form.value.id = 'fiction-delete'; form.value.record_version = 4; requestDelete()");
+  await run('deleteEntry()');
+  await run('deleteEntry()');
+  assert.deepEqual(calls.filter(({ cmd }) => cmd === 'vault_delete_entry').map(({ args }) => JSON.parse(JSON.stringify(args))), [
+    { id: 'fiction-delete', expected_version: 4 },
+  ]);
+  assert.equal(run('deleteConfirmation.value'), null);
+  assert.equal(run('editing.value'), false);
+});
+
+test('VaultPanel clears delete confirmation on lock and editor replacement', async () => {
+  const { run } = await loadComponent(async () => ({}));
+  for (const cleanup of ['clearSensitiveState()', 'startNew()', 'cancelEdit()']) {
+    run("form.value.id = 'fiction-delete'; form.value.record_version = 4; requestDelete()");
+    run(cleanup);
+    assert.equal(run('deleteConfirmation.value'), null);
+  }
+});

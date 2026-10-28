@@ -818,6 +818,7 @@
     "cancel": "取消",
     "delete": "删除",
     "deleteConfirm": "确定删除此虚构条目？",
+    "confirmDelete": "确认删除",
     "titleField": "标题",
     "url": "网址",
     "category": "分类",

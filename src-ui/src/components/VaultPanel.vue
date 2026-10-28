@@ -65,8 +65,15 @@
           <div class="vault-actions">
             <button class="vault-button primary" :disabled="busy" @click="saveEntry">{{ vaultText('save') }}</button>
             <button class="vault-button" @click="cancelEdit">{{ vaultText('cancel') }}</button>
-            <button v-if="form.id" class="vault-button danger" :disabled="busy" @click="deleteEntry">{{ vaultText('delete') }}</button>
+            <button v-if="form.id" class="vault-button danger" :disabled="busy" @click="requestDelete">{{ vaultText('delete') }}</button>
           </div>
+          <section v-if="deleteConfirmation" class="vault-delete-confirm" role="alertdialog" :aria-label="vaultText('deleteConfirm')">
+            <p>{{ vaultText('deleteConfirm') }}</p>
+            <div class="vault-actions">
+              <button class="vault-button" :disabled="busy" @click="cancelDelete">{{ vaultText('cancel') }}</button>
+              <button class="vault-button danger" :disabled="busy" @click="deleteEntry">{{ vaultText('confirmDelete') }}</button>
+            </div>
+          </section>
           <button class="vault-button" :disabled="busy || !form.id" @click="copyPassword">{{ vaultText('copy') }}</button>
         </section>
 
@@ -118,6 +125,7 @@ const newMasterConfirmation = ref('');
 const searchQuery = ref('');
 const entries = ref<VaultEntrySummary[]>([]);
 const form = ref<VaultEntryDraft>(emptyVaultEntry());
+const deleteConfirmation = ref<{ id: string; record_version: number } | null>(null);
 const editing = computed(() => form.value.id !== '' || form.value.title !== '' || form.value.record_version === 0 && newEntryOpen.value);
 const newEntryOpen = ref(false);
 const revealedPassword = ref('');
@@ -157,6 +165,7 @@ function clearSensitiveState() {
   searchQuery.value = '';
   entries.value = [];
   form.value = emptyVaultEntry();
+  deleteConfirmation.value = null;
   newEntryOpen.value = false;
   status.value = { ...status.value, locked: true, unlocking: false };
   busy.value = false;
@@ -268,18 +277,21 @@ async function refreshEntries() {
 }
 
 function startNew() {
+  cancelDelete();
   clearReveal();
   form.value = emptyVaultEntry();
   newEntryOpen.value = true;
 }
 
 function cancelEdit() {
+  cancelDelete();
   clearReveal();
   form.value = emptyVaultEntry();
   newEntryOpen.value = false;
 }
 
 async function editEntry(id: string) {
+  cancelDelete();
   const operation = currentOperation();
   busy.value = true;
   clearReveal();
@@ -301,6 +313,7 @@ async function editEntry(id: string) {
 }
 
 async function saveEntry() {
+  cancelDelete();
   const operation = currentOperation();
   busy.value = true;
   const snapshot = { ...form.value };
@@ -326,12 +339,24 @@ async function saveEntry() {
   }
 }
 
+function requestDelete() {
+  if (busy.value || !form.value.id) return;
+  deleteConfirmation.value = { id: form.value.id, record_version: form.value.record_version };
+}
+
+function cancelDelete() {
+  deleteConfirmation.value = null;
+}
+
 async function deleteEntry() {
-  if (!form.value.id || !window.confirm(vaultText('deleteConfirm'))) return;
+  const confirmed = deleteConfirmation.value;
+  if (busy.value) return;
+  cancelDelete();
+  if (!confirmed || confirmed.id !== form.value.id || confirmed.record_version !== form.value.record_version) return;
   const operation = currentOperation();
   busy.value = true;
-  const id = form.value.id;
-  const expectedVersion = form.value.record_version;
+  const id = confirmed.id;
+  const expectedVersion = confirmed.record_version;
   try {
     await invokeIpc('vault_delete_entry', { id, expected_version: expectedVersion });
     if (!isCurrent(operation)) return;
@@ -484,6 +509,8 @@ onUnmounted(() => {
 .vault-button { padding: 8px 12px; border: 1px solid #c7c7cc; border-radius: 8px; background: #f5f5f7; color: #1d1d1f; cursor: pointer; }
 .vault-button.primary { background: #087f5b; border-color: #087f5b; color: #fff; }
 .vault-button.danger { color: #b42318; }
+.vault-delete-confirm { padding: 12px; border: 1px solid #b42318; border-radius: 8px; }
+.vault-delete-confirm p { margin: 0 0 10px; }
 .vault-button:disabled { cursor: not-allowed; opacity: .58; }
 .vault-layout { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(300px, 2fr); gap: 14px; }
 .vault-list { display: grid; gap: 8px; align-content: start; }
