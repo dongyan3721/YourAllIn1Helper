@@ -818,6 +818,7 @@
     "cancel": "Cancel",
     "delete": "Delete",
     "deleteConfirm": "Delete this fictional entry?",
+    "confirmDelete": "Confirm deletion",
     "titleField": "Title",
     "url": "URL",
     "category": "Category",

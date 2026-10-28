@@ -818,6 +818,7 @@
     "cancel": "キャンセル",
     "delete": "削除",
     "deleteConfirm": "この仮想エントリを削除しますか？",
+    "confirmDelete": "削除を確定",
     "titleField": "タイトル",
     "url": "URL",
     "category": "分類",
