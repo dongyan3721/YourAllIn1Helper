@@ -10,6 +10,14 @@
       "sha256": "ace47a16c99fbd92ee514ce467651b51b8c784391659829782f0802df782c8bc"
     },
     {
+      "file": "regressions-final.log",
+      "sha256": "7fcf8efa182d267ac2a36ebfec9ac13f4a8f1f29a5511b98fe65ffedcbc15a40"
+    },
+    {
+      "file": "rust-final.log",
+      "sha256": "5f2c32a62b809bdb6a8201a206dffa48316ffa80d9d9ae11bd162aa33a5674dd"
+    },
+    {
       "file": "rust-interim-integrated.log",
       "sha256": "6165292312a8650df2ed698b2a03e665f8116b2d814bdbb61e5b5b98bc5b76ac"
     },
@@ -32,6 +40,14 @@
     {
       "file": "ui-build.log",
       "sha256": "0296b050c9f9db3b86df58524a237c298b99f27d579470bbf5d6096a3a453a2b"
+    },
+    {
+      "file": "ui-final-build.log",
+      "sha256": "3650cc7cc5ffab5478929f4970b07c9fc43034a1efabef96792330d9cfcfbee5"
+    },
+    {
+      "file": "ui-final.log",
+      "sha256": "da7218219f44783f357ace29788daa27bfd003c86aa4e294a916f8f70f2d34f1"
     },
     {
       "file": "ui-interim-build.log",

@@ -63,8 +63,11 @@
 
 - OpenCode / deepseek/deepseek-flash：`a5a339d`，使用时长暂停采样与跨午夜快捷日期范围修复，已审查并合并本地主分支。其报告模块 Rust 测试 29 项、前端测试 29 项及严格构建通过；待集成后复测 GUI。
 - WorkBuddy / Kimi-K3.1-Pro：`3eea97d`，秘密清除定时器与列表请求代际解耦，并测试刷新、连续揭示、乱序响应、锁定及卸载；已审查并合并。主工作区原有两项失败复现现在均通过；正式密码本未初始化，未进行真实 GUI 密码流程。
-- Antigravity / Gemini 3.8 Flash High：`6065191`，修复翻译浮窗到主控台的 IPC 路由及无权限和无 Key 提示共存；已审查并合入，正式版 GUI 待重新打包复测。
-- Cursor / Grok 4.7 High：`9a7519c`、`2222f37`，修复待保存内容在关闭时丢失。审查时发现前端重开后写入序号重置而后端仍保留旧序号，可能拒绝新写入；已反馈 Cursor 继续修复，当前尚未合并。
+- Antigravity / Gemini 3.8 Flash High：`6065191`，修复翻译浮窗到主控台的 IPC 路由及无权限和无 Key 提示共存；已审查并合入，正式版中间包已固定签名并实际复测：无障碍未授权与缺少 API Key 的提示同时出现，点击“前往设置”后主控台切到翻译设置页。
+- Cursor / Grok 4.7 High：`9a7519c`、`2222f37`，修复待保存内容在关闭时丢失。审查发现的重开序号、会话失败和初始化期间输入问题已由 `7401271`、`7afe9f0` 修复；快照和提交一致，已审查并合入。
 - 中间集成回归：合入使用时长、密码本与翻译修复后，前端 40 项通过；Rust 全工作区 234 项通过、0 失败、6 项 ignored。此结果不包含尚未合入的便笺修复。[Rust 日志](evidence/gui-2026-10-27/rust-interim-integrated.log)、[前端测试](evidence/gui-2026-10-27/ui-interim-integrated.log)、[严格构建](evidence/gui-2026-10-27/ui-interim-build.log)。
 - 2026-10-28 续测：Cursor 追加 `7401271` 处理便笺重开后的序号问题；审查又发现会话初始化失败与初始化期间输入保护需补测，已交回 Cursor，分支暂不合入。中间版编译完成，但固定证书签名仍等待钥匙串系统验证；Mac 锁屏使电脑插件无法继续，dist 旧包尚未替换。用户解锁和系统验证后方能进行对应 GUI 回归。
 - 续测期间在独立快照上审查了 Cursor 未提交草稿（基于 `7401271`，补丁 SHA-256 `2dbb8bb13d27f2cb785aa6b835b19e4927f053b705fbd175d8153e09e797edbf`）：便笺组件 19 项、Rust 模块 4 项、宿主 IPC 2 项和严格前端构建通过；额外模拟会话延迟时输入亦通过。该快照不等于开发者最终提交，未合并或进行 GUI 回归；快照与日志暂存于 `.runtime_data/team/codex-gui-sticky-review-20261028` 和 `.runtime_data/sticky-review-*`。
+
+- 用户解锁并完成签名验证后，中间包签名校验通过。实际 GUI 验证翻译浮窗“前往设置”跳转成功；由于便笺修复尚未合入，该包不是最终集成版本。
+- 完整集成前端回归：59 项通过；原便笺与密码超时组件复现 4 项现均通过；严格前端构建通过。Rust 全工作区 239 项通过、0 项失败、6 项 ignored；最终 GUI 回归进行中。 [Rust](evidence/gui-2026-10-27/rust-final.log)、[前端](evidence/gui-2026-10-27/ui-final.log)、[原复现](evidence/gui-2026-10-27/regressions-final.log)、[构建](evidence/gui-2026-10-27/ui-final-build.log)。

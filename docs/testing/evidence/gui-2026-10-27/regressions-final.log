@@ -1,0 +1,12 @@
+✔ ordinary debounce saves the fictional note when its timer fires (92.944958ms)
+✔ closing while a save is pending must persist edits before destroying the WebView (33.698125ms)
+✔ revealPassword('fiction-entry') clears after 15s even if the list is refreshed (64.918042ms)
+✔ generatePassword() clears after 15s even if the list is refreshed (24.291916ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 355.829083
