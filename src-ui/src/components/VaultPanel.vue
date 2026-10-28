@@ -394,8 +394,10 @@ async function generatePassword() {
 }
 
 function useGenerated() {
+  // Opening a new editor clears transient secrets, so retain the value first.
+  const password = generatedPassword.value;
   if (!editing.value) startNew();
-  form.value.password = generatedPassword.value;
+  form.value.password = password;
   clearReveal();
 }
 
