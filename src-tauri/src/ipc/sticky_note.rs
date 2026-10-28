@@ -1,6 +1,30 @@
 //! 便笺 IPC 适配。
 use super::*;
 
+fn optional_u64(args: &Value, key: &str) -> Option<u64> {
+    let value = args.get(key)?;
+    if let Some(number) = value.as_u64() {
+        return Some(number);
+    }
+    if let Some(number) = value.as_i64() {
+        return u64::try_from(number).ok();
+    }
+    let number = value.as_f64()?;
+    if number.is_finite() && number >= 0.0 && number.fract() == 0.0 && number <= u64::MAX as f64 {
+        Some(number as u64)
+    } else {
+        None
+    }
+}
+
+fn write_seq(args: &Value) -> Option<u64> {
+    optional_u64(args, "write_seq")
+}
+
+fn session_id(args: &Value) -> Option<u64> {
+    optional_u64(args, "session_id")
+}
+
 impl DesktopHost {
     pub(super) fn dispatch_sticky_note(&self, cmd: &str, args: Value) -> CoreResult<Value> {
         let ctx = self.kernel.context();
@@ -36,11 +60,24 @@ impl DesktopHost {
                 Ok(serde_json::to_value(note)?)
             }
 
+            "sticky_begin_session" => {
+                let id = args.get("id").and_then(Value::as_str).unwrap_or("");
+                let session_id = self.sticky_note.begin_write_session(ctx, id)?;
+                Ok(json!({ "id": id, "session_id": session_id }))
+            }
+
             "sticky_save_content" => {
                 let id = args.get("id").and_then(Value::as_str).unwrap_or("");
                 let title = args.get("title").and_then(Value::as_str);
                 let content_md = args.get("content_md").and_then(Value::as_str).unwrap_or("");
-                let updated = self.sticky_note.save_content(ctx, id, title, content_md)?;
+                let updated = self.sticky_note.save_content(
+                    ctx,
+                    id,
+                    title,
+                    content_md,
+                    write_seq(&args),
+                    session_id(&args),
+                )?;
                 Ok(serde_json::to_value(updated)?)
             }
 
@@ -79,9 +116,14 @@ impl DesktopHost {
                         .and_then(Value::as_f64)
                         .unwrap_or(current.opacity),
                 };
-                self.sticky_note.update_window_state(ctx, id, update)?;
-                let refreshed = self.sticky_note.get_note(ctx, id)?;
-                Ok(serde_json::to_value(refreshed)?)
+                let updated = self.sticky_note.update_window_state(
+                    ctx,
+                    id,
+                    update,
+                    write_seq(&args),
+                    session_id(&args),
+                )?;
+                Ok(serde_json::to_value(updated)?)
             }
 
             "sticky_update_theme" => {
@@ -90,15 +132,26 @@ impl DesktopHost {
                     .get("theme_color")
                     .and_then(Value::as_str)
                     .unwrap_or("amber");
-                ctx.db.with_conn(|conn| {
-                    conn.execute(
-                        "UPDATE sticky_notes SET theme_color = ?1 WHERE id = ?2",
-                        [theme_color, id],
-                    )?;
-                    Ok(())
-                })?;
-                let refreshed = self.sticky_note.get_note(ctx, id)?;
-                Ok(serde_json::to_value(refreshed)?)
+                let updated = self.sticky_note.update_theme(
+                    ctx,
+                    id,
+                    theme_color,
+                    write_seq(&args),
+                    session_id(&args),
+                )?;
+                Ok(serde_json::to_value(updated)?)
+            }
+
+            "sticky_request_close" => {
+                // 没有可委托的原生页面时直接关闭。Tauri 壳在窗口仍存在时会先让页面冲刷。
+                let id = args.get("id").and_then(Value::as_str).unwrap_or("");
+                self.sticky_note.close_note(ctx, id)?;
+                Ok(json!({
+                    "id": id,
+                    "delegated": false,
+                    "closed": true,
+                    "active_window_count": ctx.window_pool.active_window_count()
+                }))
             }
 
             "sticky_close_note" => {

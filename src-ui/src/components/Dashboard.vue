@@ -785,10 +785,14 @@ async function openNote(id: string) {
   await refreshDashboard();
 }
 
-/** 关闭便笺原生窗口 */
+/** 关闭便笺原生窗口。打开中的页面先保存未落盘内容，再自行销毁。 */
 async function closeNote(id: string) {
-  await invokeIpc('sticky_close_note', { id });
-  await refreshDashboard();
+  try {
+    const res = await invokeIpc<{ delegated?: boolean }>('sticky_request_close', { id });
+    if (!res?.delegated) await refreshDashboard();
+  } catch (err) {
+    console.error('关闭便笺窗口失败:', err);
+  }
 }
 
 /** 彻底删除便笺 */

@@ -8,7 +8,7 @@
     "build": "vue-tsc --noEmit && vite build",
     "build:fast": "vite build",
     "preview": "vite preview",
-    "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test tests/unit/i18n.test.mjs tests/unit/ink.test.mjs tests/unit/screenshot.test.mjs tests/unit/capture-overlay.test.mjs tests/unit/translator.test.mjs tests/unit/vault.test.mjs tests/unit/app-usage.test.mjs"
+    "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test tests/unit/i18n.test.mjs tests/unit/ink.test.mjs tests/unit/screenshot.test.mjs tests/unit/capture-overlay.test.mjs tests/unit/translator.test.mjs tests/unit/vault.test.mjs tests/unit/app-usage.test.mjs tests/unit/sticky-note.test.mjs"
   },
   "dependencies": {
     "katex": "^0.16.11",
