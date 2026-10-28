@@ -331,6 +331,7 @@ body.native-window-mode .macos-window {
   height: 100vh;
   display: flex;
   flex-direction: column;
+  position: relative;
   border-radius: 0;
   overflow: hidden;
   box-shadow: none;

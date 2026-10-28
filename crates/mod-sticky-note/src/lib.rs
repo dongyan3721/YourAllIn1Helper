@@ -230,37 +230,60 @@ impl StickyNoteModule {
         self.set_flushing(note_ids.iter().map(String::as_str), true);
 
         let mut failures = Vec::new();
+        let mut requests: Vec<(String, u64)> = Vec::new();
         for (label, note_id) in windows.iter().zip(&note_ids) {
-            let outcome = ctx
+            match ctx
                 .window_pool
-                .request_close_flush(label, SHUTDOWN_FLUSH_TIMEOUT);
-            match outcome {
-                Ok(CloseFlushOutcome::Saved) | Ok(CloseFlushOutcome::NotNeeded) => {}
-                Ok(CloseFlushOutcome::Failed(reason)) => {
-                    failures.push(format!("便笺 '{}' 保存失败：{}", note_id, reason));
-                }
-                Ok(CloseFlushOutcome::TimedOut) => {
-                    failures.push(format!("便笺 '{}' 保存超时", note_id));
+                .request_close_flush(label, SHUTDOWN_FLUSH_TIMEOUT)
+            {
+                Ok(report) => {
+                    requests.push((label.clone(), report.request_id));
+                    match report.outcome {
+                        CloseFlushOutcome::Saved | CloseFlushOutcome::NotNeeded => {}
+                        CloseFlushOutcome::Failed(reason) => {
+                            failures.push(format!("便笺 '{}' 保存失败：{}", note_id, reason));
+                        }
+                        CloseFlushOutcome::TimedOut => {
+                            failures.push(format!("便笺 '{}' 保存超时", note_id));
+                        }
+                    }
                 }
                 Err(error) => {
+                    requests.push((label.clone(), 0));
                     failures.push(format!("便笺 '{}' 无法请求保存：{}", note_id, error));
                 }
             }
         }
 
-        self.set_flushing(note_ids.iter().map(String::as_str), false);
-
         if !failures.is_empty() {
+            self.cancel_frozen_pages(ctx, &requests);
+            self.set_flushing(note_ids.iter().map(String::as_str), false);
             return Err(CoreError::Internal(anyhow::anyhow!(
                 "便笺保存未完成，窗口已保留：{}",
                 failures.join("；")
             )));
         }
 
-        for label in windows {
-            ctx.window_pool.destroy_window(&label)?;
+        self.set_flushing(note_ids.iter().map(String::as_str), false);
+        for (label, _) in &requests {
+            if let Err(error) = ctx.window_pool.destroy_window(label) {
+                // A destroy failure leaves frozen pages alive; let the user retry.
+                self.cancel_frozen_pages(ctx, &requests);
+                return Err(CoreError::Internal(anyhow::anyhow!(
+                    "便笺窗口销毁失败，页面已保留：{}",
+                    error
+                )));
+            }
         }
         Ok(())
+    }
+
+    fn cancel_frozen_pages(&self, ctx: &ModuleContext, requests: &[(String, u64)]) {
+        for (label, request_id) in requests {
+            if *request_id > 0 {
+                let _ = ctx.window_pool.cancel_close_flush(label, *request_id);
+            }
+        }
     }
 
     fn field_seq(cursor: &NoteWriteCursor, field: WriteField) -> u64 {

@@ -49,7 +49,7 @@ pub use storage::{
     CURRENT_CONFIG_VERSION,
 };
 pub use window_manager::{
-    ActiveWindowEntry, CloseFlushOutcome, HeadlessWindowBackend, WindowBackend,
+    ActiveWindowEntry, CloseFlushOutcome, CloseFlushReport, HeadlessWindowBackend, WindowBackend,
     WindowLifecyclePolicy, WindowPoolManager, WindowSpec,
 };
 

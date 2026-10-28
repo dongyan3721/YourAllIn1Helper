@@ -6,7 +6,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use app_core::{CloseFlushOutcome, CoreError, CoreResult, WindowBackend, WindowSpec};
+use app_core::{
+    CloseFlushOutcome, CloseFlushReport, CoreError, CoreResult, WindowBackend, WindowSpec,
+};
 use os_hal::ExternalWindowInfo;
 use serde_json::{json, Value};
 use tauri::{
@@ -232,28 +234,56 @@ impl WindowBackend for TauriWindowBackend {
         Ok(())
     }
 
-    fn request_close_flush(&self, label: &str, timeout: Duration) -> CoreResult<CloseFlushOutcome> {
+    fn request_close_flush(&self, label: &str, timeout: Duration) -> CoreResult<CloseFlushReport> {
         let Some(note_id) = label.strip_prefix("sticky-note-") else {
-            return Ok(CloseFlushOutcome::NotNeeded);
+            return Ok(CloseFlushReport {
+                request_id: 0,
+                outcome: CloseFlushOutcome::NotNeeded,
+            });
         };
         let Some(window) = self.app.get_webview_window(label) else {
-            return Ok(CloseFlushOutcome::NotNeeded);
+            return Ok(CloseFlushReport {
+                request_id: 0,
+                outcome: CloseFlushOutcome::NotNeeded,
+            });
         };
         if self.sticky_flush.is_main_thread() {
             // Waiting for WebView JS/IPC on the AppKit main thread would deadlock the page.
-            return Ok(CloseFlushOutcome::Failed(
-                "不能在原生主线程等待便笺保存".to_string(),
-            ));
+            return Ok(CloseFlushReport {
+                request_id: 0,
+                outcome: CloseFlushOutcome::Failed("不能在原生主线程等待便笺保存".to_string()),
+            });
         }
-        let signal = self.sticky_flush.register(note_id);
-        if let Err(error) = window.emit("sticky://flush-save", json!({ "id": note_id })) {
-            self.sticky_flush.cancel(note_id, &signal);
-            return Ok(CloseFlushOutcome::Failed(format!(
-                "无法请求便笺保存：{}",
-                error
-            )));
+        let (request_id, signal) = self.sticky_flush.begin(note_id);
+        if let Err(error) = window.emit(
+            "sticky://flush-save",
+            json!({ "id": note_id, "request_id": request_id }),
+        ) {
+            self.sticky_flush.cancel(note_id, request_id, &signal);
+            return Ok(CloseFlushReport {
+                request_id,
+                outcome: CloseFlushOutcome::Failed(format!("无法请求便笺保存：{}", error)),
+            });
         }
-        Ok(self.sticky_flush.wait(note_id, signal, timeout))
+        Ok(CloseFlushReport {
+            request_id,
+            outcome: self.sticky_flush.wait(note_id, request_id, signal, timeout),
+        })
+    }
+
+    fn cancel_close_flush(&self, label: &str, request_id: u64) -> CoreResult<()> {
+        let Some(note_id) = label.strip_prefix("sticky-note-") else {
+            return Ok(());
+        };
+        if let Some(window) = self.app.get_webview_window(label) {
+            window
+                .emit(
+                    "sticky://flush-cancel",
+                    json!({ "id": note_id, "request_id": request_id }),
+                )
+                .map_err(to_core_error)?;
+        }
+        Ok(())
     }
 
     fn set_ignore_cursor_events(&self, label: &str, ignore: bool) -> CoreResult<()> {
@@ -332,6 +362,11 @@ async fn ipc(app: AppHandle, mut request: IpcRequest) -> IpcResponse {
     }
     if request.cmd == "sticky_flush_result" {
         let id = request.args.get("id").and_then(Value::as_str).unwrap_or("");
+        let request_id = request
+            .args
+            .get("request_id")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
         let ok = request
             .args
             .get("ok")
@@ -349,9 +384,10 @@ async fn ipc(app: AppHandle, mut request: IpcRequest) -> IpcResponse {
         };
         let acknowledged = app
             .try_state::<Arc<StickyFlushCoordinator>>()
-            .is_some_and(|coordinator| coordinator.complete(id, result));
+            .is_some_and(|coordinator| coordinator.complete(id, request_id, result));
         return IpcResponse::success(json!({
             "id": id,
+            "request_id": request_id,
             "acknowledged": acknowledged
         }));
     }

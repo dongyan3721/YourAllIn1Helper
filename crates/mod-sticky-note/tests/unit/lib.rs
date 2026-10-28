@@ -1,5 +1,5 @@
 use super::*;
-use app_core::{AppKernelBuilder, TargetOs, WindowBackend, WindowSpec};
+use app_core::{AppKernelBuilder, CloseFlushReport, TargetOs, WindowBackend, WindowSpec};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -449,7 +449,9 @@ fn reopened_note_in_the_same_process_saves_fresh_edits_and_ignores_the_closed_we
 struct FlushBackend {
     destroyed: std::sync::Mutex<Vec<String>>,
     flush_calls: std::sync::Mutex<Vec<String>>,
+    cancelled: std::sync::Mutex<Vec<(String, u64)>>,
     outcome: std::sync::Mutex<CloseFlushOutcome>,
+    next_request: std::sync::atomic::AtomicU64,
     on_flush: std::sync::Mutex<Option<Box<dyn FnMut(&str) + Send>>>,
 }
 
@@ -458,7 +460,9 @@ impl FlushBackend {
         Arc::new(Self {
             destroyed: std::sync::Mutex::new(Vec::new()),
             flush_calls: std::sync::Mutex::new(Vec::new()),
+            cancelled: std::sync::Mutex::new(Vec::new()),
             outcome: std::sync::Mutex::new(outcome),
+            next_request: std::sync::atomic::AtomicU64::new(0),
             on_flush: std::sync::Mutex::new(None),
         })
     }
@@ -480,6 +484,13 @@ impl FlushBackend {
 
     fn flush_calls(&self) -> Vec<String> {
         self.flush_calls
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .clone()
+    }
+
+    fn cancelled(&self) -> Vec<(String, u64)> {
+        self.cancelled
             .lock()
             .unwrap_or_else(|err| err.into_inner())
             .clone()
@@ -507,11 +518,7 @@ impl WindowBackend for FlushBackend {
         Ok(())
     }
 
-    fn request_close_flush(
-        &self,
-        label: &str,
-        _timeout: Duration,
-    ) -> CoreResult<CloseFlushOutcome> {
+    fn request_close_flush(&self, label: &str, _timeout: Duration) -> CoreResult<CloseFlushReport> {
         self.flush_calls
             .lock()
             .unwrap_or_else(|err| err.into_inner())
@@ -524,11 +531,26 @@ impl WindowBackend for FlushBackend {
         {
             callback(label);
         }
-        Ok(self
-            .outcome
+        let request_id = self
+            .next_request
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            + 1;
+        Ok(CloseFlushReport {
+            request_id,
+            outcome: self
+                .outcome
+                .lock()
+                .unwrap_or_else(|err| err.into_inner())
+                .clone(),
+        })
+    }
+
+    fn cancel_close_flush(&self, label: &str, request_id: u64) -> CoreResult<()> {
+        self.cancelled
             .lock()
             .unwrap_or_else(|err| err.into_inner())
-            .clone())
+            .push((label.to_string(), request_id));
+        Ok(())
     }
 }
 
@@ -674,4 +696,38 @@ fn failed_disable_keeps_sticky_enabled_and_windows_available_for_retry() {
     kernel.set_module_enabled("sticky_note", false).unwrap();
     assert!(!kernel.registry().is_enabled("sticky_note"));
     assert_eq!(ctx.window_pool.active_window_count(), 0);
+}
+
+#[test]
+fn multi_note_flush_failure_releases_every_frozen_page_with_its_request_id() {
+    let backend = FlushBackend::with_outcome(CloseFlushOutcome::Failed("disk full".into()));
+    let (_dir, kernel, sticky) = fixture_with_backend(backend.clone());
+    let ctx = kernel.context().clone();
+    let first = sticky
+        .create_note(&ctx, Some("first"), Some("one"), Some("amber"))
+        .unwrap();
+    let second = sticky
+        .create_note(&ctx, Some("second"), Some("two"), Some("sky"))
+        .unwrap();
+    let first_label = StickyNoteModule::window_label_for(&first.id);
+    let second_label = StickyNoteModule::window_label_for(&second.id);
+
+    let error = sticky.on_shutdown(&ctx).unwrap_err().to_string();
+    assert!(error.contains(&first.id), "{error}");
+    assert!(error.contains(&second.id), "{error}");
+    assert!(backend.destroyed().is_empty());
+    assert_eq!(ctx.window_pool.active_window_count(), 2);
+
+    let cancelled = backend.cancelled();
+    assert_eq!(cancelled.len(), 2);
+    assert!(cancelled
+        .iter()
+        .any(|(label, id)| *label == first_label && *id > 0));
+    assert!(cancelled
+        .iter()
+        .any(|(label, id)| *label == second_label && *id > 0));
+    assert_ne!(
+        cancelled[0].1, cancelled[1].1,
+        "each request has a unique id"
+    );
 }

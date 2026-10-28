@@ -27,6 +27,18 @@ pub enum CloseFlushOutcome {
     TimedOut,
 }
 
+/// A close-flush request and its unique correlation id.
+///
+/// The id must be echoed by the page and checked by the confirmation path so a
+/// late acknowledgement for a timed-out request cannot release a newer request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CloseFlushReport {
+    /// Unique id for this flush attempt.
+    pub request_id: u64,
+    /// Whether the page saved, failed, or timed out.
+    pub outcome: CloseFlushOutcome,
+}
+
 /// Memory-saving lifecycle tier for a WebView window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -317,8 +329,15 @@ pub trait WindowBackend: Send + Sync + 'static {
         &self,
         _label: &str,
         _timeout: Duration,
-    ) -> CoreResult<CloseFlushOutcome> {
-        Ok(CloseFlushOutcome::NotNeeded)
+    ) -> CoreResult<CloseFlushReport> {
+        Ok(CloseFlushReport {
+            request_id: 0,
+            outcome: CloseFlushOutcome::NotNeeded,
+        })
+    }
+    /// Tells a page that the shutdown attempt failed and it may accept edits again.
+    fn cancel_close_flush(&self, _label: &str, _request_id: u64) -> CoreResult<()> {
+        Ok(())
     }
 }
 
@@ -403,8 +422,13 @@ impl WindowPoolManager {
         &self,
         label: &str,
         timeout: Duration,
-    ) -> CoreResult<CloseFlushOutcome> {
+    ) -> CoreResult<CloseFlushReport> {
         self.backend.request_close_flush(label, timeout)
+    }
+
+    /// Releases the page frozen by a failed or timed-out flush.
+    pub fn cancel_close_flush(&self, label: &str, request_id: u64) -> CoreResult<()> {
+        self.backend.cancel_close_flush(label, request_id)
     }
 
     /// Handles window blur (focus lost) events: automatically destroys `Transient { destroy_on_blur: true }`

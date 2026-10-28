@@ -3,6 +3,7 @@
     class="macos-sticky-frame"
     :class="`sticky-theme-${note.theme_color || 'neutral'}`"
     :style="{ opacity: note.opacity }"
+    :aria-busy="frozen"
   >
     <!-- 便笺标题栏 -->
     <header class="sticky-header">
@@ -10,6 +11,7 @@
         <input
           v-model="note.title"
           class="title-input"
+          :readonly="frozen"
           :placeholder="t('sticky.window.untitledPlaceholder')"
           @blur="saveContentDebounced"
         />
@@ -21,6 +23,7 @@
         <button
           class="tool-btn"
           :class="{ active: viewMode === 'preview' }"
+          :disabled="frozen"
           @click="toggleViewMode"
           :title="viewMode === 'edit' ? t('sticky.window.switchPreviewTooltip') : t('sticky.window.switchEditTooltip')"
         >
@@ -32,6 +35,7 @@
         <button
           class="tool-btn"
           :class="{ active: note.is_pinned }"
+          :disabled="frozen"
           @click="togglePin"
           :title="t('sticky.window.pinTooltip')"
         >
@@ -40,7 +44,7 @@
 
         <!-- 调色盘弹出切换 -->
         <div class="palette-dropdown-wrap">
-          <button class="tool-btn" @click="showPalette = !showPalette" :title="t('sticky.window.paletteTooltip')">
+          <button class="tool-btn" :disabled="frozen" @click="showPalette = !showPalette" :title="t('sticky.window.paletteTooltip')">
             <Icons name="palette" size="12" />
           </button>
           <div v-if="showPalette" class="palette-popover">
@@ -61,7 +65,7 @@
         </button>
 
         <!-- 关闭并销毁原生窗口 -->
-        <button class="tool-btn close-btn" @click="closeNoteWindow" :title="t('sticky.window.closeTooltip')">
+        <button class="tool-btn close-btn" :disabled="frozen" @click="closeNoteWindow" :title="t('sticky.window.closeTooltip')">
           <Icons name="close" size="12" />
         </button>
       </div>
@@ -75,6 +79,7 @@
         ref="editorRef"
         v-model="note.content_md"
         class="sticky-textarea"
+        :readonly="frozen"
         :placeholder="t('sticky.window.editorPlaceholder')"
         @input="saveContentDebounced"
       ></textarea>
@@ -98,6 +103,7 @@
           max="100"
           :value="Math.round(note.opacity * 100)"
           class="opacity-range"
+          :disabled="frozen"
           @input="onOpacityChange"
         />
       </div>
@@ -108,6 +114,11 @@
         <span v-else-if="lastSavedTime">{{ t('sticky.window.savedAt', { time: lastSavedTime }) }}</span>
       </div>
     </footer>
+
+    <!-- 保存握手期间冻结所有输入，成功后保持到原生销毁，失败由 flush-cancel 解除。 -->
+    <div v-if="frozen" class="sticky-freeze-overlay" role="status" aria-live="polite">
+      <span>{{ t('sticky.window.saving') }}</span>
+    </div>
   </div>
 </template>
 
@@ -148,6 +159,8 @@ const showPalette = ref(false);
 const saving = ref(false);
 /** 最近一次待保存写入失败。关闭会被取消，窗口保持打开。 */
 const saveError = ref(false);
+/** 停用/退出保存握手期间冻结编辑与交互；成功保持到原生销毁，失败后解除。 */
+const frozen = ref(false);
 /** 上次存盘时间 */
 const lastSavedTime = ref('');
 /** 编辑器输入引用 */
@@ -224,6 +237,9 @@ let sessionRequired = false;
 let sessionNoteId = '';
 let unlistenFlush: (() => void) | undefined;
 let unlistenFlushSave: (() => void) | undefined;
+let unlistenFlushCancel: (() => void) | undefined;
+let shutdownFlushRequestId: number | null = null;
+const cancelledFlushRequests = new Set<number>();
 
 function startWriteSession(noteId: string) {
   if (!noteId) return sessionReady;
@@ -299,6 +315,7 @@ function scheduleContentTimer() {
 
 /** 记录最新标题与正文，并在 400ms 内没有继续输入时写入。 */
 function saveContentDebounced() {
+  if (frozen.value) return;
   contentDirty = true;
   saving.value = true;
   saveError.value = false;
@@ -471,6 +488,7 @@ function toggleViewMode() {
 
 /** 切换置顶状态 */
 function togglePin() {
+  if (frozen.value) return;
   note.value.is_pinned = !note.value.is_pinned;
   windowDirty = true;
   void persistWindow().catch((err) => {
@@ -480,6 +498,7 @@ function togglePin() {
 
 /** 调节透明度 */
 function onOpacityChange(e: Event) {
+  if (frozen.value) return;
   const val = Number((e.target as HTMLInputElement).value);
   note.value.opacity = Math.max(0.35, Math.min(1.0, val / 100.0));
   windowDirty = true;
@@ -490,6 +509,7 @@ function onOpacityChange(e: Event) {
 
 /** 切换色彩主题 */
 function setTheme(colorKey: string) {
+  if (frozen.value) return;
   note.value.theme_color = colorKey;
   showPalette.value = false;
   themeDirty = true;
@@ -520,12 +540,21 @@ async function exportMarkdownFile() {
  * 停用模块或退出应用前的保存握手。成功/失败都回传原生协调器，由它决定是否销毁窗口；
  * 页面本身不调用 sticky_close_note，以免把 is_open 标成关闭后无法在重启时恢复。
  */
-async function flushForShutdown() {
+async function flushForShutdown(requestId: number) {
+  // A timeout cancel can reach the page before its flush event; never freeze for it.
+  if (cancelledFlushRequests.has(requestId)) return;
+  shutdownFlushRequestId = requestId;
+  frozen.value = true;
+  showPalette.value = false;
   clearTimeout(debounceTimer);
   debounceTimer = null;
   try {
     await flushDirtyState();
-    await invokeIpc('sticky_flush_result', { id: note.value.id, ok: true });
+    await invokeIpc('sticky_flush_result', {
+      id: note.value.id,
+      request_id: requestId,
+      ok: true,
+    });
   } catch (err) {
     const pending = contentDirty || themeDirty || windowDirty;
     if (pending) saveError.value = true;
@@ -533,6 +562,7 @@ async function flushForShutdown() {
     try {
       await invokeIpc('sticky_flush_result', {
         id: note.value.id,
+        request_id: requestId,
         ok: false,
         error: err instanceof Error ? err.message : String(err),
       });
@@ -542,12 +572,20 @@ async function flushForShutdown() {
   }
 }
 
+/** 原生确认停用/退出已取消时，只解除同一请求冻结的页面。 */
+function cancelShutdownFlush(requestId: number) {
+  cancelledFlushRequests.add(requestId);
+  if (shutdownFlushRequestId !== requestId) return;
+  shutdownFlushRequestId = null;
+  frozen.value = false;
+}
+
 /**
  * 关闭并销毁便笺 WebView。
  * 先等未完成的保存，再等关闭等待期间新产生的保存；失败时保留窗口和未保存内容。
  */
 async function closeNoteWindow() {
-  if (closing) return;
+  if (closing || frozen.value) return;
   closing = true;
   clearTimeout(debounceTimer);
   debounceTimer = null;
@@ -574,6 +612,7 @@ if (typeof onUnmounted === 'function') {
   onUnmounted(() => {
     unlistenFlush?.();
     unlistenFlushSave?.();
+    unlistenFlushCancel?.();
   });
 }
 
@@ -603,10 +642,25 @@ onMounted(async () => {
       );
       unlistenFlushSave = await eventApi.listen(
         'sticky://flush-save',
-        (event: { payload?: { id?: string } }) => {
+        (event: { payload?: { id?: string; request_id?: number } }) => {
           const requested = event?.payload?.id || '';
-          if (!requested || requested === targetId || requested === note.value.id) {
-            void flushForShutdown();
+          const requestId = Number(event?.payload?.request_id);
+          if (
+            (!requested || requested === targetId || requested === note.value.id) &&
+            Number.isFinite(requestId) &&
+            requestId > 0
+          ) {
+            void flushForShutdown(requestId);
+          }
+        },
+      );
+      unlistenFlushCancel = await eventApi.listen(
+        'sticky://flush-cancel',
+        (event: { payload?: { id?: string; request_id?: number } }) => {
+          const requested = event?.payload?.id || '';
+          const requestId = Number(event?.payload?.request_id);
+          if ((!requested || requested === targetId || requested === note.value.id) && requestId > 0) {
+            cancelShutdownFlush(requestId);
           }
         },
       );
@@ -811,5 +865,21 @@ onMounted(async () => {
 
 .save-status {
   font-size: 10px;
+}
+
+.sticky-freeze-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(128, 128, 128, 0.16);
+  backdrop-filter: blur(1.5px);
+  -webkit-backdrop-filter: blur(1.5px);
+  color: var(--macos-text-secondary);
+  font-size: 12px;
+  cursor: progress;
+  -webkit-app-region: no-drag;
 }
 </style>
