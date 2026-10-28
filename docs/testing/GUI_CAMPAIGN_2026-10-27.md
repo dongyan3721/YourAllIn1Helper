@@ -71,3 +71,4 @@
 
 - 用户解锁并完成签名验证后，中间包签名校验通过。实际 GUI 验证翻译浮窗“前往设置”跳转成功；由于便笺修复尚未合入，该包不是最终集成版本。
 - 完整集成前端回归：59 项通过；原便笺与密码超时组件复现 4 项现均通过；严格前端构建通过。Rust 全工作区 239 项通过、0 项失败、6 项 ignored；最终 GUI 回归进行中。 [Rust](evidence/gui-2026-10-27/rust-final.log)、[前端](evidence/gui-2026-10-27/ui-final.log)、[原复现](evidence/gui-2026-10-27/regressions-final.log)、[构建](evidence/gui-2026-10-27/ui-final-build.log)。
+- 便笺关闭以外的待核实风险：模块停用和应用退出会调用 `StickyNoteModule::on_shutdown`，直接销毁活动便笺窗口；防抖或在途保存可能因此丢失。该问题由代码审查确认调用路径、尚未 GUI 复现；OpenCode 正在独立分支 `codex/gui-qa-sticky-shutdown-20261028` 核实和修复。
