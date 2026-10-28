@@ -60,6 +60,7 @@ async function loadSticky(options = {}) {
         opacity: payload.opacity,
         isPinned: payload.is_pinned,
         writeSeq: payload.write_seq,
+        sessionId: payload.session_id,
       });
       if (name === 'sticky_close_note') {
         destroyed = true;
@@ -68,6 +69,9 @@ async function loadSticky(options = {}) {
       if (fail.has(name)) throw new Error(`forced failure ${name}`);
       if (defer.has(name)) {
         return new Promise((resolve, reject) => pending.push({ name, payload, resolve, reject }));
+      }
+      if (name === 'sticky_begin_session') {
+        return { id: payload.id, session_id: options.sessionId ?? 1 };
       }
       if (name === 'sticky_get_note') {
         return {
@@ -444,8 +448,54 @@ test('native or library flush-close saves pending edits before destroying the no
   sticky.listeners[0].callback({ payload: { id: 'qa-note' } });
   await sticky.until(() => sticky.destroyed);
   assert.deepEqual(
-    sticky.calls.filter((call) => call.name !== 'sticky_get_note').map((call) => call.name),
+    sticky.calls
+      .filter((call) => call.name !== 'sticky_get_note' && call.name !== 'sticky_begin_session')
+      .map((call) => call.name),
     ['sticky_save_content', 'sticky_close_note'],
   );
   assert.equal(sticky.calls.find((call) => call.name === 'sticky_save_content').content, 'flush body');
+});
+
+test('a reopened note begins a new write session and restarts title, body, theme, and window sequences', async () => {
+  const first = await loadSticky({ noteId: 'qa-note', sessionId: 4 });
+  await first.hooks.mounted[0]();
+  await first.until(() => first.calls.some((call) => call.name === 'sticky_begin_session'));
+  first.run('note.value.title = "第一轮标题"');
+  first.run('note.value.content_md = "第一轮正文"');
+  first.scheduleSave();
+  await first.flushTimer();
+  first.setTheme('rose');
+  first.togglePin();
+  await first.until(() => first.calls.some((call) => call.name === 'sticky_update_window_state'));
+  const firstSave = first.calls.find((call) => call.name === 'sticky_save_content');
+  assert.equal(firstSave.writeSeq, 1);
+  assert.equal(firstSave.sessionId, 4);
+  assert.equal(first.calls.find((call) => call.name === 'sticky_update_theme').sessionId, 4);
+  assert.equal(first.calls.find((call) => call.name === 'sticky_update_window_state').sessionId, 4);
+  await first.close();
+
+  const second = await loadSticky({ noteId: 'qa-note', sessionId: 11 });
+  await second.hooks.mounted[0]();
+  await second.until(() => second.calls.some((call) => call.name === 'sticky_begin_session'));
+  second.run('note.value.title = "第二轮标题"');
+  second.run('note.value.content_md = "第二轮正文"');
+  second.scheduleSave();
+  await second.flushTimer();
+  second.setTheme('violet');
+  second.setOpacityPercent(80);
+  await second.until(() => second.calls.some((call) => call.name === 'sticky_update_window_state'));
+
+  const save = second.calls.find((call) => call.name === 'sticky_save_content');
+  assert.equal(save.title, '第二轮标题');
+  assert.equal(save.content, '第二轮正文');
+  assert.equal(save.writeSeq, 1);
+  assert.equal(save.sessionId, 11);
+  const theme = second.calls.find((call) => call.name === 'sticky_update_theme');
+  assert.equal(theme.theme, 'violet');
+  assert.equal(theme.writeSeq, 1);
+  assert.equal(theme.sessionId, 11);
+  const windowCall = second.calls.find((call) => call.name === 'sticky_update_window_state');
+  assert.equal(windowCall.opacity, 0.8);
+  assert.equal(windowCall.writeSeq, 1);
+  assert.equal(windowCall.sessionId, 11);
 });

@@ -213,10 +213,36 @@ let closing = false;
 let contentDirty = false;
 let themeDirty = false;
 let windowDirty = false;
+/** 本次 WebView 内的发送序号。重新打开后从 0 计，靠写入会话和旧页面区分。 */
 let nextContentSeq = 0;
 let nextThemeSeq = 0;
 let nextWindowSeq = 0;
+let writeSessionId: number | null = null;
+let sessionReady: Promise<void> = Promise.resolve();
+let sessionPending = false;
 let unlistenFlush: (() => void) | undefined;
+
+function startWriteSession(noteId: string) {
+  if (!noteId) return sessionReady;
+  sessionPending = true;
+  sessionReady = invokeIpc<{ session_id?: number }>('sticky_begin_session', { id: noteId })
+    .then((res) => {
+      const sessionId = Number(res?.session_id);
+      if (Number.isFinite(sessionId) && sessionId > 0) writeSessionId = sessionId;
+    })
+    .catch((err) => {
+      console.error('开始便笺写入会话失败:', err);
+    })
+    .finally(() => {
+      sessionPending = false;
+    });
+  return sessionReady;
+}
+
+function withSession<T extends Record<string, unknown>>(payload: T) {
+  if (writeSessionId == null) return payload;
+  return { ...payload, session_id: writeSessionId };
+}
 
 function enqueue(task: () => Promise<void>): Promise<void> {
   const run = writeTail.then(task, task);
@@ -261,6 +287,7 @@ function saveContentDebounced() {
 
 function persistContent() {
   return enqueue(async () => {
+    if (sessionPending) await sessionReady;
     if (!contentDirty) return;
     if (!note.value.id) {
       saving.value = false;
@@ -275,12 +302,12 @@ function persistContent() {
     const writeSeq = ++nextContentSeq;
     contentDirty = false;
     try {
-      const saved = await invokeIpc<StickyNoteRecord>('sticky_save_content', {
+      const saved = await invokeIpc<StickyNoteRecord>('sticky_save_content', withSession({
         id: snapshot.id,
         title: snapshot.title,
         content_md: snapshot.content,
         write_seq: writeSeq,
-      });
+      }));
       const localMoved = note.value.title !== snapshot.title || note.value.content_md !== snapshot.content;
       const storedMoved = !!saved
         && (saved.title !== snapshot.title || saved.content_md !== snapshot.content);
@@ -304,6 +331,7 @@ function persistContent() {
 
 function persistTheme() {
   return enqueue(async () => {
+    if (sessionPending) await sessionReady;
     if (!themeDirty) return;
     if (!note.value.id) {
       saveError.value = true;
@@ -313,11 +341,11 @@ function persistTheme() {
     const writeSeq = ++nextThemeSeq;
     themeDirty = false;
     try {
-      await invokeIpc('sticky_update_theme', {
+      await invokeIpc('sticky_update_theme', withSession({
         id: snapshot.id,
         theme_color: snapshot.theme,
         write_seq: writeSeq,
-      });
+      }));
       if (note.value.theme_color !== snapshot.theme) themeDirty = true;
       else clearSaveErrorIfClean();
     } catch (err) {
@@ -330,6 +358,7 @@ function persistTheme() {
 
 function persistWindow() {
   return enqueue(async () => {
+    if (sessionPending) await sessionReady;
     if (!windowDirty) return;
     if (!note.value.id) {
       saveError.value = true;
@@ -343,12 +372,12 @@ function persistWindow() {
     const writeSeq = ++nextWindowSeq;
     windowDirty = false;
     try {
-      await invokeIpc('sticky_update_window_state', {
+      await invokeIpc('sticky_update_window_state', withSession({
         id: snapshot.id,
         opacity: snapshot.opacity,
         is_pinned: snapshot.isPinned,
         write_seq: writeSeq,
-      });
+      }));
       if (note.value.opacity !== snapshot.opacity || note.value.is_pinned !== snapshot.isPinned) {
         windowDirty = true;
       } else {
@@ -471,6 +500,7 @@ if (typeof onUnmounted === 'function') {
 /** 初始化加载便笺，并在系统或主面板请求关闭时先保存再销毁。 */
 onMounted(async () => {
   const targetId = props.noteId || new URLSearchParams(window.location.search).get('id') || '';
+  if (targetId) startWriteSession(targetId);
   const eventApi = (window as any).__TAURI__?.event;
   if (typeof eventApi?.listen === 'function') {
     try {
@@ -488,6 +518,7 @@ onMounted(async () => {
     }
   }
   if (!targetId) return;
+  await sessionReady;
 
   const baseline = {
     title: note.value.title,

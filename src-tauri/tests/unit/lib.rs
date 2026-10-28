@@ -244,6 +244,173 @@ fn sticky_ipc_keeps_latest_state_when_close_follows_a_stale_write() {
 }
 
 #[test]
+fn sticky_ipc_reopen_accepts_a_new_session_and_ignores_the_closed_webview() {
+    let dir = tempfile::tempdir().unwrap();
+    let host = DesktopHost::bootstrap(dir.path(), true).unwrap();
+    let created = host.invoke_ipc(
+        "sticky_create_note",
+        json!({
+            "title": "旧标题",
+            "content_md": "旧正文",
+            "theme_color": "amber"
+        }),
+    );
+    assert!(created.ok, "{:?}", created.error);
+    let id = created.data.unwrap()["id"].as_str().unwrap().to_string();
+
+    let first = host.invoke_ipc("sticky_begin_session", json!({ "id": id }));
+    assert!(first.ok, "{:?}", first.error);
+    let first_session = first.data.unwrap()["session_id"].as_u64().unwrap();
+    assert!(
+        host.invoke_ipc(
+            "sticky_save_content",
+            json!({
+                "id": id,
+                "title": "第一轮标题",
+                "content_md": "第一轮正文",
+                "write_seq": 5,
+                "session_id": first_session
+            }),
+        )
+        .ok
+    );
+    assert!(
+        host.invoke_ipc(
+            "sticky_update_theme",
+            json!({
+                "id": id,
+                "theme_color": "rose",
+                "write_seq": 4,
+                "session_id": first_session
+            }),
+        )
+        .ok
+    );
+    assert!(
+        host.invoke_ipc(
+            "sticky_update_window_state",
+            json!({
+                "id": id,
+                "opacity": 0.5,
+                "is_pinned": true,
+                "write_seq": 6,
+                "session_id": first_session
+            }),
+        )
+        .ok
+    );
+
+    let closed = host.invoke_ipc("sticky_close_note", json!({ "id": id }));
+    assert!(closed.ok, "{:?}", closed.error);
+    let opened = host.invoke_ipc("sticky_open_note", json!({ "id": id }));
+    assert!(opened.ok, "{:?}", opened.error);
+
+    let second = host.invoke_ipc("sticky_begin_session", json!({ "id": id }));
+    assert!(second.ok, "{:?}", second.error);
+    let second_session = second.data.unwrap()["session_id"].as_u64().unwrap();
+    assert_ne!(first_session, second_session);
+
+    let fresh = host.invoke_ipc(
+        "sticky_save_content",
+        json!({
+            "id": id,
+            "title": "第二轮标题",
+            "content_md": "第二轮正文",
+            "write_seq": 1,
+            "session_id": second_session
+        }),
+    );
+    assert!(fresh.ok, "{:?}", fresh.error);
+    assert_eq!(fresh.data.unwrap()["title"], "第二轮标题");
+    assert!(
+        host.invoke_ipc(
+            "sticky_update_theme",
+            json!({
+                "id": id,
+                "theme_color": "violet",
+                "write_seq": 1,
+                "session_id": second_session
+            }),
+        )
+        .ok
+    );
+    assert!(
+        host.invoke_ipc(
+            "sticky_update_window_state",
+            json!({
+                "id": id,
+                "opacity": 0.25,
+                "is_pinned": false,
+                "write_seq": 1,
+                "session_id": second_session
+            }),
+        )
+        .ok
+    );
+
+    let delayed = host.invoke_ipc(
+        "sticky_save_content",
+        json!({
+            "id": id,
+            "title": "过期标题",
+            "content_md": "过期正文",
+            "write_seq": 99,
+            "session_id": first_session
+        }),
+    );
+    assert!(delayed.ok, "{:?}", delayed.error);
+    assert_eq!(delayed.data.unwrap()["content_md"], "第二轮正文");
+    assert!(
+        host.invoke_ipc(
+            "sticky_update_theme",
+            json!({
+                "id": id,
+                "theme_color": "sky",
+                "write_seq": 99,
+                "session_id": first_session
+            }),
+        )
+        .ok
+    );
+    assert!(
+        host.invoke_ipc(
+            "sticky_update_window_state",
+            json!({
+                "id": id,
+                "opacity": 0.75,
+                "is_pinned": true,
+                "write_seq": 99,
+                "session_id": first_session
+            }),
+        )
+        .ok
+    );
+    let unscoped = host.invoke_ipc(
+        "sticky_save_content",
+        json!({
+            "id": id,
+            "title": "无会话标题",
+            "content_md": "无会话正文",
+            "write_seq": 100
+        }),
+    );
+    assert!(unscoped.ok, "{:?}", unscoped.error);
+    assert_eq!(unscoped.data.unwrap()["content_md"], "第二轮正文");
+
+    let stored = host.invoke_ipc("sticky_get_note", json!({ "id": id }));
+    assert!(stored.ok, "{:?}", stored.error);
+    let note = stored.data.unwrap();
+    assert_eq!(note["title"], "第二轮标题");
+    assert_eq!(note["content_md"], "第二轮正文");
+    assert_eq!(note["theme_color"], "violet");
+    assert_eq!(note["opacity"], 0.25);
+    assert_eq!(note["is_pinned"], false);
+
+    let missing = host.invoke_ipc("sticky_begin_session", json!({ "id": "missing-note" }));
+    assert!(!missing.ok);
+}
+
+#[test]
 fn translator_ipc_without_runtime_reports_error_instead_of_panicking() {
     let dir = tempfile::tempdir().unwrap();
     let host = DesktopHost::bootstrap(dir.path(), true).unwrap();

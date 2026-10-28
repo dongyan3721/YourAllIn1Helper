@@ -1,8 +1,8 @@
 //! 便笺 IPC 适配。
 use super::*;
 
-fn write_seq(args: &Value) -> Option<u64> {
-    let value = args.get("write_seq")?;
+fn optional_u64(args: &Value, key: &str) -> Option<u64> {
+    let value = args.get(key)?;
     if let Some(number) = value.as_u64() {
         return Some(number);
     }
@@ -15,6 +15,14 @@ fn write_seq(args: &Value) -> Option<u64> {
     } else {
         None
     }
+}
+
+fn write_seq(args: &Value) -> Option<u64> {
+    optional_u64(args, "write_seq")
+}
+
+fn session_id(args: &Value) -> Option<u64> {
+    optional_u64(args, "session_id")
 }
 
 impl DesktopHost {
@@ -52,13 +60,24 @@ impl DesktopHost {
                 Ok(serde_json::to_value(note)?)
             }
 
+            "sticky_begin_session" => {
+                let id = args.get("id").and_then(Value::as_str).unwrap_or("");
+                let session_id = self.sticky_note.begin_write_session(ctx, id)?;
+                Ok(json!({ "id": id, "session_id": session_id }))
+            }
+
             "sticky_save_content" => {
                 let id = args.get("id").and_then(Value::as_str).unwrap_or("");
                 let title = args.get("title").and_then(Value::as_str);
                 let content_md = args.get("content_md").and_then(Value::as_str).unwrap_or("");
-                let updated =
-                    self.sticky_note
-                        .save_content(ctx, id, title, content_md, write_seq(&args))?;
+                let updated = self.sticky_note.save_content(
+                    ctx,
+                    id,
+                    title,
+                    content_md,
+                    write_seq(&args),
+                    session_id(&args),
+                )?;
                 Ok(serde_json::to_value(updated)?)
             }
 
@@ -97,8 +116,13 @@ impl DesktopHost {
                         .and_then(Value::as_f64)
                         .unwrap_or(current.opacity),
                 };
-                self.sticky_note
-                    .update_window_state(ctx, id, update, write_seq(&args))?;
+                self.sticky_note.update_window_state(
+                    ctx,
+                    id,
+                    update,
+                    write_seq(&args),
+                    session_id(&args),
+                )?;
                 let refreshed = self.sticky_note.get_note(ctx, id)?;
                 Ok(serde_json::to_value(refreshed)?)
             }
@@ -109,8 +133,13 @@ impl DesktopHost {
                     .get("theme_color")
                     .and_then(Value::as_str)
                     .unwrap_or("amber");
-                self.sticky_note
-                    .update_theme(ctx, id, theme_color, write_seq(&args))?;
+                self.sticky_note.update_theme(
+                    ctx,
+                    id,
+                    theme_color,
+                    write_seq(&args),
+                    session_id(&args),
+                )?;
                 let refreshed = self.sticky_note.get_note(ctx, id)?;
                 Ok(serde_json::to_value(refreshed)?)
             }
