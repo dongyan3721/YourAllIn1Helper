@@ -67,3 +67,4 @@
 - Cursor / Grok 4.7 High：`9a7519c`、`2222f37`，修复待保存内容在关闭时丢失。审查时发现前端重开后写入序号重置而后端仍保留旧序号，可能拒绝新写入；已反馈 Cursor 继续修复，当前尚未合并。
 - 中间集成回归：合入使用时长、密码本与翻译修复后，前端 40 项通过；Rust 全工作区 234 项通过、0 失败、6 项 ignored。此结果不包含尚未合入的便笺修复。[Rust 日志](evidence/gui-2026-10-27/rust-interim-integrated.log)、[前端测试](evidence/gui-2026-10-27/ui-interim-integrated.log)、[严格构建](evidence/gui-2026-10-27/ui-interim-build.log)。
 - 2026-10-28 续测：Cursor 追加 `7401271` 处理便笺重开后的序号问题；审查又发现会话初始化失败与初始化期间输入保护需补测，已交回 Cursor，分支暂不合入。中间版编译完成，但固定证书签名仍等待钥匙串系统验证；Mac 锁屏使电脑插件无法继续，dist 旧包尚未替换。用户解锁和系统验证后方能进行对应 GUI 回归。
+- 续测期间在独立快照上审查了 Cursor 未提交草稿（基于 `7401271`，补丁 SHA-256 `2dbb8bb13d27f2cb785aa6b835b19e4927f053b705fbd175d8153e09e797edbf`）：便笺组件 19 项、Rust 模块 4 项、宿主 IPC 2 项和严格前端构建通过；额外模拟会话延迟时输入亦通过。该快照不等于开发者最终提交，未合并或进行 GUI 回归；快照与日志暂存于 `.runtime_data/team/codex-gui-sticky-review-20261028` 和 `.runtime_data/sticky-review-*`。
