@@ -59,26 +59,26 @@ impl DesktopHost {
                     "quick_paste",
                     std::time::Duration::from_secs(5),
                 );
-                let record = self.clipboard.paste_item(ctx, id, as_plain);
-                if let Ok(ref rec) = record {
-                    if self.mock_hal.is_none() {
-                        match rec.item_type {
-                            mod_clipboard::ClipboardItemType::Text => {
-                                if let Some(ref text) = rec.content_text {
-                                    write_text_to_system_clipboard(text)?;
+                let record = self
+                    .clipboard
+                    .paste_item_with_prepare(ctx, id, as_plain, |rec| {
+                        if self.mock_hal.is_none() {
+                            match rec.item_type {
+                                mod_clipboard::ClipboardItemType::Text => {
+                                    if let Some(ref text) = rec.content_text {
+                                        write_text_to_system_clipboard(text)?;
+                                    }
                                 }
-                            }
-                            mod_clipboard::ClipboardItemType::Image => {
-                                if let Some(ref rel_path) = rec.blob_rel_path {
-                                    let full_path = ctx.app_data_dir.join(rel_path);
-                                    if full_path.exists() {
+                                mod_clipboard::ClipboardItemType::Image => {
+                                    if let Some(ref rel_path) = rec.blob_rel_path {
+                                        let full_path = ctx.app_data_dir.join(rel_path);
                                         write_image_to_system_clipboard(&full_path)?;
                                     }
                                 }
                             }
                         }
-                    }
-                }
+                        Ok(())
+                    });
                 suppression.release();
                 let record = record?;
                 Ok(json!({

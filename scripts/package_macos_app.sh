@@ -49,6 +49,14 @@ python3 "$ROOT_DIR/scripts/macos_signing.py" sign "$STAGING_DIR/$APP_NAME"
 rm -rf "$ROOT_DIR/dist/$APP_NAME"
 mv "$STAGING_DIR/$APP_NAME" "$ROOT_DIR/dist/$APP_NAME"
 mv "$STAGING_DIR/macos-build.json" "$ROOT_DIR/dist/macos-build.json"
+# 同一 Bundle ID 的历史工作树副本可能仍留在 LaunchServices 中。每次发布都刷新
+# 当前正式路径的注册，避免系统设置/访达继续定位到临时签名的旧测试包。
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+if [ -x "$LSREGISTER" ]; then
+  if ! "$LSREGISTER" -f "$ROOT_DIR/dist/$APP_NAME"; then
+    echo "⚠️ App 已签名，但正式路径注册未成功；请直接从 dist 打开应用。" >&2
+  fi
+fi
 echo "✅ 打包成功！应用已放置在："
 echo "   $ROOT_DIR/dist/$APP_NAME"
 echo "=========================================================="

@@ -90,6 +90,8 @@
       </div>
     </div>
 
+    <p v-if="pasteError" class="paste-error" role="alert">{{ pasteError }}</p>
+
     <!-- 底部极简状态提示栏 -->
     <footer class="popup-footer">
       <span>{{ t('clipboard.popup.footerKeys') }}</span>
@@ -111,6 +113,8 @@ const items = ref<ClipboardRecord[]>([]);
 const searchQuery = ref('');
 /** 键盘当前选中的索引项 */
 const selectedIndex = ref(0);
+const pasteError = ref('');
+const pasting = ref(false);
 /** 搜索输入框 DOM 引用 */
 const searchInputRef = ref<HTMLInputElement | null>(null);
 
@@ -154,10 +158,16 @@ async function togglePin(id: number) {
 
 /** 粘贴选中的条目到目标应用前台窗口 */
 async function pasteItem(id: number) {
+  if (pasting.value) return;
+  pasting.value = true;
+  pasteError.value = '';
   try {
     await invokeIpc('clipboard_paste_item', { id, as_plain_text: false });
   } catch (err) {
+    pasteError.value = err instanceof Error ? err.message : String(err);
     console.error('粘贴上屏失败:', err);
+  } finally {
+    pasting.value = false;
   }
 }
 
@@ -221,6 +231,14 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.paste-error {
+  margin: 8px 14px;
+  color: var(--macos-text-primary);
+  border-left: 3px solid #d32f2f;
+  padding-left: 8px;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
 .clipboard-popup-container {
   width: 100vw;
   height: 100vh;

@@ -491,12 +491,29 @@ impl ClipboardModule {
         id: i64,
         _as_plain_text: bool,
     ) -> CoreResult<ClipboardRecord> {
+        self.paste_item_with_prepare(ctx, id, _as_plain_text, |_| Ok(()))
+    }
+
+    /// Validate permission and write the selected payload before closing the popup or
+    /// emitting Cmd/Ctrl+V. The host supplies the native clipboard writer.
+    pub fn paste_item_with_prepare(
+        &self,
+        ctx: &ModuleContext,
+        id: i64,
+        _as_plain_text: bool,
+        prepare: impl FnOnce(&ClipboardRecord) -> CoreResult<()>,
+    ) -> CoreResult<ClipboardRecord> {
         let record = self
             .get_item_by_id(ctx, id)?
             .ok_or_else(|| CoreError::Internal(anyhow::anyhow!("未找到剪贴板条目 {}", id)))?;
 
+        self.input_simulator
+            .check_input_permission()
+            .map_err(|e| CoreError::Internal(anyhow::anyhow!(e)))?;
+        prepare(&record)?;
+
         // 模拟按键前先彻底销毁瞬态弹窗，将焦点归还给原前台应用窗口
-        let _ = ctx.window_pool.destroy_window("clipboard-popup");
+        ctx.window_pool.destroy_window("clipboard-popup")?;
 
         // 刷新最近使用时间戳，使刚粘贴的项立即置顶
         let now = Utc::now().timestamp_millis();
