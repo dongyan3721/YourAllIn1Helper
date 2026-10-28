@@ -1,5 +1,7 @@
 use super::*;
-use app_core::{AppKernelBuilder, TargetOs};
+use app_core::{AppKernelBuilder, TargetOs, WindowBackend, WindowSpec};
+use std::sync::Arc;
+use std::time::Duration;
 
 #[test]
 fn test_sticky_note_lifecycle_and_zero_webview_when_closed() {
@@ -441,4 +443,235 @@ fn reopened_note_in_the_same_process_saves_fresh_edits_and_ignores_the_closed_we
     let missing = sticky.begin_write_session(&ctx, "missing-note");
     assert!(missing.is_err());
     kernel.shutdown().unwrap();
+}
+
+/// 记录窗口生命周期，并可模拟页面在收到冲刷请求后写入最后一批内容。
+struct FlushBackend {
+    destroyed: std::sync::Mutex<Vec<String>>,
+    flush_calls: std::sync::Mutex<Vec<String>>,
+    outcome: std::sync::Mutex<CloseFlushOutcome>,
+    on_flush: std::sync::Mutex<Option<Box<dyn FnMut(&str) + Send>>>,
+}
+
+impl FlushBackend {
+    fn with_outcome(outcome: CloseFlushOutcome) -> Arc<Self> {
+        Arc::new(Self {
+            destroyed: std::sync::Mutex::new(Vec::new()),
+            flush_calls: std::sync::Mutex::new(Vec::new()),
+            outcome: std::sync::Mutex::new(outcome),
+            on_flush: std::sync::Mutex::new(None),
+        })
+    }
+
+    fn set_outcome(&self, outcome: CloseFlushOutcome) {
+        *self.outcome.lock().unwrap_or_else(|err| err.into_inner()) = outcome;
+    }
+
+    fn set_on_flush(&self, callback: impl FnMut(&str) + Send + 'static) {
+        *self.on_flush.lock().unwrap_or_else(|err| err.into_inner()) = Some(Box::new(callback));
+    }
+
+    fn destroyed(&self) -> Vec<String> {
+        self.destroyed
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .clone()
+    }
+
+    fn flush_calls(&self) -> Vec<String> {
+        self.flush_calls
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .clone()
+    }
+}
+
+impl WindowBackend for FlushBackend {
+    fn create_or_focus_window(&self, _spec: &WindowSpec) -> CoreResult<()> {
+        Ok(())
+    }
+
+    fn destroy_window(&self, label: &str) -> CoreResult<()> {
+        self.destroyed
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .push(label.to_string());
+        Ok(())
+    }
+
+    fn set_ignore_cursor_events(&self, _label: &str, _ignore: bool) -> CoreResult<()> {
+        Ok(())
+    }
+
+    fn set_always_on_top(&self, _label: &str, _always_on_top: bool) -> CoreResult<()> {
+        Ok(())
+    }
+
+    fn request_close_flush(
+        &self,
+        label: &str,
+        _timeout: Duration,
+    ) -> CoreResult<CloseFlushOutcome> {
+        self.flush_calls
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .push(label.to_string());
+        if let Some(callback) = self
+            .on_flush
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .as_mut()
+        {
+            callback(label);
+        }
+        Ok(self
+            .outcome
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .clone())
+    }
+}
+
+fn fixture_with_backend(
+    backend: Arc<FlushBackend>,
+) -> (tempfile::TempDir, app_core::AppKernel, StickyNoteModule) {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let sticky = StickyNoteModule::new();
+    let kernel = AppKernelBuilder::new(temp_dir.path())
+        .with_in_memory_db(true)
+        .with_target_os(TargetOs::MacOs)
+        .with_window_backend(backend)
+        .register_module(sticky.clone())
+        .unwrap()
+        .bootstrap()
+        .unwrap();
+    (temp_dir, kernel, sticky)
+}
+
+#[test]
+fn shutdown_flushes_the_page_and_only_then_destroys_the_window() {
+    let backend = FlushBackend::with_outcome(CloseFlushOutcome::Saved);
+    let (_dir, kernel, sticky) = fixture_with_backend(backend.clone());
+    let ctx = kernel.context().clone();
+    let note = sticky
+        .create_note(&ctx, Some("old title"), Some("old body"), Some("amber"))
+        .unwrap();
+    let label = StickyNoteModule::window_label_for(&note.id);
+
+    let flush_sticky = sticky.clone();
+    let flush_ctx = ctx.clone();
+    backend.set_on_flush(move |label| {
+        let id = label.strip_prefix("sticky-note-").unwrap();
+        flush_sticky
+            .save_content(
+                &flush_ctx,
+                id,
+                Some("page title"),
+                "page body",
+                Some(1),
+                None,
+            )
+            .unwrap();
+    });
+
+    sticky.on_shutdown(&ctx).unwrap();
+    assert_eq!(backend.flush_calls(), vec![label.clone()]);
+    assert_eq!(backend.destroyed(), vec![label]);
+    assert_eq!(ctx.window_pool.active_window_count(), 0);
+
+    let stored = sticky.get_note(&ctx, &note.id).unwrap().unwrap();
+    assert_eq!(stored.title, "page title");
+    assert_eq!(stored.content_md, "page body");
+    assert!(
+        stored.is_open,
+        "shutdown must keep the note open for restart restore"
+    );
+}
+
+#[test]
+fn failed_shutdown_flush_keeps_every_window_and_allows_a_retry() {
+    let backend = FlushBackend::with_outcome(CloseFlushOutcome::Failed("disk full".into()));
+    let (_dir, kernel, sticky) = fixture_with_backend(backend.clone());
+    let ctx = kernel.context().clone();
+    let note = sticky
+        .create_note(&ctx, Some("kept title"), Some("kept body"), Some("amber"))
+        .unwrap();
+    let label = StickyNoteModule::window_label_for(&note.id);
+
+    let error = sticky.on_shutdown(&ctx).unwrap_err().to_string();
+    assert!(error.contains(&note.id), "{error}");
+    assert!(error.contains("disk full"), "{error}");
+    assert!(backend.destroyed().is_empty());
+    assert_eq!(ctx.window_pool.active_window_count(), 1);
+    let stored = sticky.get_note(&ctx, &note.id).unwrap().unwrap();
+    assert_eq!(stored.title, "kept title");
+    assert_eq!(stored.content_md, "kept body");
+    assert!(stored.is_open);
+
+    backend.set_outcome(CloseFlushOutcome::Saved);
+    sticky.on_shutdown(&ctx).unwrap();
+    assert_eq!(backend.destroyed(), vec![label]);
+    assert_eq!(ctx.window_pool.active_window_count(), 0);
+}
+
+#[test]
+fn timed_out_shutdown_flush_does_not_destroy_or_mark_the_note_closed() {
+    let backend = FlushBackend::with_outcome(CloseFlushOutcome::TimedOut);
+    let (_dir, kernel, sticky) = fixture_with_backend(backend.clone());
+    let ctx = kernel.context().clone();
+    let note = sticky
+        .create_note(
+            &ctx,
+            Some("timeout title"),
+            Some("timeout body"),
+            Some("amber"),
+        )
+        .unwrap();
+
+    let error = sticky.on_shutdown(&ctx).unwrap_err().to_string();
+    assert!(error.contains("超时"), "{error}");
+    assert!(backend.destroyed().is_empty());
+    assert_eq!(ctx.window_pool.active_window_count(), 1);
+    let stored = sticky.get_note(&ctx, &note.id).unwrap().unwrap();
+    assert!(stored.is_open);
+    assert_eq!(stored.content_md, "timeout body");
+}
+
+#[test]
+fn kernel_shutdown_does_not_blind_destroy_windows_after_a_flush_failure() {
+    let backend = FlushBackend::with_outcome(CloseFlushOutcome::Failed("busy".into()));
+    let (_dir, kernel, sticky) = fixture_with_backend(backend.clone());
+    let ctx = kernel.context();
+    sticky
+        .create_note(ctx, Some("keep me"), Some("unsaved body"), Some("amber"))
+        .unwrap();
+
+    let error = kernel.shutdown().unwrap_err().to_string();
+    assert!(error.contains("busy"), "{error}");
+    assert!(backend.destroyed().is_empty());
+    assert_eq!(ctx.window_pool.active_window_count(), 1);
+}
+
+#[test]
+fn failed_disable_keeps_sticky_enabled_and_windows_available_for_retry() {
+    let backend = FlushBackend::with_outcome(CloseFlushOutcome::Failed("busy".into()));
+    let (_dir, kernel, sticky) = fixture_with_backend(backend.clone());
+    let ctx = kernel.context().clone();
+    sticky
+        .create_note(&ctx, Some("retry"), Some("body"), Some("amber"))
+        .unwrap();
+
+    let error = kernel
+        .set_module_enabled("sticky_note", false)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("busy"), "{error}");
+    assert!(kernel.registry().is_enabled("sticky_note"));
+    assert_eq!(ctx.window_pool.active_window_count(), 1);
+    assert!(backend.destroyed().is_empty());
+
+    backend.set_outcome(CloseFlushOutcome::Saved);
+    kernel.set_module_enabled("sticky_note", false).unwrap();
+    assert!(!kernel.registry().is_enabled("sticky_note"));
+    assert_eq!(ctx.window_pool.active_window_count(), 0);
 }

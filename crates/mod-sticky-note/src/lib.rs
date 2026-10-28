@@ -9,12 +9,14 @@
 //! - **关闭即销毁释放内存**：页面确认保存成功后，将 `is_open` 标记为 0，并调用 `window_pool.destroy_window("sticky-note-{id}")` 销毁 WebView 进程；
 //! - **Markdown + LaTeX 导出**：支持一键将便笺内容导出为标准 `.md` 文件或格式化文本。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use app_core::{
-    AppModule, CoreError, CoreResult, ModuleContext, ModuleMigration, ShortcutSpec, WindowSpec,
+    AppModule, CloseFlushOutcome, CoreError, CoreResult, ModuleContext, ModuleMigration,
+    ShortcutSpec, WindowSpec,
 };
 use chrono::Utc;
 use rusqlite::{params, OptionalExtension};
@@ -130,7 +132,14 @@ struct WriteGate {
 struct WriteBook {
     notes: Mutex<HashMap<String, NoteWriteCursor>>,
     next_session: AtomicU64,
+    /// 停用/退出冲刷期间，允许页面把最后一批编辑写入已经关闭的模块。
+    flushing: Mutex<HashSet<String>>,
+    /// 串行化停用与退出冲刷，避免两个生命周期入口同时等待同一页面的确认。
+    flush_serial: Mutex<()>,
 }
+
+/// 页面必须在关闭窗口前完成落盘；超时则保留窗口和内容，交由用户处理后重试。
+const SHUTDOWN_FLUSH_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// 便笺模块实现
 #[derive(Clone)]
@@ -144,6 +153,8 @@ impl Default for StickyNoteModule {
             writes: Arc::new(WriteBook {
                 notes: Mutex::new(HashMap::new()),
                 next_session: AtomicU64::new(0),
+                flushing: Mutex::new(HashSet::new()),
+                flush_serial: Mutex::new(()),
             }),
         }
     }
@@ -160,6 +171,96 @@ impl StickyNoteModule {
             .notes
             .lock()
             .unwrap_or_else(|err| err.into_inner())
+    }
+
+    /// 停用/退出冲刷期间，页面仍可调用保存 IPC 把最后一批编辑写入。
+    pub fn is_flushing(&self, note_id: &str) -> bool {
+        self.writes
+            .flushing
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .contains(note_id)
+    }
+
+    fn set_flushing<'a>(&self, note_ids: impl IntoIterator<Item = &'a str>, flushing: bool) {
+        let mut guard = self
+            .writes
+            .flushing
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        for note_id in note_ids {
+            if flushing {
+                guard.insert(note_id.to_string());
+            } else {
+                guard.remove(note_id);
+            }
+        }
+    }
+
+    /// 停用或退出前让每个打开的便笺页面完成落盘。
+    ///
+    /// 全部页面确认成功后才销毁窗口；任一失败或超时则所有窗口保持原样，调用方必须
+    /// 把错误反馈给用户。`is_open` 保持不变，重新启用后会恢复同一批便笺。
+    pub fn flush_open_windows(&self, ctx: &ModuleContext) -> CoreResult<()> {
+        let _flush_serial = self
+            .writes
+            .flush_serial
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        let windows: Vec<String> = ctx
+            .window_pool
+            .list_active_windows()
+            .into_iter()
+            .filter_map(|window| {
+                if window.spec.label.starts_with("sticky-note-") {
+                    Some(window.spec.label)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        if windows.is_empty() {
+            return Ok(());
+        }
+
+        let note_ids: Vec<String> = windows
+            .iter()
+            .filter_map(|label| label.strip_prefix("sticky-note-").map(str::to_string))
+            .collect();
+        self.set_flushing(note_ids.iter().map(String::as_str), true);
+
+        let mut failures = Vec::new();
+        for (label, note_id) in windows.iter().zip(&note_ids) {
+            let outcome = ctx
+                .window_pool
+                .request_close_flush(label, SHUTDOWN_FLUSH_TIMEOUT);
+            match outcome {
+                Ok(CloseFlushOutcome::Saved) | Ok(CloseFlushOutcome::NotNeeded) => {}
+                Ok(CloseFlushOutcome::Failed(reason)) => {
+                    failures.push(format!("便笺 '{}' 保存失败：{}", note_id, reason));
+                }
+                Ok(CloseFlushOutcome::TimedOut) => {
+                    failures.push(format!("便笺 '{}' 保存超时", note_id));
+                }
+                Err(error) => {
+                    failures.push(format!("便笺 '{}' 无法请求保存：{}", note_id, error));
+                }
+            }
+        }
+
+        self.set_flushing(note_ids.iter().map(String::as_str), false);
+
+        if !failures.is_empty() {
+            return Err(CoreError::Internal(anyhow::anyhow!(
+                "便笺保存未完成，窗口已保留：{}",
+                failures.join("；")
+            )));
+        }
+
+        for label in windows {
+            ctx.window_pool.destroy_window(&label)?;
+        }
+        Ok(())
     }
 
     fn field_seq(cursor: &NoteWriteCursor, field: WriteField) -> u64 {
@@ -761,13 +862,16 @@ impl AppModule for StickyNoteModule {
     }
 
     fn on_shutdown(&self, ctx: &ModuleContext) -> CoreResult<()> {
-        // Keep is_open and content so enabling the block restores the same notes.
-        for window in ctx.window_pool.list_active_windows() {
-            if window.spec.label.starts_with("sticky-note-") {
-                ctx.window_pool.destroy_window(&window.spec.label)?;
-            }
-        }
-        Ok(())
+        // Ask every open note page to persist its last 400 ms of edits before the
+        // native window is destroyed. On failure/timeout the windows stay open so
+        // the user can retry; is_open is deliberately preserved for re-enable/restart.
+        self.flush_open_windows(ctx)
+    }
+
+    fn on_shutdown_failed(&self, ctx: &ModuleContext) -> CoreResult<()> {
+        // flush_open_windows is all-or-nothing and may leave every window untouched.
+        // Restore any window lost to a partial cleanup; existing windows are refocused.
+        self.on_init(ctx)
     }
 
     fn on_init(&self, ctx: &ModuleContext) -> CoreResult<()> {

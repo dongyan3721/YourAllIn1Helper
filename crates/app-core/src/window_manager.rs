@@ -11,8 +11,21 @@
 use crate::error::{CoreError, CoreResult};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use tracing::info;
+
+/// Result of asking a page to persist pending edits before its native window is destroyed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CloseFlushOutcome {
+    /// No native page exists, or this backend has no page-side state to flush.
+    NotNeeded,
+    /// The page confirmed that all pending edits reached durable storage.
+    Saved,
+    /// The page reported a save failure; the window must stay alive.
+    Failed(String),
+    /// No confirmation arrived before the deadline; the window must stay alive.
+    TimedOut,
+}
 
 /// Memory-saving lifecycle tier for a WebView window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -296,6 +309,17 @@ pub trait WindowBackend: Send + Sync + 'static {
     fn set_window_visible(&self, _label: &str, _visible: bool) -> CoreResult<()> {
         Ok(())
     }
+    /// Asks the page to flush pending edits before shutdown destroys its window.
+    ///
+    /// Backends without page state (headless tests) may report [`CloseFlushOutcome::NotNeeded`].
+    /// Callers must only destroy the window for `NotNeeded` or `Saved`.
+    fn request_close_flush(
+        &self,
+        _label: &str,
+        _timeout: Duration,
+    ) -> CoreResult<CloseFlushOutcome> {
+        Ok(CloseFlushOutcome::NotNeeded)
+    }
 }
 
 /// Default headless backend used during unit tests or CLI inspection before Tauri attaches.
@@ -372,6 +396,15 @@ impl WindowPoolManager {
         self.active_windows.write().remove(label);
         info!(label = %label, "Destroyed WebView window and reclaimed memory");
         Ok(true)
+    }
+
+    /// Asks the page behind `label` to persist pending edits before shutdown.
+    pub fn request_close_flush(
+        &self,
+        label: &str,
+        timeout: Duration,
+    ) -> CoreResult<CloseFlushOutcome> {
+        self.backend.request_close_flush(label, timeout)
     }
 
     /// Handles window blur (focus lost) events: automatically destroys `Transient { destroy_on_blur: true }`

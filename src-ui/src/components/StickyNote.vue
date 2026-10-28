@@ -223,6 +223,7 @@ let sessionPending = false;
 let sessionRequired = false;
 let sessionNoteId = '';
 let unlistenFlush: (() => void) | undefined;
+let unlistenFlushSave: (() => void) | undefined;
 
 function startWriteSession(noteId: string) {
   if (!noteId) return sessionReady;
@@ -516,6 +517,32 @@ async function exportMarkdownFile() {
 }
 
 /**
+ * 停用模块或退出应用前的保存握手。成功/失败都回传原生协调器，由它决定是否销毁窗口；
+ * 页面本身不调用 sticky_close_note，以免把 is_open 标成关闭后无法在重启时恢复。
+ */
+async function flushForShutdown() {
+  clearTimeout(debounceTimer);
+  debounceTimer = null;
+  try {
+    await flushDirtyState();
+    await invokeIpc('sticky_flush_result', { id: note.value.id, ok: true });
+  } catch (err) {
+    const pending = contentDirty || themeDirty || windowDirty;
+    if (pending) saveError.value = true;
+    console.error(pending ? '停用或退出前保存便笺失败:' : '停用或退出前便笺握手失败:', err);
+    try {
+      await invokeIpc('sticky_flush_result', {
+        id: note.value.id,
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } catch (reportError) {
+      console.error('回传便笺保存状态失败:', reportError);
+    }
+  }
+}
+
+/**
  * 关闭并销毁便笺 WebView。
  * 先等未完成的保存，再等关闭等待期间新产生的保存；失败时保留窗口和未保存内容。
  */
@@ -546,6 +573,7 @@ function handleContentClick(e: MouseEvent) {
 if (typeof onUnmounted === 'function') {
   onUnmounted(() => {
     unlistenFlush?.();
+    unlistenFlushSave?.();
   });
 }
 
@@ -570,6 +598,15 @@ onMounted(async () => {
           const requested = event?.payload?.id || '';
           if (!requested || requested === targetId || requested === note.value.id) {
             void closeNoteWindow();
+          }
+        },
+      );
+      unlistenFlushSave = await eventApi.listen(
+        'sticky://flush-save',
+        (event: { payload?: { id?: string } }) => {
+          const requested = event?.payload?.id || '';
+          if (!requested || requested === targetId || requested === note.value.id) {
+            void flushForShutdown();
           }
         },
       );
