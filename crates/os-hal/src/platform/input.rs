@@ -7,7 +7,7 @@ use std::{sync::atomic::Ordering, time::Duration};
 impl NativeOsHal {
     fn input_connection(&self) -> HalResult<Enigo> {
         self.check_input_permission()?;
-        // Permission requests belong to an explicit setup action, never every paste/scroll.
+        // Missing permissions are requested by the preflight; avoid requesting twice.
         let settings = Settings {
             open_prompt_to_get_permissions: false,
             ..Settings::default()
@@ -45,6 +45,8 @@ impl InputSimulator for NativeOsHal {
     fn check_input_permission(&self) -> HalResult<()> {
         #[cfg(target_os = "macos")]
         if !super::selection::macos::is_accessibility_trusted() {
+            // Preserve the original macOS authorization reminder when access is missing.
+            let _ = Enigo::new(&Settings::default());
             return Err(crate::HalError::PermissionDenied {
                 capability: "accessibility",
                 guidance: "请在「系统设置 → 隐私与安全 → 设备控制和数据访问」（旧版称「辅助功能」）中添加当前运行的 App。旧测试副本的开关不代表当前签名副本已获授权；重新添加当前 App 后重启再试。".to_string(),

@@ -140,7 +140,7 @@ pub trait ActiveAppWatcher: Send + Sync + 'static {
 
 /// 8. Synthetic input simulator (`mod-clipboard` quick paste, `mod-screenshot` scroll capture).
 pub trait InputSimulator: Send + Sync + 'static {
-    /// Silent preflight. Callers can retain their UI and clipboard if input is not authorized.
+    /// Permission preflight before clipboard/window mutations; may show system consent UI.
     fn check_input_permission(&self) -> HalResult<()> {
         Ok(())
     }
