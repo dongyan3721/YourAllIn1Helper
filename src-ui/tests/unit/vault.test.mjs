@@ -199,3 +199,33 @@ test('VaultPanel never persists secrets or enables M2/clipboard IPC', async () =
   assert.match(source, /visibilitychange/);
   assert.match(source, /onUnmounted/);
 });
+
+test('VaultPanel transfers generated password into a newly opened editor before clearing it', async () => {
+  const timers = [];
+  const { run } = await loadComponent(async (cmd) => {
+    if (cmd === 'vault_generate_password') return 'fiction-generated-new';
+    return {};
+  }, timers);
+  assert.equal(run('editing.value'), false);
+  await run('generatePassword()');
+  run('useGenerated()');
+  assert.equal(run('editing.value'), true);
+  assert.equal(run('form.value.password'), 'fiction-generated-new');
+  assert.equal(run('generatedPassword.value'), '');
+  assert.equal(timers.at(-1).cleared, true);
+});
+
+test('VaultPanel transfers generated password without resetting an existing entry', async () => {
+  const { run } = await loadComponent(async (cmd) => {
+    if (cmd === 'vault_generate_password') return 'fiction-generated-existing';
+    return {};
+  });
+  run("form.value.id = 'fiction-existing'; form.value.title = 'Keep title'; form.value.record_version = 3");
+  await run('generatePassword()');
+  run('useGenerated()');
+  assert.equal(run('form.value.password'), 'fiction-generated-existing');
+  assert.equal(run('form.value.id'), 'fiction-existing');
+  assert.equal(run('form.value.title'), 'Keep title');
+  assert.equal(run('form.value.record_version'), 3);
+  assert.equal(run('generatedPassword.value'), '');
+});
