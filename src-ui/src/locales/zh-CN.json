@@ -749,7 +749,7 @@
   },
   "translator": {
     "mouseSelection": "鼠标划词翻译",
-    "mouseSelectionHint": "拖选文字后显示“译”按钮，点击才发送到所选翻译服务。需辅助功能权限；部分应用不支持原生取词。",
+    "mouseSelectionHint": "拖选文字后显示“译”按钮，点击才发送到所选翻译服务。依赖系统无障碍接口；macOS 需授权，部分应用可能不提供选区。",
     "translateSelection": "翻译选中文字",
     "pendingOption": "此选项尚未实现",
     "sessionCredentials": "密钥仅保存在本次内存会话中，退出后需重新输入，不写入配置文件或磁盘日志。",

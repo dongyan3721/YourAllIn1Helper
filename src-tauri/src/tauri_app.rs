@@ -1222,6 +1222,8 @@ pub fn run() {
             start_clipboard_listener(app.handle());
             #[cfg(target_os = "macos")]
             crate::translator_mouse::start(app.handle());
+            #[cfg(target_os = "windows")]
+            crate::translator_mouse::start(app.handle());
             #[cfg(target_os = "macos")]
             if app
                 .state::<Arc<DesktopHost>>()
@@ -1339,6 +1341,10 @@ pub fn run() {
 
     app.run(|app, event| {
         #[cfg(target_os = "macos")]
+        if matches!(event, RunEvent::Exit) {
+            crate::translator_mouse::stop();
+        }
+        #[cfg(target_os = "windows")]
         if matches!(event, RunEvent::Exit) {
             crate::translator_mouse::stop();
         }

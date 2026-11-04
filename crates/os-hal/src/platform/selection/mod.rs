@@ -12,10 +12,11 @@ pub mod macos;
 pub mod windows;
 
 use super::NativeOsHal;
+#[cfg(target_os = "macos")]
+use crate::WindowController;
 use crate::{
     traits::SelectionExtractor,
     types::{HalError, HalResult, SelectionTextResult},
-    WindowController,
 };
 
 impl SelectionExtractor for NativeOsHal {
@@ -27,7 +28,7 @@ impl SelectionExtractor for NativeOsHal {
         }
         #[cfg(target_os = "windows")]
         {
-            false // UIAutomation 适配尚未实现，不能报告可用。
+            true
         }
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
@@ -37,10 +38,15 @@ impl SelectionExtractor for NativeOsHal {
 
     fn extract_selected_text(&self) -> HalResult<Option<SelectionTextResult>> {
         // 1. 获取当前前台窗口上下文（保持前台焦点，不激活任何自身窗口）
-        let (fg_pid, fg_name) = match self.get_foreground_window() {
-            Ok(fg) => (Some(fg.process_id), Some(fg.process_name)),
-            Err(_) => (None, None),
-        };
+        #[cfg(target_os = "macos")]
+        let (fg_pid, fg_name) = self
+            .get_foreground_window()
+            .map(|fg| (Some(fg.process_id), Some(fg.process_name)))
+            .unwrap_or((None, None));
+        #[cfg(target_os = "windows")]
+        let (fg_pid, fg_name) = (windows::foreground_process_id(), None);
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        let (fg_pid, fg_name): (Option<u32>, Option<String>) = (None, None);
 
         // 2. 优先走原生无障碍通道
         #[cfg(target_os = "macos")]

@@ -32,7 +32,10 @@ fn test_selection_extractor_contracts() {
     #[cfg(target_os = "macos")]
     assert!(native.is_available());
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    assert!(native.is_available());
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     assert!(!native.is_available());
     // 原生取词留给显式桌面验收，单元测试不得读取真实前台应用。
 }
