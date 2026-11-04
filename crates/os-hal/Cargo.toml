@@ -25,10 +25,23 @@ windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Accessibility",
+    "Win32_System_Com",
+    "Win32_System_Ole",
+    "Win32_System_Variant",
+    "Win32_System_WinRT",
     "Win32_System_Threading",
     "Win32_System_SystemInformation",
     "Win32_System_StationsAndDesktops",
+    # WinRT 运行时类型：系统原生 OCR（Windows.Media.Ocr）与其图像/语言/异步依赖。
+    "Foundation_Collections",
+    "Globalization",
+    "Graphics_Imaging",
+    "Media_Ocr",
+    "Storage_Streams",
 ] }
+# WinRT 异步操作句柄（IAsyncOperation/AsyncStatus）在 0.62 拆分到了独立 crate。
+windows-future = "0.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.4"

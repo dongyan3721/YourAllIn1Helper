@@ -1,6 +1,5 @@
-//! 系统原生 OCR：macOS 使用 Vision `VNRecognizeTextRequest`（Accurate 级别，离线、无需额外权限）。
-//!
-//! Windows.Media.Ocr 与自定义 ONNX 模型尚未接入，其他平台明确返回 `Unsupported`，不返回示例文本。
+//! 系统原生 OCR：Windows 使用 Windows.Media.Ocr，macOS 使用 Vision。
+//! 其他平台明确返回 `Unsupported`，不返回示例文本。
 use super::NativeOsHal;
 use crate::{CapturedFrame, HalError, HalResult, OcrProvider, OcrRecognitionResult};
 
@@ -19,7 +18,11 @@ impl OcrProvider for NativeOsHal {
             let _serial = VISION_LOCK.lock();
             return objc2::rc::autoreleasepool(|_| recognize_with_vision(frame));
         }
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
+        {
+            return super::winocr::recognize_with_winocr(frame);
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             Err(HalError::Unsupported("native_ocr"))
         }
@@ -32,8 +35,10 @@ impl OcrProvider for NativeOsHal {
 }
 
 fn validate_frame(frame: &CapturedFrame) -> HalResult<()> {
-    let expected = frame.width as usize * frame.height as usize * 4;
-    if frame.width == 0 || frame.height == 0 || frame.rgba_bytes.len() != expected {
+    let expected = (frame.width as usize)
+        .checked_mul(frame.height as usize)
+        .and_then(|pixels| pixels.checked_mul(4));
+    if frame.width == 0 || frame.height == 0 || expected != Some(frame.rgba_bytes.len()) {
         return Err(HalError::NativeCallFailed(format!(
             "OCR 输入尺寸无效：{}x{}，{} 字节",
             frame.width,

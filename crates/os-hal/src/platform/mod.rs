@@ -13,6 +13,8 @@ mod selection;
 mod services;
 mod usage;
 mod windows;
+#[cfg(target_os = "windows")]
+mod winocr;
 
 pub use biometry::{touch_id_probe, TouchIdProbe};
 pub use secure::write_animated_gif_clipboard;

@@ -17,8 +17,8 @@ fn unimplemented_native_capabilities_do_not_return_mock_results() {
         rgba_bytes: vec![0; 4],
     };
     let ocr = native.recognize_rgba(&blank);
-    if cfg!(target_os = "macos") {
-        // macOS 已接入 Vision：空白图只能得到空结果或真实错误，绝不能出现示例文本。
+    if cfg!(any(target_os = "macos", target_os = "windows")) {
+        // 已接入平台的空白图只能得到空结果或真实错误，绝不能出现示例文本。
         if let Ok(result) = ocr {
             assert!(result.full_text.is_empty() && result.lines.is_empty());
         }
