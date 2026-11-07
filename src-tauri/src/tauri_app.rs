@@ -875,6 +875,12 @@ fn start_clipboard_listener(app: &AppHandle) {
                 // 通道一：优先检查系统剪贴板文本变更
                 match clipboard.get_text() {
                     Ok(text) if !text.trim().is_empty() && Some(&text) != last_text.as_ref() => {
+                        // 敏感内容（带 Windows 排除历史标记 / macOS ConcealedType）绝不收录进历史；
+                        // 秘密写入方还须持有屏蔽租约，两层防护见 os_hal::secure 契约文档。
+                        if os_hal::clipboard_content_is_concealed() {
+                            last_text = Some(text);
+                            return Ok(());
+                        }
                         let ctx = host.kernel().context();
                         if let Ok(Some(_)) = host.clipboard.capture_text(ctx, &text, None) {
                             emit_update(&app_handle);
@@ -892,6 +898,11 @@ fn start_clipboard_listener(app: &AppHandle) {
                             let img_hash =
                                 mod_clipboard::ClipboardModule::compute_hash("image", &image.bytes);
                             if Some(&img_hash) != last_image_hash.as_ref() {
+                                // 敏感内容（带排除历史标记）不收录进剪贴板历史。
+                                if os_hal::clipboard_content_is_concealed() {
+                                    last_image_hash = Some(img_hash);
+                                    return Ok(());
+                                }
                                 let ctx = host.kernel().context();
                                 if let Ok(Some(_)) = host.clipboard.capture_image_rgba(
                                     ctx,

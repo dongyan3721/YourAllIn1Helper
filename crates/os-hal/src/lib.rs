@@ -20,7 +20,10 @@ pub mod types;
 
 pub use mock::MockOsHal;
 pub use mock_secure::MockSecureServices;
-pub use platform::{touch_id_probe, write_animated_gif_clipboard, NativeOsHal, TouchIdProbe};
+pub use platform::{
+    clipboard_content_is_concealed, touch_id_probe, write_animated_gif_clipboard, NativeOsHal,
+    TouchIdProbe,
+};
 pub use secure::{ClipboardOwnership, ClipboardWriteToken, SecretStore};
 pub use traits::{
     ActiveAppWatcher, BiometricAuthenticator, InputSimulator, OcrProvider, OsHalBundle,
