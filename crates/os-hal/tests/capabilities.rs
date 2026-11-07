@@ -141,3 +141,53 @@ fn macos_ui_hierarchy_reports_real_chain_or_permission_denied() {
         Err(other) => panic!("unexpected AX error: {other}"),
     }
 }
+
+#[cfg(target_os = "windows")]
+#[test]
+#[ignore = "requires live audio endpoint hardware/session; run explicitly for native QA"]
+fn windows_audio_activity_probe_returns_a_real_boolean() {
+    use os_hal::ActiveAppWatcher;
+    // 只查询默认输出设备是否有音频流在运行，不读取音频内容，也不需要额外隐私授权。
+    match NativeOsHal::new().default_output_audio_active() {
+        Ok(_) => {}
+        Err(HalError::Unsupported(capability)) => {
+            panic!("Windows Core Audio probe unexpectedly unsupported: {capability}")
+        }
+        Err(other) => panic!("Windows Core Audio probe failed: {other}"),
+    }
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+#[ignore = "requires interactive desktop session for WTS and power broadcast window; run explicitly for native QA"]
+fn windows_usage_event_monitor_start_stop_is_idempotent() {
+    use os_hal::ActiveAppWatcher;
+    let native = NativeOsHal::new();
+    native.start_usage_event_monitor().expect("start monitor");
+    native
+        .start_usage_event_monitor()
+        .expect("start monitor twice");
+    native.stop_usage_event_monitor();
+    native.stop_usage_event_monitor();
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+#[ignore = "requires a live desktop session with interactive windows; run explicitly for native QA"]
+fn windows_active_app_watcher_reports_real_state() {
+    use os_hal::ActiveAppWatcher;
+    let native = NativeOsHal::new();
+    let idle = native.system_idle_seconds().expect("idle detection");
+    assert!(idle < 86_400);
+    let _locked = native.is_screen_locked().expect("screen lock detection");
+    match native.current_active_app() {
+        Ok(app) => {
+            assert!(!app.app_id.trim().is_empty());
+            assert!(!app.app_name.trim().is_empty());
+        }
+        Err(HalError::NotFound(_)) => {
+            // 在无前台聚焦窗口的环境（如某些非交互式后台调用）返回 NotFound 符合预期
+        }
+        Err(err) => panic!("unexpected active app error: {err}"),
+    }
+}
