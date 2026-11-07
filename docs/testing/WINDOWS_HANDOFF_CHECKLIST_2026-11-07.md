@@ -26,7 +26,7 @@
 - [x] **UIAutomation 原生正例**。根因是采样点被其他顶层窗口挡住，以及只暴露 HWND 根的 provider 被误判为父链不完整。可见记事本与置顶 CodeBuddy 均为 5/5；遮挡不再算作目标应用成功。没有把全 Unsupported 改成通过，也没有补造父节点。窗口边缘、混合 DPI 仍见 P1。
 - [x] 已结束隔离 QA 副本 PID 14536（路径为 `merged-app\all-in-one-desktop.exe`）。最终构建 `--smoke-test` 与 `--ui-smoke-test` 的进程退出码都是 0。UI 烟测使用程序内的临时数据目录。
 - [x] 修复后已重跑工作区测试、前端测试和 `pnpm build:desktop`。`git diff --check` 通过，集成报告已更新。
-- [ ] 通过后再将集成分支合入本地 master，启动最终普通实例，确认模块、托盘和快捷键可用；远程推送不在本轮授权范围内。
+- [x] 集成分支已合入本地 master（`8d04acb`）。重新执行 `pnpm build:desktop` 后启动普通实例，总览列出 10 个已开启模块，并显示已注册的全局快捷键（含 Ctrl+Shift+V、F1、Alt+F1）。没有向远程推送。`cargo test --workspace` 会把调试 exe 覆盖成指向 localhost 的开发构建，普通启动前需要再跑一次 `pnpm build:desktop`。
 
 ## P1：本轮新迁移能力的真实验收
 

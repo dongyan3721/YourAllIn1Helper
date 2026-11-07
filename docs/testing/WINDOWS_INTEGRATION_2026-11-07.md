@@ -67,4 +67,4 @@
 - 敏感标记探测保守跳过任何包含历史/同步控制格式的内容，即使其 DWORD 为 1；可能少收普通内容。剪贴板标记不是防御同用户恶意进程的权限边界。进程被强制终止或系统崩溃时，定时清理无法保证执行。
 - macOS 代码边界保留，但本机没有进行 macOS 编译或桌面回归。FFmpeg、解释器和翻译网络服务继续是可选运行依赖。
 
-交接时仍在 `codex/windows-integration`（`cdf1100`），尚未合入 `master`。接手状态与剩余验收见 [Windows 待测与交接清单](WINDOWS_HANDOFF_CHECKLIST_2026-11-07.md)。
+Cursor 接手后已将集成分支合入本地 master（`8d04acb`），没有向远程推送。普通实例的总览能看到 10 个模块和已注册快捷键。P1/P2 的硬件与安装包验收仍未做，见 [Windows 待测与交接清单](WINDOWS_HANDOFF_CHECKLIST_2026-11-07.md)。
