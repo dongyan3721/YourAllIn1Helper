@@ -31,9 +31,14 @@
   - `ExcludeClipboardContentFromMonitorProcessing`（总控：剪贴板历史与云同步均排除）；
   - `CanIncludeInClipboardHistory = 0`、`CanUploadToCloudClipboard = 0`（序列化 DWORD，细粒度双保险）。
   任一标记写入失败即回滚 `EmptyClipboard` 并报错，绝不留下未隐藏的秘密。
-- 序号所有权：凭证只记 `GetClipboardSequenceNumber`，不保存内容；**凭证在 `CloseClipboard` 之后采集**——
-  实测 `CloseClipboard` 会把本事务的变更最终计入序号，关闭前读到的是暂态值（用作凭证会永远失配）。
-  序号 `0` 不是可靠所有权：写入路径拒绝产生，清除路径保守不动作。
+- 序号所有权：凭证只记 `GetClipboardSequenceNumber`，不保存内容。实测 `CloseClipboard` 才把本事务的
+  变更最终计入序号（关闭前读到的是暂态值），因此**序号在关闭后采集，但只在证明仍属本次写入后采集**：
+  写入时附加本应用私有唯一标记（`com.allinone.desktop.ClipboardWriteProbe`，载荷为「进程号+自增计数」
+  拼成的 8 字节值），事务关闭后用**仍存活的本次 owner 消息窗口**重新独占打开，验证
+  （a）`GetClipboardOwner` 仍是本次窗口、（b）私有标记值仍等于本次写入，验证通过才在该独占会话内
+  采集最终序号；被其他程序抢占（含复制相同文本）则安全放弃——不产出凭证、不触碰剪贴板，
+  绝不认领或清除他人内容。序号 `0` 不是可靠所有权：写入路径拒绝产生，且其失败收尾只在
+  验证通过的独占会话内清空（只可能删掉本次内容，绝不会误清后来的复制）。
 - `clear_if_unchanged`：先独占打开剪贴板再比较序号（检查与清空之间无竞态），序号变化（含用户复制相同文本）返回 `false` 且不触碰。
 - 资源/句柄：`GMEM_MOVEABLE` 分配、锁定拷贝、解锁后 `SetClipboardData` 成功即所有权移交系统（不释放）；
   所有失败路径释放自有句柄，`CloseClipboard`/`DestroyWindow` 由 RAII 保证。
@@ -81,7 +86,7 @@
 | `crates/os-hal/src/platform/secure/secret_win.rs` | 新增：Windows 凭据管理器 SecretStore |
 | `crates/os-hal/src/secure.rs` | 契约文档更新（trait 未变） |
 | `crates/os-hal/src/lib.rs`、`platform/mod.rs` | 导出 `clipboard_content_is_concealed` |
-| `crates/os-hal/tests/unit/secure_windows.rs` | 新增：纯逻辑回归单测（11 项） |
+| `crates/os-hal/tests/unit/secure_windows.rs` | 新增：纯逻辑回归单测 + 2 项确定性抢占回归（真实剪贴板，`#[ignore]`） |
 | `crates/os-hal/tests/secure_services.rs` | 新增：二进制秘密契约测试 + 5 项 Windows 系统集成（`#[ignore]`） |
 | `src-tauri/src/tauri_app.rs` | 监听器最小接线（两通道收录前探测敏感标记） |
 
@@ -92,10 +97,14 @@
 
 | 命令 | 结果 |
 | --- | --- |
-| `cargo test -p os-hal --locked` | 通过：lib 15（另有 1 项既有 ignored）、capabilities 1、secure_services 4（另 5 项 ignored）、native_ocr 0 |
+| `cargo test -p os-hal --locked` | 通过：lib 16（另 3 项 ignored：1 项既有窗口枚举 + 2 项确定性抢占回归）、capabilities 1、secure_services 4（另 5 项 ignored）、native_ocr 0 |
 | `cargo test -p os-hal --locked --test secure_services -- --ignored --test-threads=1` | 5 项系统集成全部通过（见下） |
+| `cargo test -p os-hal --locked --lib -- --ignored --test-threads=1 windows_tests` | 2 项确定性抢占回归全部通过（见预审修正记录 4） |
 | `cargo check --workspace --locked --all-targets` | 通过（3m43s；剩余警告为基线已有：平台分支未使用项、`mod-password-vault` 的 `KEYCHAIN_SERVICE` dead code 等，未跨范围处理） |
 | `cargo test -p all-in-one-host --locked` | 通过：20 + 1 + 15 + 4 + 1 = 41 项，0 失败 |
+
+最终集成审查修正轮（格式名之后）按约定只重跑 `os-hal` 测试（默认 + 两个 ignored 集成目标），
+未再全 workspace 编译；此前两轮的 workspace 编译与宿主单测结果见上表。
 
 普通单测（`tests/unit/secure_windows.rs` + mock 契约测试）不读写用户真实剪贴板/凭据、不弹权限框，覆盖：
 UTF-16 转换与 NUL 拒绝、文档化标记格式名防漂移、命名空间约束与 TargetName 歧义/长度拒绝、2560 字节 blob 边界、
@@ -136,6 +145,18 @@ owner 窗口创建销毁、二进制秘密（含 NUL 与非 UTF-8）往返、moc
    `SetLastError(0)`、失败分支读取原生 `GetLastError` 显式判定（不假定被 `nonzero_hresult` 替换后的
    `Error.code()==0`）；实测真实失败为 `ERROR_NOT_LOCKED(158)`，两条分支均有单测锁定。
    顺带核实并按真实语义处理了 `GlobalFree` 的 windows-rs 反向包装（成功返回 NULL→`Err`）。
+4. **最终集成审查修正（关闭后抢占竞态，阻断问题）**：关闭后直接采序号会把「抢占者的序号」记为凭证、
+   其后误清他人复制，不可接受。已改为**验证式采集**：私有唯一标记 + 存活 owner HWND 双重证明
+   「当前内容仍是本次写入」才采序号，抢占即安全放弃（见实现 2）；序号 0 的失败收尾同样只在
+   验证通过的独占会话内清空。补了两项**确定性**回归（`#[ignore]`，通过测试钩子在
+   「关闭后、采序号前」注入外部复制，不依赖概率）：
+   `preemption_between_close_and_capture_is_abandoned_and_never_cleared`（不同文本抢占→放弃且外来内容原样保留）与
+   `identical_text_copied_after_close_is_still_preemption_and_never_cleared`（同文本抢占→同样放弃，且旧凭证不清除用户之后的同文本复制）。
+   两用例在开发中抓出并促成修复了 `ClipboardSession` 缺少 `CloseClipboard` Drop 的缺陷（会话未关闭会导致
+   后续 `OpenClipboard` 拒绝访问）。trait 签名保持兼容；密码本 `copy_secret_with_lease` 的 HAL 接线按约定由集成负责人完成，本轮未越界修改。
+   探测保守语义说明：`clipboard_content_is_concealed` 把 `CanIncludeInClipboardHistory` /
+   `CanUploadToCloudClipboard` 的**存在**（即使 DWORD 值为 `1` 显式允许记录）也视为敏感——
+   载荷值需打开剪贴板才能读取，探测刻意不打开（监听热路径），故可能跳过少量可记录内容，但绝不会收录秘密。
 
 ## 跨范围观察（不修改，交集成负责人）
 
@@ -152,9 +173,11 @@ owner 窗口创建销毁、二进制秘密（含 NUL 与非 UTF-8）往返、moc
   macOS 目标未编译验证（本机仅 Windows 工具链）。
 - GIF 粘贴端兼容性：只写 `image/gif`/`GIF` 注册格式，未写 `CF_DIB` 静态回退（保持动画）；
   仅接受位图的目标应用不能粘贴，需按目标应用人工验收。
-- 序号凭证残余竞态：凭证在 `CloseClipboard` 后采集（必然要求），与读取之间只有几条指令窗口；
-  若其他程序恰在此窗口写入，其序号会被记为凭证，30 秒后可能被误清。窗口极小且需其后 30 秒完全无剪贴板活动才触发，
-  作为已知限制记录；写入前采集则序号必失配（功能不可用），权衡后取前者。
+- 关闭后抢占竞态：**已消除**（不再认领他人内容）——序号只在私有唯一标记 + owner HWND 验证通过的
+  独占会话内采集，抢占即安全放弃，并有确定性回归测试锁定。唯一剩余的窄边缘是「第三方在我们的
+  剪贴板项仍存活时、不经过 EmptyClipboard 直接追加一个格式」（这不是「复制」语义，用户的复制必经
+  Empty+Set、必然被识别为抢占）：验证会视为仍是本次写入，其后 `clear_if_unchanged` 清空时会连同
+  该追加格式一起删除。此用法极罕见且不丢用户复制内容，作为如实说明保留。
 - 凭据管理器单条秘密上限 2560 字节（平台限制），更大秘密需调用方自行分块或改用其他机制，当前超限明确报错。
 - 真实剪贴板集成测试会短暂覆盖系统剪贴板内容（运行前请勿依赖剪贴板中的内容）；已在用例标记与本报告声明。
 
@@ -164,5 +187,7 @@ owner 窗口创建销毁、二进制秘密（含 NUL 与非 UTF-8）往返、moc
   （`feat(os-hal): Windows secret store, concealed clipboard ownership and GIF clipboard write`）。
 - 预审修正提交（排除格式名）：`790445f895ef4ccaed5c1d03d30e4139a611b46a`
   （`fix(os-hal): use the exact documented clipboard exclusion format names`）。
+- 最终集成审查修正提交（所有权验证式序号采集）：`249e3df60ba6d3ecd191613d80bcdaffb99285f3`
+  （`fix(os-hal): capture clipboard ownership sequence only after proving the write is still current`）。
 - 本报告在随后的文档提交中入库（仅含本文件；分支顶端哈希以 `git log -1 --format=%H` 为准，聊天回执中给出）。
 - 未推送远程、未合并其他分支、未改写历史。
