@@ -9,6 +9,8 @@
 //! 1. 事件总线剪贴板屏蔽租约（`ClipboardSuppressionLease`）——秘密写入方在敏感内容停留于
 //!    剪贴板的整个期间必须持有租约，否则监听器会把内容收录进历史；
 //! 2. [`crate::clipboard_content_is_concealed`] 只读探测——内容带系统敏感/排除标记时跳过收录。
+//!    该探测保守地把「CanIncludeInClipboardHistory / CanUploadToCloudClipboard」的存在（即使值为
+//!    `1` 显式允许记录）也当作敏感处理，可能跳过少量可记录内容，但绝不会收录秘密。
 //!
 //! 两层过滤之后，写入本身仍以各平台的系统级标记为准（见 [`ClipboardOwnership`]）。
 
@@ -40,6 +42,11 @@ pub trait ClipboardOwnership: Send + Sync + 'static {
     ///
     /// 调用方必须在敏感内容停留于剪贴板期间持有事件总线的剪贴板屏蔽租约，
     /// 否则本应用的剪贴板历史监听器会收录该内容（见模块文档）。
+    ///
+    /// Windows 的所有权凭证只在验证通过后产出：写入事务关闭后重新独占打开，
+    /// 以本次写入的私有唯一标记 + 存活的 owner 窗口证明「当前内容仍是本次写入」，
+    /// 证明成立才采集最终序号；被其他程序抢占（含复制相同文本）则安全放弃——
+    /// 不产出凭证、不触碰剪贴板，绝不认领或清除他人内容。
     fn write_concealed_text(&self, text: &str) -> HalResult<ClipboardWriteToken>;
 
     /// 若剪贴板自写入后未被任何程序修改，则清空并返回 `true`；已被修改返回 `false` 且不触碰。
