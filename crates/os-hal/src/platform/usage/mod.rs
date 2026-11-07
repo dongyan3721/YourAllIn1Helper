@@ -3,7 +3,7 @@
 //! 生产适配器只返回真实系统状态；无法获取时返回 `Unsupported`/`NativeCallFailed`，
 //! 不伪造 `false` 或测试快照。是否降级由业务模块决定并必须在能力列表里说明。
 //!
-//! macOS 的锁屏/睡眠同时使用严格轮询与系统通知：任一来源报告暂停即暂停；
+//! 锁屏/睡眠同时使用严格轮询与系统通知：任一来源报告暂停即暂停；
 //! 唤醒后必须由通知或轮询明确确认已解锁才恢复，未知状态保持暂停。
 
 #[cfg(target_os = "macos")]
@@ -12,6 +12,11 @@ mod macos;
 mod macos_events;
 #[cfg(target_os = "windows")]
 mod windows;
+#[cfg(target_os = "windows")]
+mod windows_events;
+
+#[cfg(all(target_os = "windows", test))]
+pub(crate) use windows::{evaluate_windows_audio_active, evaluate_windows_screen_locked};
 
 use crate::platform::NativeOsHal;
 use crate::{ActiveAppSnapshot, ActiveAppWatcher, HalResult};
@@ -54,10 +59,7 @@ impl NativeOsHal {
     }
 
     pub(super) fn usage_audio_active(&self) -> HalResult<bool> {
-        // Windows 尚未实现真实音频活动探测，明确返回 Unsupported。
-        Err(crate::HalError::Unsupported(
-            "windows_default_output_audio_activity",
-        ))
+        self.usage_audio_active_windows()
     }
 }
 
@@ -65,7 +67,7 @@ impl NativeOsHal {
 const ACTIVITY_OFF: u8 = 1;
 const ACTIVITY_ON: u8 = 2;
 
-/// 平台无关的事件类型，供 macOS 观察者与测试共用。
+/// 平台无关的事件类型，供 macOS/Windows 观察者与测试共用。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum UsageActivityEvent {
     WillSleep,
@@ -88,6 +90,12 @@ pub(crate) struct UsageActivityState {
 }
 
 impl UsageActivityState {
+    pub(crate) fn reset(&self) {
+        self.sleeping.store(0, Ordering::SeqCst);
+        self.screens_asleep.store(0, Ordering::SeqCst);
+        self.locked.store(0, Ordering::SeqCst);
+    }
+
     pub(crate) fn apply(&self, event: UsageActivityEvent) {
         let (target, value) = match event {
             UsageActivityEvent::WillSleep => (&self.sleeping, true),
@@ -150,13 +158,15 @@ impl UsageActivityState {
     }
 }
 
-/// 平台事件监视器的统一包装；非 macOS 平台保持 Unsupported。
+/// 平台事件监视器的统一包装。
 #[derive(Clone)]
 pub(super) struct NativeUsageEvents {
     state: Arc<UsageActivityState>,
     #[cfg(target_os = "macos")]
     monitor: Arc<macos_events::MacUsageEventMonitor>,
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    monitor: Arc<windows_events::WinUsageEventMonitor>,
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     monitor: (),
 }
 
@@ -166,7 +176,9 @@ impl Default for NativeUsageEvents {
         Self {
             #[cfg(target_os = "macos")]
             monitor: Arc::new(macos_events::MacUsageEventMonitor::new(Arc::clone(&state))),
-            #[cfg(not(target_os = "macos"))]
+            #[cfg(target_os = "windows")]
+            monitor: Arc::new(windows_events::WinUsageEventMonitor::new(Arc::clone(&state))),
+            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
             monitor: (),
             state,
         }
@@ -179,7 +191,11 @@ impl NativeUsageEvents {
         {
             self.monitor.start()
         }
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
+        {
+            self.monitor.start()
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             let _ = &self.monitor;
             Err(crate::HalError::Unsupported("usage_event_monitor"))
@@ -188,6 +204,8 @@ impl NativeUsageEvents {
 
     pub(super) fn stop(&self) {
         #[cfg(target_os = "macos")]
+        self.monitor.stop();
+        #[cfg(target_os = "windows")]
         self.monitor.stop();
     }
 
