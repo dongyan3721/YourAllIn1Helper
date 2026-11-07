@@ -7,9 +7,9 @@ use crate::{
     error::{VaultError, VaultResult},
     keystore::{self, production_keystore, VaultKeyStore},
     model::{
-        FieldId, LockReason, PasswordPolicy, SecretString, VaultEntry, VaultEntryInput,
-        VaultEntryPage, VaultEntrySummary, VaultEvent, VaultMutationResult, VaultStatus,
-        AUTO_LOCK_SECONDS,
+        DeviceKeyKind, FieldId, LockReason, PasswordPolicy, SecretString, VaultEntry,
+        VaultEntryInput, VaultEntryPage, VaultEntrySummary, VaultEvent, VaultMutationResult,
+        VaultStatus, AUTO_LOCK_SECONDS,
     },
     store::{self, DeviceSlot, EntryMetadata, FieldEnvelope, MasterSlot, StoredEntry},
 };
@@ -57,7 +57,7 @@ impl VaultState {
         }
     }
 
-    fn status(&self, biometric_available: bool) -> VaultStatus {
+    fn status(&self, biometric_available: bool, device_key_kind: DeviceKeyKind) -> VaultStatus {
         VaultStatus {
             initialized: self.phase != VaultPhase::Uninitialized,
             locked: self.phase != VaultPhase::Unlocked,
@@ -66,6 +66,7 @@ impl VaultState {
             auto_lock_seconds: AUTO_LOCK_SECONDS,
             biometric_available,
             biometric_enrolled: self.device_slot.is_some(),
+            device_key_kind,
             secret_copy_available: true,
             capability_error: self.capability_error.clone(),
         }
@@ -112,7 +113,8 @@ impl VaultService {
     }
 
     fn view(&self, state: &VaultState) -> VaultStatus {
-        state.status(self.keystore.available())
+        // available 只决定界面是否提供入口。解开 DKEK 仍必须走 keystore.unprotect。
+        state.status(self.keystore.available(), self.keystore.device_key_kind())
     }
 
     pub fn set_event_sink(&self, sink: Option<Arc<dyn VaultEventSink>>) {

@@ -639,6 +639,10 @@ impl crate::keystore::VaultKeyStore for CancelStore {
         crate::keystore::MACOS_BIOMETRY_BACKEND_ID
     }
 
+    fn device_key_kind(&self) -> crate::DeviceKeyKind {
+        crate::DeviceKeyKind::MacosBiometryCurrentSet
+    }
+
     fn available(&self) -> bool {
         true
     }

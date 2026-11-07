@@ -68,7 +68,7 @@
           :disabled="busy || status.unlocking || !canUseBiometric"
           @click="unlockBiometric"
         >
-          {{ vaultText('unlockBiometric') }}
+          {{ deviceCopy('unlockBiometric') }}
         </button>
         <small>{{ biometricHint }}</small>
       </div>
@@ -182,8 +182,8 @@
       <section class="vault-card vault-change">
         <div class="vault-change-heading">
           <div>
-            <h3>{{ vaultText('biometricName') }}</h3>
-            <small>{{ status.biometric_enrolled ? vaultText('biometricEnabledHint') : vaultText('biometricNeedEnroll') }}</small>
+            <h3>{{ deviceCopy('title') }}</h3>
+            <small>{{ status.biometric_enrolled ? deviceCopy('biometricEnabledHint') : deviceCopy('biometricNeedEnroll') }}</small>
           </div>
         </div>
         <button
@@ -191,13 +191,13 @@
           class="macos-button"
           :disabled="busy"
           @click="setBiometric(false)"
-        >{{ vaultText('disableBiometric') }}</button>
+        >{{ deviceCopy('disableBiometric') }}</button>
         <button
           v-else
           class="macos-button"
           :disabled="busy || !status.biometric_available"
           @click="setBiometric(true)"
-        >{{ vaultText('enableBiometric') }}</button>
+        >{{ deviceCopy('enableBiometric') }}</button>
       </section>
 
       <section class="vault-card vault-change">
@@ -238,13 +238,19 @@ import { vaultErrorText, vaultText } from '../utils/vault/text';
 const status = ref<VaultStatus>({
   initialized: false, locked: true, unlocking: false, epoch: 0,
   auto_lock_seconds: 180, biometric_available: false, biometric_enrolled: false,
+  device_key_kind: 'none',
   secret_copy_available: false, capability_error: null,
 });
 const canUseBiometric = computed(() => status.value.biometric_available && status.value.biometric_enrolled);
+function deviceCopy(name: string): string {
+  if (status.value.device_key_kind === 'windows_hello_gesture') return vaultText(`windowsHello.${name}`);
+  if (name === 'title') return vaultText('biometricName');
+  return vaultText(name);
+}
 const biometricHint = computed(() => {
-  if (!status.value.biometric_available) return vaultText('biometricUnavailable');
-  if (!status.value.biometric_enrolled) return vaultText('biometricNeedEnroll');
-  return vaultText('biometricReady');
+  if (!status.value.biometric_available) return deviceCopy('biometricUnavailable');
+  if (!status.value.biometric_enrolled) return deviceCopy('biometricNeedEnroll');
+  return deviceCopy('biometricReady');
 });
 const masterPassword = ref('');
 const masterConfirmation = ref('');
@@ -261,7 +267,7 @@ const revealedPassword = ref('');
 const revealedId = ref('');
 const generatedPassword = ref('');
 const error = ref('');
-const localizedError = computed(() => error.value ? vaultErrorText(error.value) : '');
+const localizedError = computed(() => error.value ? vaultErrorText(error.value, status.value.device_key_kind) : '');
 const notice = ref('');
 const busy = ref(true);
 let disposed = false;
@@ -387,7 +393,7 @@ async function setBiometric(enabled: boolean) {
     const next = await invokeIpc<VaultStatus>('vault_set_biometric_enabled', { enabled });
     if (!isCurrent(operation)) return;
     status.value = next;
-    notice.value = vaultText(enabled ? 'biometricEnabledNotice' : 'biometricDisabledNotice');
+    notice.value = deviceCopy(enabled ? 'biometricEnabledNotice' : 'biometricDisabledNotice');
   } catch (reason) {
     if (isCurrent(operation)) reportError(reason);
   } finally {

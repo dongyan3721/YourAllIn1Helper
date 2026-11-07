@@ -1,15 +1,20 @@
-//! 功能 10：主密码加密密码本，macOS 可用 Touch ID 设备槽。
+//! 功能 10：主密码加密密码本。macOS 用 Touch ID 当前生物识别集合保护设备密钥；
+//! Windows 只在 Passport 密钥存储提供程序的私钥解密成功后取出设备密钥。
 //!
-//! Touch ID 只负责取出钥匙串里的设备密钥，再用它解开 DEK。认证布尔值本身不能解锁。
-//! Windows Hello 仍未接入。未通过独立安全审查前只处理虚构数据。
+//! 认证布尔值、普通 DPAPI 或凭据管理器都不能解锁。未完成硬件手势验收前，
+//! 界面必须保留主密码，且不能把 Windows Hello PIN 说成 macOS biometryCurrentSet。
 
 mod crypto;
 mod error;
+mod hello_store;
 mod keystore;
 mod model;
 pub mod native;
 mod service;
 mod store;
+
+#[cfg(target_os = "windows")]
+mod windows_hello;
 
 #[cfg(test)]
 #[path = "../tests/unit/lib.rs"]
@@ -17,9 +22,9 @@ mod unit_tests;
 
 pub use error::{VaultError, VaultResult};
 pub use model::{
-    LockReason, PasswordPolicy, SecretString, VaultEntry, VaultEntryInput, VaultEntryPage,
-    VaultEntrySummary, VaultEvent, VaultMutationResult, VaultStatus, AUTO_LOCK_SECONDS, MODULE_ID,
-    REVEAL_SECONDS,
+    DeviceKeyKind, LockReason, PasswordPolicy, SecretString, VaultEntry, VaultEntryInput,
+    VaultEntryPage, VaultEntrySummary, VaultEvent, VaultMutationResult, VaultStatus,
+    AUTO_LOCK_SECONDS, MODULE_ID, REVEAL_SECONDS,
 };
 pub use service::{VaultEventSink, VaultService};
 

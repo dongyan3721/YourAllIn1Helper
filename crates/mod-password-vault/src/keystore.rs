@@ -1,6 +1,6 @@
-//! 设备密钥槽。生产环境只使用系统钥匙串的生物识别访问控制。
+//! 设备密钥槽。生产环境只使用操作系统保护的私钥或钥匙串访问控制。
 //! 内存实现只能由测试显式注入，`VaultService::new` 不会选中它。
-use crate::{error::VaultError, VaultResult};
+use crate::{error::VaultError, model::DeviceKeyKind, VaultResult};
 #[cfg(test)]
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -9,12 +9,18 @@ use zeroize::Zeroizing;
 
 pub(crate) const MACOS_BIOMETRY_BACKEND: &str = "macos_keychain_biometry_current_set_v1";
 pub(crate) const MACOS_BIOMETRY_BACKEND_ID: u8 = 1;
+/// Windows Hello 手势保护的 NGC RSA-OAEP 槽。不是 biometryCurrentSet，也不是 DPAPI 门控。
+pub(crate) const WINDOWS_HELLO_BACKEND: &str = "windows_hello_ngc_rsa_oaep_v1";
+pub(crate) const WINDOWS_HELLO_BACKEND_ID: u8 = 2;
+#[cfg(target_os = "macos")]
 const KEYCHAIN_SERVICE: &str = "com.allinone.desktop.vault.dkek.v1";
 
 pub(crate) trait VaultKeyStore: Send + Sync {
     fn backend_id(&self) -> &'static str;
     fn backend_byte(&self) -> u8;
-    /// 当前能否弹出 Touch ID。锁定或未登记时为 false，调用方改走主密码。
+    fn device_key_kind(&self) -> DeviceKeyKind;
+    /// 当前能否发起系统保护的设备密钥操作。为 false 时调用方保留主密码。
+    /// 这个布尔值本身不能释放 DKEK。
     fn available(&self) -> bool;
     fn gate(&self) -> VaultResult<()>;
     fn protect(&self, slot_id: &Uuid, dkek: &[u8; 32]) -> VaultResult<()>;
@@ -27,7 +33,11 @@ pub(crate) fn production_keystore() -> Arc<dyn VaultKeyStore> {
     {
         Arc::new(MacosBiometryKeyStore)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        crate::windows_hello::production_keystore()
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         Arc::new(UnavailableKeyStore)
     }
@@ -43,6 +53,10 @@ impl VaultKeyStore for UnavailableKeyStore {
 
     fn backend_byte(&self) -> u8 {
         0
+    }
+
+    fn device_key_kind(&self) -> DeviceKeyKind {
+        DeviceKeyKind::None
     }
 
     fn available(&self) -> bool {
@@ -91,6 +105,11 @@ impl VaultKeyStore for MemoryKeyStore {
         MACOS_BIOMETRY_BACKEND_ID
     }
 
+    fn device_key_kind(&self) -> DeviceKeyKind {
+        // 测试替身沿用 macOS 包装格式，不代表本机 Touch ID 或 Windows Hello。
+        DeviceKeyKind::MacosBiometryCurrentSet
+    }
+
     fn available(&self) -> bool {
         true
     }
@@ -129,6 +148,10 @@ impl VaultKeyStore for MacosBiometryKeyStore {
 
     fn backend_byte(&self) -> u8 {
         MACOS_BIOMETRY_BACKEND_ID
+    }
+
+    fn device_key_kind(&self) -> DeviceKeyKind {
+        DeviceKeyKind::MacosBiometryCurrentSet
     }
 
     fn available(&self) -> bool {

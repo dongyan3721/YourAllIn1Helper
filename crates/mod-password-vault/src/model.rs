@@ -80,6 +80,15 @@ pub struct VaultEvent {
     pub reason: LockReason,
 }
 
+/// 设备密钥的真实保护种类。Windows Hello 手势包含 PIN，不能序列化成 macOS 生物识别集合。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceKeyKind {
+    None,
+    MacosBiometryCurrentSet,
+    WindowsHelloGesture,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct VaultStatus {
     pub initialized: bool,
@@ -88,8 +97,9 @@ pub struct VaultStatus {
     pub epoch: u64,
     pub auto_lock_seconds: u64,
     pub biometric_available: bool,
-    /// 当前库已经登记设备槽。没有槽时不能用 Touch ID 解锁。
+    /// 当前库已经登记设备槽。没有槽时不能用设备密钥解锁。
     pub biometric_enrolled: bool,
+    pub device_key_kind: DeviceKeyKind,
     pub secret_copy_available: bool,
     pub capability_error: Option<String>,
 }

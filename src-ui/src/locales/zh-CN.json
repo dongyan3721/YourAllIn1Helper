@@ -850,6 +850,26 @@
     "biometricEnabledNotice": "已开启 {provider}。锁定后可以用它解锁。",
     "biometricDisabledNotice": "已关闭 {provider}，设备密钥已从系统保护存储删除。",
     "biometricDisabled": "这台设备当前没有可用的 {provider}，请使用主密码。",
+    "windowsHello": {
+      "title": "Windows Hello",
+      "unlockBiometric": "使用 Windows Hello 解锁",
+      "enableBiometric": "登记 Windows Hello 设备密钥",
+      "disableBiometric": "删除 Windows Hello 设备密钥",
+      "biometricReady": "解密设备密钥时，系统会要求一次 Windows Hello 手势（人脸、指纹或 PIN）。PIN 不是 macOS 的 Touch ID，也不能代替主密码。取消或失败不会打开密码本。",
+      "biometricUnavailable": "这台电脑当前不能把设备密钥交给受 Windows Hello 保护的私钥操作。请使用主密码。",
+      "biometricNeedEnroll": "尚未登记设备密钥。请先用主密码解锁再登记。Windows Hello 的 PIN 不会被当成生物识别集合。",
+      "biometricEnabledHint": "已登记 Windows Hello 设备密钥。主密码始终可以解锁。",
+      "biometricEnabledNotice": "已登记。锁定后会由系统私钥解密设备密钥，而不是先校验一个布尔值。",
+      "biometricDisabledNotice": "已删除设备密钥。主密码仍然有效。",
+      "errors": {
+        "biometricCanceled": "已取消 Windows Hello，密码本仍保持锁定",
+        "biometricFailed": "Windows Hello 未通过，密码本仍保持锁定",
+        "biometricUnavailable": "受 Windows Hello 保护的设备密钥当前不可用，请使用主密码",
+        "biometricNotEnrolled": "尚未设置 Windows Hello，请使用主密码",
+        "biometricLockout": "Windows Hello 暂时不可用，请使用主密码",
+        "biometricKeyInvalid": "设备密钥已失效。请用主密码解锁后重新登记"
+      }
+    },
     "lockedNotice": "密码本已锁定，本地敏感状态已清理",
     "busy": "正在安全处理…",
     "errors": {
