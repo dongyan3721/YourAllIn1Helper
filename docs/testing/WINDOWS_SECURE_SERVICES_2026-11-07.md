@@ -26,9 +26,10 @@
   因此每次事务在本线程用系统预定义 `STATIC` 类 + `HWND_MESSAGE` 父窗口创建纯消息窗口作 owner，
   同一线程创建与销毁（RAII），不依赖主控台存在、不使用其他程序窗口。
 - 敏感写入：`CF_UNICODETEXT`（UTF-16 含 NUL 终止；含 NUL 字符的文本拒绝写入，避免读者截断）；
-  同时写入三个微软文档化排除标记：
-  - `Exclude Clipboard Content From Monitor Processing`（总控：剪贴板历史与云同步均排除）；
-  - `Can Include In Clipboard History = FALSE`、`Can Upload To Cloud Clipboard = FALSE`（细粒度双保险）。
+  同时写入三个微软文档《Clipboard Formats》→ Cloud Clipboard and Clipboard History Formats
+  小节给出的准确注册格式名（**无空格**，预审修正，见下方「预审修正记录」）：
+  - `ExcludeClipboardContentFromMonitorProcessing`（总控：剪贴板历史与云同步均排除）；
+  - `CanIncludeInClipboardHistory = 0`、`CanUploadToCloudClipboard = 0`（序列化 DWORD，细粒度双保险）。
   任一标记写入失败即回滚 `EmptyClipboard` 并报错，绝不留下未隐藏的秘密。
 - 序号所有权：凭证只记 `GetClipboardSequenceNumber`，不保存内容；**凭证在 `CloseClipboard` 之后采集**——
   实测 `CloseClipboard` 会把本事务的变更最终计入序号，关闭前读到的是暂态值（用作凭证会永远失配）。
@@ -116,6 +117,26 @@ owner 窗口创建销毁、二进制秘密（含 NUL 与非 UTF-8）往返、moc
 `GlobalUnlock` 对已解锁句柄返回 FALSE + `ERROR_NOT_LOCKED(158)`，正常完成为 FALSE + last-error 0；
 `GlobalFree` 的 windows-rs `Result` 包装成功/失败语义反转。
 
+## 预审修正记录
+
+1. **排除格式名修正（阻断问题）**：初版误用了带空格的格式名（`Exclude Clipboard Content From Monitor Processing`
+   等），Windows 并不认识。经官方文档（learn.microsoft.com/.../dataxchg/clipboard-formats，Cloud Clipboard and
+   Clipboard History Formats 小节）核实，准确注册名为
+   `ExcludeClipboardContentFromMonitorProcessing` / `CanIncludeInClipboardHistory` / `CanUploadToCloudClipboard`（均无空格），
+   后两个为序列化 DWORD（0=排除、1=显式允许），载荷用法正确。已修正写入、
+   `clipboard_content_is_concealed` 探测（自有监听路径自动跟随）、契约文档、格式名回归单测
+   （含「注册名不得含空格」断言，不触真实剪贴板）与集成测试断言。
+   修正后全部复测：`cargo test -p os-hal --locked` 通过（15+1+4）；
+   `-- --ignored --test-threads=1` 5 项集成全过（真实剪贴板上断言到修正后的三个标记名）；
+   `cargo check --workspace --locked --all-targets` 通过。
+2. **owner HWND 审查项（已落实）**：OpenClipboard 以 NULL owner 打开后 EmptyClipboard 会使 SetClipboardData 失败——
+   实现为每次事务在本线程创建系统 `STATIC` 类 + `HWND_MESSAGE` 纯消息窗口作 owner，同一线程 RAII 创建/销毁，
+   不依赖主控台、不使用其他程序窗口；`owner_window_creates_and_destroys_within_the_calling_thread` 单测锁定。
+3. **GlobalUnlock 审查项（已落实）**：「FALSE 且 last-error=0」为正常完成解锁，不误报失败；实现调用前
+   `SetLastError(0)`、失败分支读取原生 `GetLastError` 显式判定（不假定被 `nonzero_hresult` 替换后的
+   `Error.code()==0`）；实测真实失败为 `ERROR_NOT_LOCKED(158)`，两条分支均有单测锁定。
+   顺带核实并按真实语义处理了 `GlobalFree` 的 windows-rs 反向包装（成功返回 NULL→`Err`）。
+
 ## 跨范围观察（不修改，交集成负责人）
 
 1. `src-tauri/src/ipc/vault.rs::copy_secret_with_lease`（密码本复制，Cursor 范围）仍用 `arboard::set_text` + 30 秒后
@@ -141,5 +162,7 @@ owner 窗口创建销毁、二进制秘密（含 NUL 与非 UTF-8）往返、moc
 
 - 代码与测试提交：`cf3a222f3b82cd42e785d44bffc0ccffb869169c`
   （`feat(os-hal): Windows secret store, concealed clipboard ownership and GIF clipboard write`）。
+- 预审修正提交（排除格式名）：`790445f895ef4ccaed5c1d03d30e4139a611b46a`
+  （`fix(os-hal): use the exact documented clipboard exclusion format names`）。
 - 本报告在随后的文档提交中入库（仅含本文件；分支顶端哈希以 `git log -1 --format=%H` 为准，聊天回执中给出）。
 - 未推送远程、未合并其他分支、未改写历史。
