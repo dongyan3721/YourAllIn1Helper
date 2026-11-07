@@ -11,7 +11,7 @@
       </div>
 
       <!-- 分段选择器 (Segmented Control) 切换标签 -->
-      <nav class="macos-segmented feature-tabs">
+      <nav class="macos-segmented feature-tabs" data-no-drag>
         <button
           v-for="tab in visibleTabs"
           :key="tab.id"
@@ -962,6 +962,8 @@ onUnmounted(() => {
   grid-row: 2;
   min-width: 0;
   overflow-x: auto;
+  /* 包括原生滚动条在内的整个导航区域都接收鼠标手势，不能继承标题栏拖窗区域。 */
+  -webkit-app-region: no-drag;
 }
 
 .feature-tabs .macos-segment-item {
