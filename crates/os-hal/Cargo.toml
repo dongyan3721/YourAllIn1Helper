@@ -26,13 +26,26 @@ windows = { version = "0.62", features = [
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Accessibility",
+    "Win32_Security_Credentials",
     "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_DataExchange",
+    "Win32_System_Memory",
     "Win32_System_Ole",
     "Win32_System_Variant",
+    "Win32_UI_HiDpi",
     "Win32_System_WinRT",
     "Win32_System_Threading",
     "Win32_System_SystemInformation",
+    "Win32_System_SystemServices",
     "Win32_System_StationsAndDesktops",
+    "Win32_System_RemoteDesktop",
+    "Win32_System_Power",
+    "Win32_Media_Audio",
+    "Win32_Media_Audio_Endpoints",
+    # Win32 凭据管理器（SecretStore）：通用凭据真实读写删（CredReadW/CredWriteW/CredDeleteW）。
+    # Win32 剪贴板（ClipboardOwnership / 动态 GIF）：打开/清空/写入、格式注册与序号所有权。
+    # Win32 可移动全局内存（HGLOBAL）：SetClipboardData 的数据载体。
     # WinRT 运行时类型：系统原生 OCR（Windows.Media.Ocr）与其图像/语言/异步依赖。
     "Foundation_Collections",
     "Globalization",
@@ -66,3 +79,15 @@ objc2-vision = { version = "0.3.2", default-features = false, features = [
 
 [dev-dependencies]
 tempfile = "3.10"
+
+# 系统集成测试（ignored 用例）直接调用 Win32 独立验证剪贴板内容与排除标记，
+# 不经过被测实现自身的读取路径；版本与上面的 windows 依赖一致，锁定文件不变。
+[target.'cfg(target_os = "windows")'.dev-dependencies]
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_System_DataExchange",
+    "Win32_System_Memory",
+    "Win32_System_Ole",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_HiDpi",
+] }

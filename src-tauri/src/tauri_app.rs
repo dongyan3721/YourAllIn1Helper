@@ -40,14 +40,14 @@ impl mod_password_vault::VaultEventSink for TauriVaultEventSink {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 thread_local! {
     static VAULT_NATIVE_OBSERVER: std::cell::RefCell<
         Option<mod_password_vault::native::NativeVaultObserver>
     > = const { std::cell::RefCell::new(None) };
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn stop_vault_native_observer() {
     VAULT_NATIVE_OBSERVER.with(|slot| {
         if let Some(observer) = slot.borrow_mut().take() {
@@ -56,10 +56,10 @@ fn stop_vault_native_observer() {
     });
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn stop_vault_native_observer() {}
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn sync_vault_native_observer(app: &AppHandle) {
     let Some(host) = app.try_state::<Arc<DesktopHost>>() else {
         return;
@@ -87,7 +87,7 @@ fn sync_vault_native_observer(app: &AppHandle) {
     });
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn sync_vault_native_observer(_app: &AppHandle) {}
 
 fn to_core_error(error: impl std::fmt::Display) -> CoreError {
@@ -875,6 +875,12 @@ fn start_clipboard_listener(app: &AppHandle) {
                 // 通道一：优先检查系统剪贴板文本变更
                 match clipboard.get_text() {
                     Ok(text) if !text.trim().is_empty() && Some(&text) != last_text.as_ref() => {
+                        // 敏感内容（带 Windows 排除历史标记 / macOS ConcealedType）绝不收录进历史；
+                        // 秘密写入方还须持有屏蔽租约，两层防护见 os_hal::secure 契约文档。
+                        if os_hal::clipboard_content_is_concealed() {
+                            last_text = Some(text);
+                            return Ok(());
+                        }
                         let ctx = host.kernel().context();
                         if let Ok(Some(_)) = host.clipboard.capture_text(ctx, &text, None) {
                             emit_update(&app_handle);
@@ -892,6 +898,11 @@ fn start_clipboard_listener(app: &AppHandle) {
                             let img_hash =
                                 mod_clipboard::ClipboardModule::compute_hash("image", &image.bytes);
                             if Some(&img_hash) != last_image_hash.as_ref() {
+                                // 敏感内容（带排除历史标记）不收录进剪贴板历史。
+                                if os_hal::clipboard_content_is_concealed() {
+                                    last_image_hash = Some(img_hash);
+                                    return Ok(());
+                                }
                                 let ctx = host.kernel().context();
                                 if let Ok(Some(_)) = host.clipboard.capture_image_rgba(
                                     ctx,
@@ -1176,6 +1187,8 @@ pub fn run() {
                 );
             })));
             // 仅真实桌面进程向截图模块注入系统剪贴板；无桌面测试保持「不可用」实现。
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
+            host.set_vault_clipboard(Arc::new(os_hal::NativeOsHal::new()));
             host.screenshot.set_clipboard(Arc::new(
                 crate::screenshot_clipboard::ArboardScreenshotClipboard,
             ));
@@ -1410,7 +1423,11 @@ pub fn run() {
                         }
                         // shutdown 等待现有活动租约及窗口操作；主线程必须继续处理 AppKit 事件。
                         let result = tauri::async_runtime::spawn_blocking(move || {
-                            host.map(|host| host.kernel().shutdown()).transpose()
+                            host.map(|host| {
+                                let result = host.kernel().shutdown();
+                                host.clear_vault_clipboard();
+                                result
+                            }).transpose()
                         }).await;
                         match result {
                             Ok(Ok(_)) => {}

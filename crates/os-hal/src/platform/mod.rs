@@ -17,7 +17,7 @@ mod windows;
 mod winocr;
 
 pub use biometry::{touch_id_probe, TouchIdProbe};
-pub use secure::write_animated_gif_clipboard;
+pub use secure::{clipboard_content_is_concealed, write_animated_gif_clipboard};
 
 use crate::{HalError, OsHalBundle};
 use std::sync::{atomic::AtomicUsize, Arc};
@@ -31,6 +31,8 @@ pub(super) fn native_error(error: impl std::fmt::Display) -> HalError {
 pub struct NativeOsHal {
     #[cfg(target_os = "macos")]
     paste_target: Arc<std::sync::Mutex<Option<i32>>>,
+    #[cfg(target_os = "windows")]
+    paste_target: Arc<std::sync::Mutex<Option<(isize, u32)>>>,
     paste_triggers: Arc<AtomicUsize>,
     /// 锁屏/息屏/睡眠事件观察者；平台无关包装，业务模块只看到 trait。
     usage_events: usage::NativeUsageEvents,

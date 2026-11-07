@@ -104,6 +104,8 @@ pub struct DesktopHost {
     translator: Arc<TranslatorModule>,
     password_vault: Arc<PasswordVaultModule>,
     translator_credentials: Arc<secure_credentials::HostCredentialStore>,
+    vault_clipboard: parking_lot::RwLock<Option<Arc<dyn os_hal::ClipboardOwnership>>>,
+    last_vault_copy: parking_lot::Mutex<Option<os_hal::ClipboardWriteToken>>,
     os_hal: OsHalBundle,
     mock_hal: Option<MockOsHal>,
     /// 系统全局快捷键注册失败记录（action_id → 错误），供界面如实显示未生效的快捷键。
@@ -255,6 +257,8 @@ impl DesktopHost {
         )?;
         Ok(Self {
             kernel: builder.bootstrap()?,
+            vault_clipboard: parking_lot::RwLock::new(None),
+            last_vault_copy: parking_lot::Mutex::new(None),
             screenshot,
             clipboard,
             sticky_note,
@@ -275,6 +279,21 @@ impl DesktopHost {
     /// Returns a reference to the underlying `AppKernel`.
     pub fn kernel(&self) -> &AppKernel {
         &self.kernel
+    }
+
+    /// 仅真实桌面启动装配原生实现；无桌面测试必须显式注入测试适配器。
+    pub(crate) fn set_vault_clipboard(&self, clipboard: Arc<dyn os_hal::ClipboardOwnership>) {
+        *self.vault_clipboard.write() = Some(clipboard);
+        self.password_vault.service().set_secret_copy_available(true);
+    }
+
+    /// 正常退出不等待 30 秒计时器，只清理由本应用仍拥有的最后一次敏感复制。
+    pub(crate) fn clear_vault_clipboard(&self) {
+        if let (Some(token), Some(board)) = (self.last_vault_copy.lock().take(), self.vault_clipboard.read().clone()) {
+            if let Err(error) = board.clear_if_unchanged(&token) {
+                tracing::warn!(%error, "Failed to clear vault clipboard during exit");
+            }
+        }
     }
 
     /// 增强截图模块实例（与注册表中挂载的是同一个 Arc）。

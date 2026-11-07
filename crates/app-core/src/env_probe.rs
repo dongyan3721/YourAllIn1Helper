@@ -52,6 +52,13 @@ impl ExternalToolKind {
         match self {
             Self::Ffmpeg | Self::Ffprobe => &["-version"],
             Self::Cscript => &["//?"],
+            // Windows PowerShell 5.1 不支持 --version；此查询同时兼容 pwsh 和 powershell。
+            Self::PowerShell => &[
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "$PSVersionTable.PSVersion.ToString()",
+            ],
             Self::Osascript => &["-e", "version of AppleScript"],
             _ => &["--version"],
         }
@@ -317,6 +324,11 @@ impl EnvProbeService {
         }
 
         let output = cmd.output().ok()?;
+        // Windows 的 Python 执行别名可能存在于 PATH，却以 9009 退出且没有版本输出。
+        // 失败探测不能标成可用，继续尝试真正安装的 python.exe 等候选解释器。
+        if !output.status.success() {
+            return None;
+        }
         let combined = if !output.stdout.is_empty() {
             String::from_utf8_lossy(&output.stdout).into_owned()
         } else {
@@ -332,3 +344,7 @@ impl EnvProbeService {
         Some(first_line)
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/env_probe.rs"]
+mod tests;

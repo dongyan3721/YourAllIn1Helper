@@ -12,6 +12,26 @@ fn wait_until(mut condition: impl FnMut() -> bool) -> bool {
     true
 }
 
+/// 原生窗口创建完成并不代表 WebView 已订阅保存事件；Windows 首次加载尤其明显。
+/// 先通过真实保存握手确认页面可响应，再执行停用，避免把漏发给未就绪页面的事件
+/// 当成保存失败。每次探测都取消冻结，不改变模块或便笺的打开状态。
+fn wait_for_sticky_page(host: &DesktopHost, label: &str) -> anyhow::Result<()> {
+    let pool = &host.kernel().context().window_pool;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    loop {
+        let report = pool.request_close_flush(label, std::time::Duration::from_millis(500))?;
+        pool.cancel_close_flush(label, report.request_id)?;
+        if report.outcome == CloseFlushOutcome::Saved {
+            return Ok(());
+        }
+        anyhow::ensure!(
+            std::time::Instant::now() < deadline,
+            "sticky page did not become ready: {:?}",
+            report.outcome
+        );
+    }
+}
+
 /// 读取真实 AppKit 关系和窗口顺序，防止“两个窗口都存在”掩盖工具栏被画布遮住。
 #[cfg(target_os = "macos")]
 fn check_ink_toolbar_stacking(app: &AppHandle) -> anyhow::Result<()> {
@@ -217,6 +237,7 @@ pub(super) fn run_ui_smoke_checks(app: AppHandle, keep_open: bool) {
                 app.get_webview_window(&label).is_some(),
                 "sticky note WebView"
             );
+            wait_for_sticky_page(&host, &label)?;
             host.kernel().set_module_enabled("sticky_note", false)?;
             anyhow::ensure!(
                 wait_until(|| app.get_webview_window(&label).is_none()),

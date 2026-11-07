@@ -1,8 +1,12 @@
 //! 键盘、鼠标输入能力的原生实现。
 use super::{native_error, NativeOsHal};
 use crate::{HalResult, InputSimulator};
-use enigo::{Axis, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
-use std::{sync::atomic::Ordering, time::Duration};
+use enigo::{Axis, Coordinate, Enigo, Mouse, Settings};
+#[cfg(not(target_os = "windows"))]
+use enigo::{Direction, Key, Keyboard};
+use std::sync::atomic::Ordering;
+#[cfg(not(target_os = "windows"))]
+use std::time::Duration;
 
 impl NativeOsHal {
     fn input_connection(&self) -> HalResult<Enigo> {
@@ -15,6 +19,7 @@ impl NativeOsHal {
         Enigo::new(&settings).map_err(native_error)
     }
 
+    #[cfg(not(target_os = "windows"))]
     fn send_modified_key(&self, key_char: char) -> HalResult<()> {
         #[cfg(target_os = "macos")]
         let keycode = mac_shortcut_keycode(key_char)?;
@@ -51,6 +56,8 @@ impl InputSimulator for NativeOsHal {
                 .filter(|pid| *pid > 0 && *pid as u32 != std::process::id());
             *self.paste_target.lock().unwrap_or_else(|e| e.into_inner()) = pid;
         }
+        #[cfg(target_os = "windows")]
+        super::windows::input::remember_paste_target(self)?;
         Ok(())
     }
 
@@ -72,16 +79,31 @@ impl InputSimulator for NativeOsHal {
     }
     fn send_paste_shortcut(&self) -> HalResult<()> {
         self.check_input_permission()?;
-        // Give the previous application time to regain focus after the transient popup closes.
-        std::thread::sleep(Duration::from_millis(140));
-        #[cfg(target_os = "macos")]
-        self.restore_paste_target()?;
-        self.send_modified_key('v')?;
-        self.paste_triggers.fetch_add(1, Ordering::SeqCst);
-        Ok(())
+        #[cfg(target_os = "windows")]
+        {
+            super::windows::input::restore_and_paste(self)?;
+            self.paste_triggers.fetch_add(1, Ordering::SeqCst);
+            return Ok(());
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            // Give the previous application time to regain focus after the transient popup closes.
+            std::thread::sleep(Duration::from_millis(140));
+            #[cfg(target_os = "macos")]
+            self.restore_paste_target()?;
+            self.send_modified_key('v')?;
+            self.paste_triggers.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
     }
 
     fn send_copy_shortcut(&self) -> HalResult<()> {
+        #[cfg(target_os = "windows")]
+        {
+            self.check_input_permission()?;
+            return super::windows::input::send_shortcut('c', None);
+        }
+        #[cfg(not(target_os = "windows"))]
         self.send_modified_key('c')
     }
 

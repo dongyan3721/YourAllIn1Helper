@@ -20,11 +20,12 @@ impl NativeOsHal {
         unsafe {
             SetWindowPos(
                 HWND(handle as *mut std::ffi::c_void),
-                if topmost {
+                // 显式传入 Z 序句柄，适配 windows-rs 的可选参数类型。
+                Some(if topmost {
                     HWND_TOPMOST
                 } else {
                     HWND_NOTOPMOST
-                },
+                }),
                 0,
                 0,
                 0,
