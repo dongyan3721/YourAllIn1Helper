@@ -182,7 +182,7 @@
       <section class="vault-card vault-change">
         <div class="vault-change-heading">
           <div>
-            <h3>Touch ID</h3>
+            <h3>{{ vaultText('biometricName') }}</h3>
             <small>{{ status.biometric_enrolled ? vaultText('biometricEnabledHint') : vaultText('biometricNeedEnroll') }}</small>
           </div>
         </div>
