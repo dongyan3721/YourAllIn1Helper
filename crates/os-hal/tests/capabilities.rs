@@ -190,7 +190,9 @@ fn windows_ui_hierarchy_returns_real_chain_for_requested_qa_process() {
                     .all(|pair| pair[0].parent_id == Some(pair[1].region_id)));
                 successful_chains += 1;
             }
-            Err(HalError::Unsupported(_)) => {}
+            Err(HalError::Unsupported(reason)) => {
+                eprintln!("UIA sample ({x}, {y}) unsupported: {reason}");
+            }
             Err(other) => panic!("unexpected Windows UIAutomation error: {other}"),
         }
     }
