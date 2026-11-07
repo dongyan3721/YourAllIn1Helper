@@ -7,7 +7,7 @@ use std::{collections::HashSet, thread};
 use windows::{
     core::{Interface, BOOL, HRESULT},
     Win32::{
-        Foundation::{HWND, LPARAM, RECT},
+        Foundation::{HWND, LPARAM, POINT, RECT},
         System::Com::{
             CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER,
             COINIT_MULTITHREADED,
@@ -159,27 +159,74 @@ fn query_on_worker(x: i32, y: i32) -> HalResult<Vec<DetectedRegionRect>> {
     }
     let walker = unsafe { automation.ControlViewWalker() }
         .map_err(|error| map_uia_error("无法创建 UIAutomation 控件树遍历器", error))?;
-    let mut budget = 0;
-    let leaf = find_hit_element(&root, &walker, x, y, 0, &mut budget)?
-        .ok_or(HalError::Unsupported("windows_uiautomation_hit_element"))?;
-
+    // WinUI provider 会过滤部分宿主父节点；命中点直查后用 Raw View 验证完整 HWND 父链。
+    let raw_walker = unsafe { automation.RawViewWalker() }
+        .map_err(|error| map_uia_error("无法创建 UIAutomation 原始树遍历器", error))?;
     let root_node = UiNode {
         identity: 0,
         rect: target.rect,
         label: element_name(&root),
     };
+    let direct_hit = match element_from_point(&automation, x, y) {
+        Ok(Some(element))
+            if unsafe { element.CurrentProcessId() }
+                .map_err(|error| map_uia_error("读取光标处控件进程失败", error))?
+                == target.process_id as i32
+                && element_rect(&element)?.is_some_and(|rect| rect.contains(x, y)) =>
+        {
+            Some(element)
+        }
+        Ok(_) | Err(HalError::Unsupported(_)) => None,
+        Err(error) => return Err(error),
+    };
+    let direct_chain = match direct_hit {
+        Some(element) => ancestry_chain(&automation, &raw_walker, &element, &root)?,
+        None => None,
+    };
+    let chain = match direct_chain.filter(|chain| !chain.is_empty()) {
+        Some(chain) => chain,
+        None => {
+            let mut budget = 0;
+            let leaf = find_hit_element(&root, target.rect, &walker, x, y, 0, &mut budget)?
+                .ok_or(HalError::Unsupported("windows_uiautomation_hit_element"))?;
+            ancestry_chain(&automation, &raw_walker, &leaf, &root)?
+                .filter(|chain| !chain.is_empty())
+                .ok_or(HalError::Unsupported(
+                    "windows_uiautomation_incomplete_ancestry",
+                ))?
+        }
+    };
+    regions_from_chain(&chain, &root_node)
+}
+
+fn element_from_point(
+    automation: &IUIAutomation,
+    x: i32,
+    y: i32,
+) -> HalResult<Option<IUIAutomationElement>> {
+    let method = Interface::vtable(automation).ElementFromPoint;
+    let mut result = std::ptr::null_mut();
+    let status = unsafe { method(automation.as_raw(), POINT { x, y }, &mut result) };
+    unsafe { take_uia_element(status, result, "查询 UIAutomation 屏幕点失败") }
+}
+
+fn ancestry_chain(
+    automation: &IUIAutomation,
+    walker: &IUIAutomationTreeWalker,
+    leaf: &IUIAutomationElement,
+    root: &IUIAutomationElement,
+) -> HalResult<Option<Vec<UiNode>>> {
     let mut chain = Vec::new();
-    // CompareElements 使用 UIA provider 身份；保留所有已比较的代理引用，避免地址复用误判。
     let mut held_elements = Vec::new();
-    let mut current = leaf;
+    let mut current = leaf.clone();
     let mut reached_root = false;
     for _ in 0..MAX_TREE_DEPTH {
-        if contains_element(&automation, std::slice::from_ref(&root), &current)? {
+        if contains_element(automation, std::slice::from_ref(root), &current)? {
             reached_root = true;
             break;
         }
-        if contains_element(&automation, &held_elements, &current)? {
-            break;
+        if contains_element(automation, &held_elements, &current)? {
+            return Ok(None);
         }
         held_elements.push(current.clone());
         if let Some(rect) = element_rect(&current)? {
@@ -189,18 +236,16 @@ fn query_on_worker(x: i32, y: i32) -> HalResult<Vec<DetectedRegionRect>> {
                 label: element_name(&current),
             });
         }
-        let Some(parent) = walker_element(&walker, &current, WalkerRelation::Parent)? else {
-            break;
+        let Some(parent) = walker_element(walker, &current, WalkerRelation::Parent)? else {
+            return Ok(None);
         };
         current = parent;
     }
-    if !reached_root {
-        // provider 提前返回空父节点、形成循环或超深时，不能补造到 HWND 的父子关系。
-        return Err(HalError::Unsupported(
-            "windows_uiautomation_incomplete_ancestry",
-        ));
-    }
-    regions_from_chain(&chain, &root_node)
+    Ok(complete_ancestry(chain, reached_root))
+}
+
+fn complete_ancestry(chain: Vec<UiNode>, reached_root: bool) -> Option<Vec<UiNode>> {
+    (reached_root && !chain.is_empty()).then_some(chain)
 }
 
 fn topmost_external_window_at(x: i32, y: i32) -> HalResult<Option<TargetWindow>> {
@@ -265,6 +310,7 @@ fn topmost_external_window_at(x: i32, y: i32) -> HalResult<Option<TargetWindow>>
 
 fn find_hit_element(
     element: &IUIAutomationElement,
+    root_rect: PhysicalRect,
     walker: &IUIAutomationTreeWalker,
     x: i32,
     y: i32,
@@ -276,7 +322,12 @@ fn find_hit_element(
             "UIAutomation 控件树超过安全深度上限".into(),
         ));
     }
-    let Some(rect) = element_rect(element)? else {
+    let rect = if depth == 0 {
+        Some(root_rect)
+    } else {
+        element_rect(element)?
+    };
+    let Some(rect) = rect else {
         return Ok(None);
     };
     if !rect.contains(x, y) {
@@ -302,7 +353,8 @@ fn find_hit_element(
             ));
         }
         if element_rect(&child)?.is_some_and(|rect| rect.contains(x, y)) {
-            if let Some(hit) = find_hit_element(&child, walker, x, y, depth + 1, budget)? {
+            if let Some(hit) = find_hit_element(&child, root_rect, walker, x, y, depth + 1, budget)?
+            {
                 best = Some(hit);
             }
         }
@@ -333,15 +385,19 @@ fn walker_element(
     };
     let mut result = std::ptr::null_mut();
     let status = unsafe { method(walker.as_raw(), element.as_raw(), &mut result) };
-    let has_value = match interface_result_has_value(
-        status,
-        result.is_null(),
-        "调用 UIAutomation 控件树遍历器失败",
-    ) {
+    unsafe { take_uia_element(status, result, "调用 UIAutomation 控件树遍历器失败") }
+}
+
+unsafe fn take_uia_element(
+    status: HRESULT,
+    result: *mut std::ffi::c_void,
+    context: &str,
+) -> HalResult<Option<IUIAutomationElement>> {
+    let has_value = match interface_result_has_value(status, result.is_null(), context) {
         Ok(has_value) => has_value,
         Err(error) => {
             if !result.is_null() {
-                drop(unsafe { IUIAutomationElement::from_raw(result) });
+                drop(IUIAutomationElement::from_raw(result));
             }
             return Err(error);
         }
@@ -349,7 +405,7 @@ fn walker_element(
     if !has_value {
         return Ok(None);
     }
-    Ok(Some(unsafe { IUIAutomationElement::from_raw(result) }))
+    Ok(Some(IUIAutomationElement::from_raw(result)))
 }
 
 fn interface_result_has_value(status: HRESULT, is_null: bool, context: &str) -> HalResult<bool> {

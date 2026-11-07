@@ -85,3 +85,11 @@ fn walker_result_keeps_success_null_distinct_from_hresult_failure() {
         Err(HalError::NativeCallFailed(_))
     ));
 }
+
+#[test]
+fn incomplete_parent_chain_never_gets_a_synthetic_window_parent() {
+    let chain = vec![node(2, rect(10, 10, 50, 50), "control")];
+    assert!(complete_ancestry(chain.clone(), false).is_none());
+    assert!(complete_ancestry(chain, true).is_some());
+    assert!(complete_ancestry(Vec::new(), true).is_none());
+}
