@@ -14,7 +14,9 @@ use windows::Win32::{
         Memory::{GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE},
         Ole::CF_UNICODETEXT,
     },
-    UI::WindowsAndMessaging::{CreateWindowExW, DestroyWindow, HWND_MESSAGE, WINDOW_EX_STYLE, WINDOW_STYLE},
+    UI::WindowsAndMessaging::{
+        CreateWindowExW, DestroyWindow, HWND_MESSAGE, WINDOW_EX_STYLE, WINDOW_STYLE,
+    },
 };
 
 #[test]
@@ -95,6 +97,8 @@ fn credential_target_names_are_confined_to_app_namespace() {
     assert!(outside.to_string().contains("命名空间"), "{}", outside);
     let spoof = secret_win::credential_target_name("evil.com.allinone.desktop", "x").unwrap_err();
     assert!(spoof.to_string().contains("命名空间"), "{}", spoof);
+    assert!(secret_win::credential_target_name("com.allinone.desktop-other", "x").is_err());
+    assert!(secret_win::credential_target_name("com.allinone.desktopOther", "x").is_err());
 }
 
 #[test]
@@ -128,7 +132,10 @@ fn win32_error_codes_map_to_actionable_hal_errors() {
     assert_eq!(secret_win::win32_error_code(0x80070005u32 as i32), 5);
     // 拒绝访问 → 权限错误（带能力名与指引）。
     match secret_win::cred_error("写入", 5) {
-        HalError::PermissionDenied { capability, guidance } => {
+        HalError::PermissionDenied {
+            capability,
+            guidance,
+        } => {
             assert_eq!(capability, "credential_manager");
             assert!(guidance.contains("写入"));
         }

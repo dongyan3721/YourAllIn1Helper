@@ -148,6 +148,21 @@ fn macos_ui_hierarchy_reports_real_chain_or_permission_denied() {
 #[ignore = "需要真实桌面；只读查询外部窗口 UIAutomation 控件链，显式运行"]
 fn windows_ui_hierarchy_reports_real_chain_or_unsupported_provider() {
     use os_hal::{RegionDetector, WindowController};
+    use windows::Win32::UI::HiDpi::{
+        SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT,
+        DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+    };
+    struct DpiGuard(DPI_AWARENESS_CONTEXT);
+    impl Drop for DpiGuard {
+        fn drop(&mut self) {
+            unsafe { SetThreadDpiAwarenessContext(self.0) };
+        }
+    }
+    // 测试进程没有 Tauri 的 DPI 清单，枚举和查询必须使用同一物理坐标系。
+    let previous =
+        unsafe { SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
+    assert!(!previous.0.is_null());
+    let _dpi = DpiGuard(previous);
     let native = NativeOsHal::new();
     // 人工桌面 QA 可先激活指定应用，避免随机选到没有 UIA 控件的工具窗口。
     let requested_process = std::env::var("AIO_UIA_SMOKE_PROCESS").ok();
@@ -172,25 +187,36 @@ fn windows_ui_hierarchy_reports_real_chain_or_unsupported_provider() {
         );
         return;
     };
-    let x = window.x + window.width as i32 / 2;
-    let y = window.y + window.height as i32 / 2;
-    match native.query_ui_hierarchy_at_point(x, y) {
-        Ok(chain) => {
-            eprintln!("Windows UIAutomation returned {} region(s)", chain.len());
-            assert!(chain.len() >= 2, "控件和顶层窗口必须都真实返回");
-            assert_eq!(
-                chain.last().unwrap().level,
-                app_core::RegionHierarchyLevel::TopLevelWindow
-            );
-            assert!(chain
-                .windows(2)
-                .all(|pair| pair[0].parent_id == Some(pair[1].region_id)));
+    let points = [
+        (window.width as i32 / 2, window.height as i32 / 2),
+        (window.width as i32 / 3, window.height as i32 / 3),
+        (40, 60),
+        (100, 120),
+    ];
+    for (dx, dy) in points {
+        match native.query_ui_hierarchy_at_point(window.x + dx, window.y + dy) {
+            Ok(chain) => {
+                eprintln!("Windows UIAutomation returned {} region(s)", chain.len());
+                assert!(chain.len() >= 2, "控件和顶层窗口必须都真实返回");
+                assert_eq!(
+                    chain.last().unwrap().level,
+                    app_core::RegionHierarchyLevel::TopLevelWindow
+                );
+                assert!(chain
+                    .windows(2)
+                    .all(|pair| pair[0].parent_id == Some(pair[1].region_id)));
+                return;
+            }
+            Err(HalError::Unsupported(capability)) => {
+                eprintln!("Windows UIAutomation unavailable: {capability}");
+            }
+            Err(other) => panic!("unexpected Windows UIAutomation error: {other}"),
         }
-        Err(HalError::Unsupported(capability)) => {
-            eprintln!("Windows UIAutomation unavailable: {capability}");
-        }
-        Err(other) => panic!("unexpected Windows UIAutomation error: {other}"),
     }
+    assert!(
+        requested_process.is_none(),
+        "requested QA application returned no UIAutomation control chain"
+    );
 }
 
 #[cfg(target_os = "windows")]

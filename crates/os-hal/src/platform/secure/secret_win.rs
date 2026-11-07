@@ -38,10 +38,7 @@ pub(super) fn win32_error_code(hresult: i32) -> u32 {
 /// 校验 service / account 片段：非空、不含 `/`（TargetName 分隔符，避免歧义）、不含 NUL。
 fn validate_name_part(part: &str, what: &str) -> HalResult<()> {
     if part.is_empty() {
-        return Err(HalError::NativeCallFailed(format!(
-            "凭据{}不能为空",
-            what
-        )));
+        return Err(HalError::NativeCallFailed(format!("凭据{}不能为空", what)));
     }
     if part.contains('/') {
         return Err(HalError::NativeCallFailed(format!(
@@ -62,7 +59,7 @@ fn validate_name_part(part: &str, what: &str) -> HalResult<()> {
 pub(super) fn credential_target_name(service: &str, account: &str) -> HalResult<String> {
     validate_name_part(service, "服务名")?;
     validate_name_part(account, "账户名")?;
-    if !service.starts_with(APP_NAMESPACE) {
+    if service != APP_NAMESPACE && !service.starts_with(&format!("{APP_NAMESPACE}.")) {
         return Err(HalError::NativeCallFailed(format!(
             "凭据服务名必须以本应用命名空间 '{}' 开头（实际：{}）",
             APP_NAMESPACE, service
@@ -173,9 +170,8 @@ pub(super) fn set_secret(service: &str, account: &str, secret: &[u8]) -> HalResu
     cred.CredentialBlob = secret.as_ptr() as *mut u8;
     cred.Persist = CRED_PERSIST_LOCAL_MACHINE;
     // SAFETY: cred 结构完整且字段内存有效。
-    unsafe { CredWriteW(&cred, 0) }.map_err(|error| {
-        cred_error("写入", win32_error_code(error.code().0))
-    })
+    unsafe { CredWriteW(&cred, 0) }
+        .map_err(|error| cred_error("写入", win32_error_code(error.code().0)))
 }
 
 /// 删除条目；不存在视为成功。

@@ -31,7 +31,9 @@ use windows::{
             Memory::{GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE},
             Ole::CF_UNICODETEXT,
         },
-        UI::WindowsAndMessaging::{CreateWindowExW, DestroyWindow, HWND_MESSAGE, WINDOW_EX_STYLE, WINDOW_STYLE},
+        UI::WindowsAndMessaging::{
+            CreateWindowExW, DestroyWindow, HWND_MESSAGE, WINDOW_EX_STYLE, WINDOW_STYLE,
+        },
     },
 };
 
@@ -45,7 +47,7 @@ pub(super) const HISTORY_OPT_OUT_FORMAT: &str = "CanIncludeInClipboardHistory";
 pub(super) const CLOUD_OPT_OUT_FORMAT: &str = "CanUploadToCloudClipboard";
 
 /// 本应用私有唯一标记格式：载荷为每次写入独有的 8 字节值，用于在重新打开后
-/// 证明「当前剪贴板内容仍是本次写入」（比文本比较可靠：同文本的用户复制也带不走/仿不了该标记）。
+/// 验证普通复制是否已经替换本次写入；标记不是针对恶意同用户进程的访问控制。
 pub(super) const WRITE_PROBE_FORMAT: &str = "com.allinone.desktop.ClipboardWriteProbe";
 
 /// 动态 GIF 主格式名（MIME 命名，对应 macOS `com.compuserve.gif`）。
@@ -237,6 +239,10 @@ fn read_format_bytes(format: u32) -> Option<Vec<u8>> {
     let hglobal = HGLOBAL(handle.0);
     unsafe {
         let size = GlobalSize(hglobal);
+        // 私有标记只有 8 字节，不复制其他程序可能放入的任意大小数据。
+        if size != 8 {
+            return None;
+        }
         let view = GlobalLock(hglobal);
         if view.is_null() {
             return None;
@@ -327,8 +333,9 @@ pub(super) fn write_concealed_text_with_hook(
             let _ = unsafe { EmptyClipboard() };
             return Err(error);
         }
-        let probe_format = register_format(WRITE_PROBE_FORMAT)?;
-        if let Err(error) = set_format("写入所有权标记", probe_format, &marker) {
+        if let Err(error) = register_format(WRITE_PROBE_FORMAT)
+            .and_then(|format| set_format("写入所有权标记", format, &marker))
+        {
             // SAFETY: 同一打开窗口内清空是安全的失败回滚。
             let _ = unsafe { EmptyClipboard() };
             return Err(error);
