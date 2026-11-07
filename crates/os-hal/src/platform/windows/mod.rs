@@ -1,6 +1,10 @@
 //! 外部窗口能力入口，按系统选择具体实现。
+#[cfg(target_os = "windows")]
+pub(super) mod input;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(target_os = "windows")]
+pub(super) mod regions;
 #[cfg(target_os = "windows")]
 mod win32;
 use super::{native_error, NativeOsHal};

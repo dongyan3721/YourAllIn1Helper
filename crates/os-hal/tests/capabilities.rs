@@ -135,9 +135,42 @@ fn macos_ui_hierarchy_reports_real_chain_or_permission_denied() {
                 assert!(r.width >= 4 && r.height >= 4);
             }
         }
+
         Err(HalError::PermissionDenied { capability, .. }) => {
             assert_eq!(capability, "accessibility")
         }
         Err(other) => panic!("unexpected AX error: {other}"),
+    }
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+#[ignore = "需要真实桌面；只读查询外部窗口 UIAutomation 控件链，显式运行"]
+fn windows_ui_hierarchy_reports_real_chain_or_unsupported_provider() {
+    use os_hal::{RegionDetector, WindowController};
+    let native = NativeOsHal::new();
+    let Some(window) = native
+        .list_external_windows()
+        .unwrap_or_default()
+        .into_iter()
+        .find(|window| window.width > 100 && window.height > 100)
+    else {
+        return;
+    };
+    let x = window.x + window.width as i32 / 2;
+    let y = window.y + window.height as i32 / 2;
+    match native.query_ui_hierarchy_at_point(x, y) {
+        Ok(chain) => {
+            assert!(chain.len() >= 2, "控件和顶层窗口必须都真实返回");
+            assert_eq!(
+                chain.last().unwrap().level,
+                app_core::RegionHierarchyLevel::TopLevelWindow
+            );
+            assert!(chain
+                .windows(2)
+                .all(|pair| pair[0].parent_id == Some(pair[1].region_id)));
+        }
+        Err(HalError::Unsupported(_)) => {}
+        Err(other) => panic!("unexpected Windows UIAutomation error: {other}"),
     }
 }
