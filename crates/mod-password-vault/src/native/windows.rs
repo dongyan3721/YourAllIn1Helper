@@ -19,16 +19,18 @@ use windows::Win32::{
             RegisterSuspendResumeNotification, UnregisterSuspendResumeNotification, HPOWERNOTIFY,
         },
         RemoteDesktop::{
-            WTSRegisterSessionNotification, WTSUnRegisterSessionNotification, NOTIFY_FOR_THIS_SESSION,
+            WTSRegisterSessionNotification, WTSUnRegisterSessionNotification,
+            NOTIFY_FOR_THIS_SESSION,
         },
     },
     UI::WindowsAndMessaging::{
-        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW, PostMessageW,
-        PostQuitMessage, RegisterClassW, SendMessageW, TranslateMessage, DEVICE_NOTIFY_WINDOW_HANDLE,
-        HCURSOR, HICON, MSG, PBT_APMSUSPEND, PBT_APMRESUMEAUTOMATIC, PBT_APMRESUMESUSPEND,
-        WM_CLOSE, WM_DESTROY, WM_ENDSESSION, WM_POWERBROADCAST, WM_QUERYENDSESSION,
-        WM_WTSSESSION_CHANGE, WNDCLASSW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP,
-        WTS_CONSOLE_DISCONNECT, WTS_REMOTE_DISCONNECT, WTS_SESSION_LOCK, WTS_SESSION_LOGOFF,
+        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW,
+        PostMessageW, PostQuitMessage, RegisterClassW, SendMessageW, TranslateMessage,
+        DEVICE_NOTIFY_WINDOW_HANDLE, HCURSOR, HICON, MSG, PBT_APMRESUMEAUTOMATIC,
+        PBT_APMRESUMESUSPEND, PBT_APMSUSPEND, WM_CLOSE, WM_DESTROY, WM_ENDSESSION,
+        WM_POWERBROADCAST, WM_QUERYENDSESSION, WM_WTSSESSION_CHANGE, WNDCLASSW, WS_EX_NOACTIVATE,
+        WS_EX_TOOLWINDOW, WS_POPUP, WTS_CONSOLE_DISCONNECT, WTS_REMOTE_DISCONNECT,
+        WTS_SESSION_LOCK, WTS_SESSION_LOGOFF,
     },
 };
 
@@ -83,24 +85,30 @@ pub struct NativeVaultObserver {
 impl NativeVaultObserver {
     pub fn start(service: Arc<VaultService>) -> VaultResult<Self> {
         let (tx, rx) = mpsc::channel();
+        let (confirm_tx, confirm_rx) = mpsc::channel();
         let thread = thread::Builder::new()
             .name("password-vault-session".to_string())
-            .spawn(move || session_thread(service, tx))
+            .spawn(move || session_thread(service, tx, confirm_rx))
             .map_err(|_| {
                 VaultError::FeatureDisabled("windows session observer thread did not start")
             })?;
         match rx.recv_timeout(Duration::from_secs(5)) {
-            Ok(Ok(raw)) => Ok(Self {
-                hwnd: Some(HWND(raw as *mut core::ffi::c_void)),
-                thread: Some(thread),
-            }),
+            Ok(Ok(raw)) => {
+                // 两阶段就绪握手：调用方已接管 HWND 后，工作线程才进入消息泵。
+                let _ = confirm_tx.send(());
+                Ok(Self {
+                    hwnd: Some(HWND(raw as *mut core::ffi::c_void)),
+                    thread: Some(thread),
+                })
+            }
             Ok(Err(error)) => {
                 let _ = thread.join();
                 Err(error)
             }
             Err(_) => {
                 tracing::error!("windows session observer did not become ready");
-                std::mem::forget(thread);
+                // Drop 只分离线程，不泄漏 JoinHandle；确认通道断开后工作线程会自行清理。
+                drop(thread);
                 Err(VaultError::FeatureDisabled(
                     "windows session observer timed out",
                 ))
@@ -134,16 +142,32 @@ impl Drop for NativeVaultObserver {
     }
 }
 
-fn session_thread(service: Arc<VaultService>, tx: mpsc::Sender<VaultResult<isize>>) {
+fn session_thread(
+    service: Arc<VaultService>,
+    tx: mpsc::Sender<VaultResult<isize>>,
+    confirmation: mpsc::Receiver<()>,
+) {
     match setup(service) {
         Ok(hwnd) => {
-            let _ = tx.send(Ok(hwnd));
-            run_loop();
+            if tx.send(Ok(hwnd)).is_ok() && confirmation.recv().is_ok() {
+                run_loop();
+            }
+            // 启动接收端退出、超时、消息泵错误都在创建窗口的线程内回收。
+            cleanup_window(HWND(hwnd as *mut core::ffi::c_void));
         }
         Err(error) => {
             let _ = tx.send(Err(error));
         }
     }
+}
+
+#[cfg(test)]
+pub(crate) fn abandoned_start_for_test(service: Arc<VaultService>) {
+    let (ready_tx, ready_rx) = mpsc::channel();
+    let (confirm_tx, confirm_rx) = mpsc::channel();
+    drop(ready_rx);
+    drop(confirm_tx);
+    session_thread(service, ready_tx, confirm_rx);
 }
 
 fn setup(service: Arc<VaultService>) -> VaultResult<isize> {
@@ -166,7 +190,10 @@ fn setup(service: Arc<VaultService>) -> VaultResult<isize> {
         )
     }
     .map_err(|error| {
-        tracing::warn!(code = error.code().0, "vault session window was not created");
+        tracing::warn!(
+            code = error.code().0,
+            "vault session window was not created"
+        );
         VaultError::FeatureDisabled("windows session observer could not create its window")
     })?;
     let raw = hwnd.0 as isize;
@@ -212,12 +239,14 @@ fn register_class() -> VaultResult<()> {
 
 fn register_notifications(hwnd: HWND) -> VaultResult<()> {
     unsafe { WTSRegisterSessionNotification(hwnd, NOTIFY_FOR_THIS_SESSION) }.map_err(|error| {
-        tracing::warn!(code = error.code().0, "WTSRegisterSessionNotification failed");
+        tracing::warn!(
+            code = error.code().0,
+            "WTSRegisterSessionNotification failed"
+        );
         VaultError::FeatureDisabled("windows session notifications are unavailable")
     })?;
-    match unsafe {
-        RegisterSuspendResumeNotification(HANDLE(hwnd.0), DEVICE_NOTIFY_WINDOW_HANDLE)
-    } {
+    match unsafe { RegisterSuspendResumeNotification(HANDLE(hwnd.0), DEVICE_NOTIFY_WINDOW_HANDLE) }
+    {
         Ok(handle) => {
             if let Some(slot) = slots()
                 .as_mut()
@@ -244,9 +273,7 @@ fn register_notifications(hwnd: HWND) -> VaultResult<()> {
 
 fn cleanup_window(hwnd: HWND) {
     unregister(hwnd);
-    slots()
-        .as_mut()
-        .map(|map| map.remove(&(hwnd.0 as isize)));
+    slots().as_mut().map(|map| map.remove(&(hwnd.0 as isize)));
     unsafe {
         let _ = DestroyWindow(hwnd);
     }
@@ -255,11 +282,14 @@ fn cleanup_window(hwnd: HWND) {
 fn unregister(hwnd: HWND) {
     let power = {
         let mut guard = slots();
-        guard.as_mut().and_then(|map| map.get_mut(&(hwnd.0 as isize))).map(|slot| {
-            let power = slot.power;
-            slot.power = 0;
-            power
-        })
+        guard
+            .as_mut()
+            .and_then(|map| map.get_mut(&(hwnd.0 as isize)))
+            .map(|slot| {
+                let power = slot.power;
+                slot.power = 0;
+                power
+            })
     };
     if let Some(power) = power.filter(|power| *power != 0) {
         unsafe {
@@ -307,9 +337,7 @@ unsafe extern "system" fn wnd_proc(
             LRESULT(0)
         }
         WM_DESTROY => {
-            slots()
-                .as_mut()
-                .map(|map| map.remove(&(hwnd.0 as isize)));
+            slots().as_mut().map(|map| map.remove(&(hwnd.0 as isize)));
             unsafe { PostQuitMessage(0) };
             LRESULT(0)
         }

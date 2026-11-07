@@ -63,28 +63,57 @@ fn vault_error(error: mod_password_vault::VaultError) -> String {
     error.to_string()
 }
 
-/// 用共享租约挡住剪贴板历史，30 秒后仅当内容仍是这次写入时才清除。
-fn copy_secret_with_lease(ctx: &app_core::ModuleContext, secret: &str) -> Result<(), String> {
+/// 后台只持有不含明文的所有权凭证。清理时由系统序号判断，不比较秘密内容。
+struct PendingSecretCopy {
+    clipboard: Arc<dyn os_hal::ClipboardOwnership>,
+    token: os_hal::ClipboardWriteToken,
+    _lease: app_core::ClipboardSuppressionLease,
+}
+
+impl Drop for PendingSecretCopy {
+    fn drop(&mut self) {
+        if let Err(error) = self.clipboard.clear_if_unchanged(&self.token) {
+            tracing::warn!(%error, "Failed to expire vault clipboard ownership");
+        }
+    }
+}
+
+fn write_secret_with_lease(
+    ctx: &app_core::ModuleContext,
+    clipboard: Arc<dyn os_hal::ClipboardOwnership>,
+    secret: &str,
+) -> Result<PendingSecretCopy, String> {
     let lease = ctx.event_bus.acquire_clipboard_suppression(
         "password_vault",
         "secret_copy",
         std::time::Duration::from_secs(35),
     );
-    let mut clipboard = arboard::Clipboard::new().map_err(|error| error.to_string())?;
-    clipboard
-        .set_text(secret)
+    let token = clipboard
+        .write_concealed_text(secret)
         .map_err(|error| error.to_string())?;
-    let expected = secret.to_string();
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_secs(30));
-        if let Ok(mut board) = arboard::Clipboard::new() {
-            if board.get_text().ok().as_deref() == Some(expected.as_str()) {
-                let _ = board.clear();
-            }
-        }
-        drop(lease);
-    });
-    Ok(())
+    Ok(PendingSecretCopy {
+        clipboard,
+        token,
+        _lease: lease,
+    })
+}
+
+/// 租约覆盖整个秘密停留窗口；线程创建失败时 guard 也会立即按所有权清理。
+fn copy_secret_with_lease(
+    ctx: &app_core::ModuleContext,
+    clipboard: Arc<dyn os_hal::ClipboardOwnership>,
+    secret: &str,
+) -> Result<os_hal::ClipboardWriteToken, String> {
+    let pending = write_secret_with_lease(ctx, clipboard, secret)?;
+    let token = pending.token;
+    std::thread::Builder::new()
+        .name("vault-clipboard-expiry".into())
+        .spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(30));
+            drop(pending);
+        })
+        .map(|_| token)
+        .map_err(|error| error.to_string())
 }
 
 fn to_json(value: impl Serialize) -> Result<Value, String> {
@@ -166,7 +195,13 @@ impl DesktopHost {
                     .reveal_password(ctx.clone(), &args.id)
                     .await
                     .map_err(vault_error)?;
-                copy_secret_with_lease(&ctx, password.as_str())?;
+                let clipboard = self
+                    .vault_clipboard
+                    .read()
+                    .clone()
+                    .ok_or_else(|| "secure clipboard is unavailable".to_string())?;
+                let mut last_copy = self.last_vault_copy.lock();
+                *last_copy = Some(copy_secret_with_lease(&ctx, clipboard, password.as_str())?);
                 Ok(json!({ "copied": true, "clear_after_secs": 30 }))
             }
             "vault_upsert_entry" => {
@@ -228,3 +263,7 @@ impl DesktopHost {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/vault_clipboard.rs"]
+mod tests;

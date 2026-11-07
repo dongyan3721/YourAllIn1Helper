@@ -16,7 +16,7 @@ use windows::Win32::System::Com::{
 };
 #[cfg(target_os = "windows")]
 use windows::Win32::System::RemoteDesktop::{
-    WTSFreeMemory, WTSQuerySessionInformationW, WTSSessionInfoEx, WTSINFOEXW,
+    WTSActive, WTSFreeMemory, WTSQuerySessionInformationW, WTSSessionInfoEx, WTSINFOEXW,
     WTS_CURRENT_SESSION, WTS_SESSIONSTATE_LOCK, WTS_SESSIONSTATE_UNLOCK,
 };
 #[cfg(target_os = "windows")]
@@ -73,6 +73,10 @@ pub(super) fn query_wts_session_flags() -> HalResult<u32> {
             )));
         }
 
+        // 已断开的会话即使保留 UNLOCK 标志也不可交互，应暂停计时。
+        if info.Data.WTSInfoExLevel1.SessionState != WTSActive {
+            return Ok(WTS_SESSIONSTATE_LOCK);
+        }
         let session_flags = info.Data.WTSInfoExLevel1.SessionFlags as u32;
         Ok(session_flags)
     }
@@ -93,7 +97,8 @@ pub(super) fn check_desktop_switch_permission() -> HalResult<()> {
                 if code == 0x80070005 || code == 5 {
                     Err(HalError::PermissionDenied {
                         capability: "desktop_switch",
-                        guidance: "Input desktop is restricted (locked or secure desktop)".to_string(),
+                        guidance: "Input desktop is restricted (locked or secure desktop)"
+                            .to_string(),
                     })
                 } else {
                     Err(HalError::NativeCallFailed(format!(
@@ -346,14 +351,15 @@ impl NativeOsHal {
                 )));
             };
 
-            let enumerator: IMMDeviceEnumerator = match CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL) {
-                Ok(e) => e,
-                Err(err) => {
-                    return Err(HalError::NativeCallFailed(format!(
-                        "CoCreateInstance MMDeviceEnumerator failed: {err}"
-                    )));
-                }
-            };
+            let enumerator: IMMDeviceEnumerator =
+                match CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL) {
+                    Ok(e) => e,
+                    Err(err) => {
+                        return Err(HalError::NativeCallFailed(format!(
+                            "CoCreateInstance MMDeviceEnumerator failed: {err}"
+                        )));
+                    }
+                };
 
             // 获取默认输出音频设备（渲染端点）
             let device = match enumerator.GetDefaultAudioEndpoint(eRender, eConsole) {

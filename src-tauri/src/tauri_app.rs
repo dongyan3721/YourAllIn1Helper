@@ -1176,6 +1176,8 @@ pub fn run() {
                 );
             })));
             // 仅真实桌面进程向截图模块注入系统剪贴板；无桌面测试保持「不可用」实现。
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
+            host.set_vault_clipboard(Arc::new(os_hal::NativeOsHal::new()));
             host.screenshot.set_clipboard(Arc::new(
                 crate::screenshot_clipboard::ArboardScreenshotClipboard,
             ));
@@ -1410,7 +1412,11 @@ pub fn run() {
                         }
                         // shutdown 等待现有活动租约及窗口操作；主线程必须继续处理 AppKit 事件。
                         let result = tauri::async_runtime::spawn_blocking(move || {
-                            host.map(|host| host.kernel().shutdown()).transpose()
+                            host.map(|host| {
+                                let result = host.kernel().shutdown();
+                                host.clear_vault_clipboard();
+                                result
+                            }).transpose()
                         }).await;
                         match result {
                             Ok(Ok(_)) => {}

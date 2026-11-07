@@ -12,7 +12,7 @@ use parking_lot::Mutex;
 use std::ffi::c_void;
 use std::sync::{mpsc, Arc};
 use std::thread::{self, JoinHandle};
-use windows::core::{w, GUID};
+use windows::core::w;
 use windows::Win32::Foundation::{GetLastError, HANDLE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::Power::{
     RegisterPowerSettingNotification, RegisterSuspendResumeNotification,
@@ -21,6 +21,9 @@ use windows::Win32::System::Power::{
 };
 use windows::Win32::System::RemoteDesktop::{
     WTSRegisterSessionNotification, WTSUnRegisterSessionNotification, NOTIFY_FOR_THIS_SESSION,
+};
+use windows::Win32::System::SystemServices::{
+    GUID_CONSOLE_DISPLAY_STATE, GUID_SESSION_DISPLAY_STATUS,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW,
@@ -32,12 +35,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WTS_SESSION_UNLOCK,
 };
 
-/// 屏幕显示状态通知 GUID：Windows 10+ 会话显示单一权威源
-const GUID_SESSION_DISPLAY_STATUS: GUID =
-    GUID::from_u128(0x2b84c10b_ed39_4dc5_b3ce_e4ed38a3db32);
-/// 控制台显示状态通知 GUID：旧版 Windows 回退源
-const GUID_CONSOLE_DISPLAY_STATE: GUID =
-    GUID::from_u128(0x25df14d1_1c6d_47fb_acb0_44b37494f0c4);
+// 直接使用 SDK 常量，避免 GUID 拼写错误导致注册成功但永远收不到显示事件。
 
 /// 传递给窗口过程的上下文指针
 struct EventMonitorContext {
@@ -99,9 +97,11 @@ unsafe extern "system" fn event_wnd_proc(
                             let guid = setting.PowerSetting;
                             if (guid == GUID_SESSION_DISPLAY_STATUS
                                 || guid == GUID_CONSOLE_DISPLAY_STATE)
-                                && setting.DataLength >= 1
+                                && setting.DataLength == std::mem::size_of::<u32>() as u32
                             {
-                                match setting.Data[0] {
+                                let value =
+                                    std::ptr::read_unaligned(setting.Data.as_ptr().cast::<u32>());
+                                match value {
                                     0 => state.apply(UsageActivityEvent::ScreensDidSleep),
                                     1 | 2 => state.apply(UsageActivityEvent::ScreensDidWake),
                                     _ => {}
@@ -129,10 +129,7 @@ unsafe extern "system" fn event_wnd_proc(
 }
 
 /// 后台监视器工作线程逻辑
-fn run_monitor(
-    state: Arc<UsageActivityState>,
-    ready_tx: mpsc::SyncSender<HalResult<isize>>,
-) {
+fn run_monitor(state: Arc<UsageActivityState>, ready_tx: mpsc::SyncSender<HalResult<isize>>) {
     let context = EventMonitorContext {
         state: Arc::clone(&state),
     };
@@ -194,21 +191,19 @@ fn run_monitor(
         }
 
         // 2. 注册电源睡眠/唤醒通知；失败时清理并报错
-        let suspend_handle = match RegisterSuspendResumeNotification(
-            HANDLE(hwnd.0),
-            DEVICE_NOTIFY_WINDOW_HANDLE,
-        ) {
-            Ok(h) => h,
-            Err(err) => {
-                let _ = WTSUnRegisterSessionNotification(hwnd);
-                let _ = DestroyWindow(hwnd);
-                let _ = UnregisterClassW(class_name, None);
-                let _ = ready_tx.send(Err(HalError::NativeCallFailed(format!(
-                    "RegisterSuspendResumeNotification failed: {err}"
-                ))));
-                return;
-            }
-        };
+        let suspend_handle =
+            match RegisterSuspendResumeNotification(HANDLE(hwnd.0), DEVICE_NOTIFY_WINDOW_HANDLE) {
+                Ok(h) => h,
+                Err(err) => {
+                    let _ = WTSUnRegisterSessionNotification(hwnd);
+                    let _ = DestroyWindow(hwnd);
+                    let _ = UnregisterClassW(class_name, None);
+                    let _ = ready_tx.send(Err(HalError::NativeCallFailed(format!(
+                        "RegisterSuspendResumeNotification failed: {err}"
+                    ))));
+                    return;
+                }
+            };
 
         // 3. 注册屏幕显示状态通知：Windows 10+ 优先使用 GUID_SESSION_DISPLAY_STATUS 单一权威源，
         // 失败时回退到 GUID_CONSOLE_DISPLAY_STATE；若均失败则报错并回收资源，避免多源竞争写入

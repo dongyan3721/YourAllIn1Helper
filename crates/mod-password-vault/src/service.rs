@@ -16,7 +16,13 @@ use crate::{
 use app_core::ModuleContext;
 use chrono::Utc;
 use parking_lot::{Mutex, RwLock};
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::HashSet,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -67,7 +73,7 @@ impl VaultState {
             biometric_available,
             biometric_enrolled: self.device_slot.is_some(),
             device_key_kind,
-            secret_copy_available: true,
+            secret_copy_available: false,
             capability_error: self.capability_error.clone(),
         }
     }
@@ -79,6 +85,7 @@ pub struct VaultService {
     random: Arc<dyn VaultRandom>,
     keystore: Arc<dyn VaultKeyStore>,
     sink: RwLock<Option<Arc<dyn VaultEventSink>>>,
+    secret_copy_available: AtomicBool,
 }
 
 impl Default for VaultService {
@@ -109,12 +116,21 @@ impl VaultService {
             random,
             keystore,
             sink: RwLock::new(None),
+            secret_copy_available: AtomicBool::new(false),
         }
     }
 
     fn view(&self, state: &VaultState) -> VaultStatus {
         // available 只决定界面是否提供入口。解开 DKEK 仍必须走 keystore.unprotect。
-        state.status(self.keystore.available(), self.keystore.device_key_kind())
+        let mut status = state.status(self.keystore.available(), self.keystore.device_key_kind());
+        status.secret_copy_available = self.secret_copy_available.load(Ordering::SeqCst);
+        status
+    }
+
+    /// 宿主完成安全剪贴板适配器装配后才开放复制入口。
+    pub fn set_secret_copy_available(&self, available: bool) {
+        self.secret_copy_available
+            .store(available, Ordering::SeqCst);
     }
 
     pub fn set_event_sink(&self, sink: Option<Arc<dyn VaultEventSink>>) {

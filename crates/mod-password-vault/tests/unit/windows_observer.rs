@@ -3,12 +3,33 @@ use crate::{native::windows, LockReason, VaultService};
 use std::sync::Arc;
 
 #[test]
+fn abandoned_observer_start_releases_its_service_and_window() {
+    let service = Arc::new(VaultService::with_random(Arc::new(
+        super::support::CountingRandom::new(),
+    )));
+    windows::abandoned_start_for_test(Arc::clone(&service));
+    assert_eq!(Arc::strong_count(&service), 1);
+}
+
+#[test]
 fn session_and_power_codes_match_the_documented_values() {
     assert_eq!(7, 0x7);
-    assert_eq!(windows::session_lock_reason(7), Some(LockReason::ScreenLock));
-    assert_eq!(windows::session_lock_reason(2), Some(LockReason::ScreenLock));
-    assert_eq!(windows::session_lock_reason(4), Some(LockReason::ScreenLock));
-    assert_eq!(windows::session_lock_reason(6), Some(LockReason::ScreenLock));
+    assert_eq!(
+        windows::session_lock_reason(7),
+        Some(LockReason::ScreenLock)
+    );
+    assert_eq!(
+        windows::session_lock_reason(2),
+        Some(LockReason::ScreenLock)
+    );
+    assert_eq!(
+        windows::session_lock_reason(4),
+        Some(LockReason::ScreenLock)
+    );
+    assert_eq!(
+        windows::session_lock_reason(6),
+        Some(LockReason::ScreenLock)
+    );
     assert_eq!(windows::session_lock_reason(8), None);
     assert_eq!(windows::session_lock_reason(1), None);
     assert_eq!(windows::power_lock_reason(4), Some(LockReason::Sleep));

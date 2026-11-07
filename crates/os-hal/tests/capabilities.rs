@@ -149,12 +149,27 @@ fn macos_ui_hierarchy_reports_real_chain_or_permission_denied() {
 fn windows_ui_hierarchy_reports_real_chain_or_unsupported_provider() {
     use os_hal::{RegionDetector, WindowController};
     let native = NativeOsHal::new();
+    // 人工桌面 QA 可先激活指定应用，避免随机选到没有 UIA 控件的工具窗口。
+    let requested_process = std::env::var("AIO_UIA_SMOKE_PROCESS").ok();
     let Some(window) = native
         .list_external_windows()
         .unwrap_or_default()
         .into_iter()
-        .find(|window| window.width > 100 && window.height > 100)
+        .find(|window| {
+            window.width > 100
+                && window.height > 100
+                && requested_process.as_ref().is_none_or(|name| {
+                    window
+                        .process_name
+                        .to_lowercase()
+                        .contains(&name.to_lowercase())
+                })
+        })
     else {
+        assert!(
+            requested_process.is_none(),
+            "requested UIA QA application is not visible"
+        );
         return;
     };
     let x = window.x + window.width as i32 / 2;
