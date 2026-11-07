@@ -179,6 +179,12 @@ fn query_on_worker(x: i32, y: i32) -> HalResult<Vec<DetectedRegionRect>> {
         Ok(_) | Err(HalError::Unsupported(_)) => None,
         Err(error) => return Err(error),
     };
+    if let Some(element) = &direct_hit {
+        // 提供者不暴露子控件时，点命中的就是 HWND 根节点。只返回该真实窗口。
+        if contains_element(&automation, std::slice::from_ref(&root), element)? {
+            return regions_from_window_only(&root_node);
+        }
+    }
     let direct_chain = match direct_hit {
         Some(element) => ancestry_chain(&automation, &raw_walker, &element, &root)?,
         None => None,
@@ -189,6 +195,9 @@ fn query_on_worker(x: i32, y: i32) -> HalResult<Vec<DetectedRegionRect>> {
             let mut budget = 0;
             let leaf = find_hit_element(&root, target.rect, &walker, x, y, 0, &mut budget)?
                 .ok_or(HalError::Unsupported("windows_uiautomation_hit_element"))?;
+            if contains_element(&automation, std::slice::from_ref(&root), &leaf)? {
+                return regions_from_window_only(&root_node);
+            }
             ancestry_chain(&automation, &raw_walker, &leaf, &root)?
                 .filter(|chain| !chain.is_empty())
                 .ok_or(HalError::Unsupported(
@@ -453,6 +462,22 @@ fn map_uia_hresult(context: &str, status: HRESULT) -> HalError {
     } else {
         HalError::NativeCallFailed(format!("{context}：HRESULT 0x{:08X}", status.0 as u32))
     }
+}
+
+fn regions_from_window_only(root: &UiNode) -> HalResult<Vec<DetectedRegionRect>> {
+    let Some((width, height)) = root.rect.region_size() else {
+        return Err(HalError::Unsupported("windows_uiautomation_window_bounds"));
+    };
+    Ok(vec![DetectedRegionRect {
+        region_id: REGION_ID_BASE,
+        parent_id: None,
+        level: RegionHierarchyLevel::TopLevelWindow,
+        x: root.rect.left,
+        y: root.rect.top,
+        width,
+        height,
+        label: root.label.clone(),
+    }])
 }
 
 fn regions_from_chain(nodes: &[UiNode], root: &UiNode) -> HalResult<Vec<DetectedRegionRect>> {

@@ -166,6 +166,19 @@ fn windows_ui_hierarchy_returns_real_chain_for_requested_qa_process() {
     else {
         panic!("requested UIA QA application is not visible");
     };
+    // 先尝试把目标放到前台。置顶窗口仍可能挡住采样点，后面按真实 Z 序剔除。
+    let _ = native.activate_external_window(window.handle);
+    eprintln!(
+        "UIA QA window pid={} process={} title={} rect={},{} {}x{} handle={}",
+        window.process_id,
+        window.process_name,
+        window.title,
+        window.x,
+        window.y,
+        window.width,
+        window.height,
+        window.handle
+    );
 
     let samples = [
         (1, 4, 1, 4),
@@ -175,9 +188,28 @@ fn windows_ui_hierarchy_returns_real_chain_for_requested_qa_process() {
         (3, 4, 2, 3),
     ];
     let mut successful_chains = 0;
+    let mut covered_points = 0;
+    let mut queried_points = 0;
     for (x_num, x_den, y_num, y_den) in samples {
         let x = window.x + (window.width as i64 * x_num / x_den) as i32;
         let y = window.y + (window.height as i64 * y_num / y_den) as i32;
+        match topmost_external_window_at(x, y) {
+            Some(hit) if hit.hwnd == window.handle as isize => {}
+            Some(hit) => {
+                covered_points += 1;
+                eprintln!(
+                    "UIA sample ({x}, {y}) covered by hwnd={} pid={} class={} title={}",
+                    hit.hwnd, hit.process_id, hit.class_name, hit.title
+                );
+                continue;
+            }
+            None => {
+                covered_points += 1;
+                eprintln!("UIA sample ({x}, {y}) has no external top-level window");
+                continue;
+            }
+        }
+        queried_points += 1;
         match native.query_ui_hierarchy_at_point(x, y) {
             Ok(chain) => {
                 assert!(chain.len() >= 2, "控件和顶层窗口必须都真实返回");
@@ -188,6 +220,15 @@ fn windows_ui_hierarchy_returns_real_chain_for_requested_qa_process() {
                 assert!(chain
                     .windows(2)
                     .all(|pair| pair[0].parent_id == Some(pair[1].region_id)));
+                let root = chain.last().unwrap();
+                assert!(
+                    root.x <= x && x < root.x + root.width as i32,
+                    "top-level bounds must contain the sample point"
+                );
+                assert!(
+                    root.y <= y && y < root.y + root.height as i32,
+                    "top-level bounds must contain the sample point"
+                );
                 successful_chains += 1;
             }
             Err(HalError::Unsupported(reason)) => {
@@ -197,13 +238,97 @@ fn windows_ui_hierarchy_returns_real_chain_for_requested_qa_process() {
         }
     }
     eprintln!(
-        "Windows UIAutomation returned {successful_chains} valid chain(s) across {} sample point(s)",
-        samples.len()
+        "Windows UIAutomation returned {successful_chains} valid chain(s) across {queried_points} unobstructed sample point(s); {covered_points} point(s) were covered"
+    );
+    assert!(
+        queried_points > 0,
+        "requested QA window is covered at every sample point; uncover it before treating UIA as failed"
     );
     assert!(
         successful_chains > 0,
         "requested QA application had no usable UIA control chain"
     );
+}
+
+#[cfg(target_os = "windows")]
+struct TopmostWindowHit {
+    hwnd: isize,
+    process_id: u32,
+    class_name: String,
+    title: String,
+}
+
+#[cfg(target_os = "windows")]
+fn topmost_external_window_at(x: i32, y: i32) -> Option<TopmostWindowHit> {
+    use windows::{
+        core::BOOL,
+        Win32::{
+            Foundation::{HWND, LPARAM, RECT},
+            UI::{
+                HiDpi::{SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2},
+                WindowsAndMessaging::{
+                    EnumWindows, GetClassNameW, GetWindowRect, GetWindowTextW,
+                    GetWindowThreadProcessId, IsWindowVisible,
+                },
+            },
+        },
+    };
+
+    struct Search {
+        x: i32,
+        y: i32,
+        own_pid: u32,
+        hit: Option<TopmostWindowHit>,
+    }
+
+    unsafe extern "system" fn visit(hwnd: HWND, data: LPARAM) -> BOOL {
+        let state = &mut *(data.0 as *mut Search);
+        if state.hit.is_some() || !IsWindowVisible(hwnd).as_bool() {
+            return BOOL(1);
+        }
+        let mut process_id = 0;
+        GetWindowThreadProcessId(hwnd, Some(&mut process_id));
+        if process_id == 0 || process_id == state.own_pid {
+            return BOOL(1);
+        }
+        let mut rect = RECT::default();
+        if GetWindowRect(hwnd, &mut rect).is_err() {
+            return BOOL(1);
+        }
+        if state.x < rect.left
+            || state.x >= rect.right
+            || state.y < rect.top
+            || state.y >= rect.bottom
+        {
+            return BOOL(1);
+        }
+        let mut class_buf = [0u16; 256];
+        let class_len = GetClassNameW(hwnd, &mut class_buf);
+        let mut title_buf = [0u16; 512];
+        let title_len = GetWindowTextW(hwnd, &mut title_buf);
+        state.hit = Some(TopmostWindowHit {
+            hwnd: hwnd.0 as isize,
+            process_id,
+            class_name: String::from_utf16_lossy(&class_buf[..class_len.max(0) as usize]),
+            title: String::from_utf16_lossy(&title_buf[..title_len.max(0) as usize]),
+        });
+        BOOL(0)
+    }
+
+    // 与产品查询使用同一套物理像素，避免遮挡判断和 UIAutomation 命中的不是同一个窗口。
+    unsafe { SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
+    let mut state = Search {
+        x,
+        y,
+        own_pid: std::process::id(),
+        hit: None,
+    };
+    let enumerated =
+        unsafe { EnumWindows(Some(visit), LPARAM(&mut state as *mut Search as isize)) };
+    if state.hit.is_none() {
+        enumerated.ok();
+    }
+    state.hit
 }
 
 #[cfg(target_os = "windows")]

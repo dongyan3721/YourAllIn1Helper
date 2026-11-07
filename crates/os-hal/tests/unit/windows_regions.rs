@@ -87,6 +87,20 @@ fn walker_result_keeps_success_null_distinct_from_hresult_failure() {
 }
 
 #[test]
+fn window_root_without_child_controls_stays_a_single_real_window() {
+    let root = node(0, rect(10, 20, 410, 320), "editor");
+    let regions = regions_from_window_only(&root).unwrap();
+    assert_eq!(regions.len(), 1);
+    assert_eq!(regions[0].level, RegionHierarchyLevel::TopLevelWindow);
+    assert_eq!(regions[0].parent_id, None);
+    assert_eq!(regions[0].x, 10);
+    assert_eq!(regions[0].y, 20);
+    assert_eq!(regions[0].width, 400);
+    assert_eq!(regions[0].height, 300);
+    assert_eq!(regions[0].label.as_deref(), Some("editor"));
+}
+
+#[test]
 fn incomplete_parent_chain_never_gets_a_synthetic_window_parent() {
     let chain = vec![node(2, rect(10, 10, 50, 50), "control")];
     assert!(complete_ancestry(chain.clone(), false).is_none());

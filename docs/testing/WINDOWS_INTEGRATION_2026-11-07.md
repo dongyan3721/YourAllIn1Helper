@@ -30,19 +30,31 @@
 
 | 检查 | 结果 |
 | --- | --- |
-| `cargo test --workspace --locked --all-targets -j 2` | 32 个测试程序；295 通过、0 失败、13 项默认忽略 |
-| `pnpm --dir src-ui test` | 73 通过、0 失败 |
+| `cargo test --workspace --locked --all-targets -j 2` | 32 个测试程序；296 通过、0 失败、13 项默认忽略。日志 `cursor-workspace-tests.log` |
+| `pnpm --dir src-ui test` | 73 通过、0 失败。日志 `cursor-ui-tests.log` |
 | 前端 TypeScript 与 Vite 构建 | 通过 |
-| `pnpm build:desktop` | Windows x64 调试版构建通过，界面资源嵌入 exe |
-| CLI 烟测 | 5 步通过；使用显式 Mock HAL，不能代替原生验收 |
-| 原生 UI 烟测 | 窗口、模块启停、截图/贴图、便笺保存恢复、注释窗口、快捷键与清理通过；已确认进程退出码 0 |
+| `pnpm build:desktop` | UIA 修复后的 Windows x64 调试版重新构建通过，界面资源嵌入 exe |
+| CLI 烟测 | 最终 exe `--smoke-test` 5 步通过，进程退出码 0。日志 `cursor-cli-smoke-final.log` |
+| 原生 UI 烟测 | 最终 exe `--ui-smoke-test` 通过，进程退出码 0。日志 `cursor-ui-smoke-final.log` |
 | WTS/音频/事件监视器专项 | 3 项真实原生测试通过 |
 | 凭据、敏感剪贴板、GIF 专项 | 5 项通过；只使用应用专用虚构凭据与文本 |
 | 关闭后被抢占的剪贴板回归 | 2 项确定性原生测试通过，包含后来复制完全相同文本 |
-| UIAutomation 正例 | **集成复测失败，阻塞验收**：CodeBuddy 和可见 QA 记事本均为 0/5 条有效链；记事本诊断为 `windows_uiautomation_incomplete_ancestry`。开发分支先前报告 5/5，当前集成环境无法复现，不能据此宣告通过 |
+| UIAutomation 正例 | 记事本与 CodeBuddy 在真正位于采样点最上层时均为 **5/5** 条控件链，矩形包含采样点，父子 ID 连续。此前 0/5 是全屏 Zed 等窗口挡住采样点，查询落到了别的窗口 |
 | 跨应用物理粘贴 | 用户在 CodeBuddy 中触发 Ctrl+Shift+V、点击历史项并保存后确认成功；磁盘文件中已核对出现重复的 `Windows migration clipboard QA` 文本 |
 
-首次全量构建遇到旧托盘实例占用 exe，停止该开发实例后重跑通过。UIA 原生正例在修复合入后仍然失败，已保留诊断日志，交接 Cursor 继续定位；没有以“全部 Unsupported 也算成功”掩盖失败。一次 UI 烟测的 PowerShell 管道未结束，已改为显式等待进程并确认退出码 0。CLI 与 UI 烟测是在 UIA 最后修复合入前执行；最终 exe 已重新构建，仍需重跑两项烟测。
+首次全量构建遇到旧托盘实例占用 exe，停止该开发实例后重跑通过。一次 UI 烟测的 PowerShell 管道未结束，已改为显式等待进程并确认退出码 0。
+
+## Cursor 接手后的 UIA 复测
+
+交接时的 0/5 不是记事本或 CodeBuddy 的父链断了。本机 Zed 窗口是 1920×1032 的全屏窗口，采样点实际命中它。Zed 的 UIAutomation 只暴露 `Zed::Window` 这一个根元素，`CompareElements` 确认它就是 `ElementFromHandle` 的根节点，上面没有子控件。旧逻辑把“已经到达根、但子链为空”报成 `windows_uiautomation_incomplete_ancestry`。
+
+现在分两种真实结果：
+
+- 父链能从叶子走到目标 HWND 根节点时，返回裁剪后的控件链。可见记事本 5/5，置顶后的 CodeBuddy（Electron）5/5，本应用 WebView2 窗口在置顶时也能走通到 `Tauri Window`。
+- 点命中的元素就是 HWND 根节点时，只返回该真实窗口，不补造子控件或父节点。Zed 属于这一类。
+- 采样点被其他顶层窗口挡住时，正例测试记为遮挡并失败，不再把挡住它的窗口算成目标应用的控件链。用工具箱盖住记事本后，5 个点都报告被 `Tauri Window` 挡住。
+
+`git diff --check` 通过。旧 QA 副本 PID 14536 路径确认为 `.runtime_data/windows-validation/merged-app/all-in-one-desktop.exe`，关闭主窗口后仍驻留托盘，已结束该隔离副本。本机缩放为 100%（96 DPI），混合缩放和副屏仍未测。
 
 本机日志位于忽略目录 `.runtime_data/windows-validation/`。保留平台已有未使用项/不可达分支警告及 Vite 大分块提示；没有扩大范围执行自动清理。
 
@@ -50,7 +62,7 @@
 
 - Hello 只验证了配置/提供程序可用性、错误映射、信封与失败边界。没有创建真实 NGC 设备密钥、执行真人手势或非静默私钥解密。被忽略的硬件用例是占位说明，不能当作实际硬件往返测试。策略不支持必须失败，主密码始终保留；PIN 不等同于生物识别集合绑定。
 - 真实锁屏、睡眠/合盖、Modern Standby、显示器电源切换及音频端点热插拔仍需人工硬件验收；普通单测只向本进程观察窗口注入消息。
-- UIA 的第三方 provider 可能不响应同步 COM 调用。深度/节点限制不能取消单次挂死的 provider；本轮不承诺覆盖所有应用。多显示器负坐标有几何回归，真实混合 DPI、多桌面与提权应用仍需专项验收。
+- UIA 的第三方 provider 可能不响应同步 COM 调用。深度/节点限制不能取消单次挂死的 provider；本轮不承诺覆盖所有应用。Zed 这类只暴露窗口根的 provider 得到真实窗口矩形，没有子控件链。多显示器负坐标有几何回归，真实混合 DPI、多桌面与提权应用仍需专项验收。本机复测时缩放为 100%。
 - GIF 只写动画格式，没有 CF_DIB 静态回退；目标应用能否粘贴动画需逐项验收。剪贴板历史与云同步按微软标记排除，真实系统历史/跨设备效果未人工验证。
 - 敏感标记探测保守跳过任何包含历史/同步控制格式的内容，即使其 DWORD 为 1；可能少收普通内容。剪贴板标记不是防御同用户恶意进程的权限边界。进程被强制终止或系统崩溃时，定时清理无法保证执行。
 - macOS 代码边界保留，但本机没有进行 macOS 编译或桌面回归。FFmpeg、解释器和翻译网络服务继续是可选运行依赖。

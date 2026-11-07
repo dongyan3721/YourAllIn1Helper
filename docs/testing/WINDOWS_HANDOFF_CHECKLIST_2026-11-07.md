@@ -14,22 +14,18 @@
 
 ## 已有证据
 
-- [x] 最后一次完整 Rust 工作区：**295 passed、0 failed、13 ignored**，32 个测试程序。日志 `integration-workspace-tests-final.log`。
-- [x] 前端：**73 passed**；TypeScript/Vite 与 Windows 调试 exe 构建通过。日志 `integration-ui-tests-final.log`、`integration-desktop-build-final.log`。
+- [x] 最后一次完整 Rust 工作区：**296 passed、0 failed、13 ignored**，32 个测试程序。日志 `cursor-workspace-tests.log`。
+- [x] 前端：**73 passed**；TypeScript/Vite 与 Windows 调试 exe 构建通过。日志 `cursor-ui-tests.log`。
 - [x] 原生凭据/敏感剪贴板/GIF 5 项，以及关闭后被抢占的剪贴板回归 2 项通过。日志 `integration-native-secure.log`、`integration-native-clipboard-race.log`。
 - [x] 原生 WTS 状态、音频查询、事件监视器启停 3 项通过；不等于真实锁屏、睡眠、电源或音频热插拔验收。
 - [x] 用户在 CodeBuddy 触发 Ctrl+Shift+V、点击历史条目并保存，确认跨应用粘贴成功；磁盘 `paste-target.txt` 已核对重复 QA 文本。自动化点击瞬态弹窗时会失焦，未将工具点击失败直接判为产品失败。
-- [x] 较早版本 CLI 5 步烟测、原生 UI 烟测退出码 0。最后 UIA 合入后的最终 exe 仍需重跑。
+- [x] 最终 exe 的 CLI 烟测与原生 UI 烟测退出码都是 0。日志 `cursor-cli-smoke-final.log`、`cursor-ui-smoke-final.log`。
 
 ## P0：先解决再结束集成
 
-- [ ] **UIAutomation 原生正例失败**。最终集成构建在 CodeBuddy、现代 Notepad 均为 **0/5** 有效控件链，诊断原因 `windows_uiautomation_incomplete_ancestry`。Zed 开发分支曾报告 Notepad 5/5，但集成环境没有复现。保留失败断言，不可改成全 Unsupported 也通过。
-  - 相关实现：`crates/os-hal/src/platform/windows/regions.rs`；入口测试：`crates/os-hal/tests/capabilities.rs` 的 `windows_ui_hierarchy_returns_real_chain_for_requested_qa_process`。
-  - 失败日志：`integration-native-capabilities-final.log`、`integration-native-capabilities-notepad-final.log`、`integration-uia-diagnostic.log`。
-  - 最后诊断版测试程序 `capabilities-135f0459376d1d64.exe` 已构建，单独运行仍失败。下一轮优先核对命中 HWND/进程、遮挡与 DPI 坐标、ElementFromHandle 根节点与 Raw View 父链身份；这些只是排查方向，尚未证明根因。
-  - 验收：可见 Notepad 正例返回真实叶子到目标 HWND 根节点的链；ID 父子关系正确，矩形落在真实窗口范围内。再测 Electron 应用、窗口边缘、应用自身覆盖层及不支持的 provider；不得补造父节点。
-- [ ] 停止旧 QA 实例，用最终构建重跑 `--smoke-test`、`--ui-smoke-test`，分别记录进程退出码。UI 烟测用独立数据目录；PowerShell 直接重定向 GUI 进程曾遇到管道不结束，宜使用 Start-Process 的文件重定向与显式 WaitForExit。
-- [ ] 修复后重跑相关测试、完整 Rust/前端测试和最终桌面构建；检查 `git diff --check`，更新集成报告，提交未提交文件。
+- [x] **UIAutomation 原生正例**。根因是采样点被其他顶层窗口挡住，以及只暴露 HWND 根的 provider 被误判为父链不完整。可见记事本与置顶 CodeBuddy 均为 5/5；遮挡不再算作目标应用成功。没有把全 Unsupported 改成通过，也没有补造父节点。窗口边缘、混合 DPI 仍见 P1。
+- [x] 已结束隔离 QA 副本 PID 14536（路径为 `merged-app\all-in-one-desktop.exe`）。最终构建 `--smoke-test` 与 `--ui-smoke-test` 的进程退出码都是 0。UI 烟测使用程序内的临时数据目录。
+- [x] 修复后已重跑工作区测试、前端测试和 `pnpm build:desktop`。`git diff --check` 通过，集成报告已更新。
 - [ ] 通过后再将集成分支合入本地 master，启动最终普通实例，确认模块、托盘和快捷键可用；远程推送不在本轮授权范围内。
 
 ## P1：本轮新迁移能力的真实验收
