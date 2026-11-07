@@ -146,31 +146,60 @@ fn macos_ui_hierarchy_reports_real_chain_or_permission_denied() {
 #[cfg(target_os = "windows")]
 #[test]
 #[ignore = "需要真实桌面；只读查询外部窗口 UIAutomation 控件链，显式运行"]
-fn windows_ui_hierarchy_reports_real_chain_or_unsupported_provider() {
+fn windows_ui_hierarchy_returns_real_chain_for_requested_qa_process() {
     use os_hal::{RegionDetector, WindowController};
     let native = NativeOsHal::new();
+    let requested_process = std::env::var("AIO_UIA_SMOKE_PROCESS")
+        .expect("set AIO_UIA_SMOKE_PROCESS to a visible QA application process name");
     let Some(window) = native
         .list_external_windows()
-        .unwrap_or_default()
+        .expect("enumerate external windows")
         .into_iter()
-        .find(|window| window.width > 100 && window.height > 100)
+        .find(|window| {
+            window.width > 100
+                && window.height > 100
+                && window
+                    .process_name
+                    .to_lowercase()
+                    .contains(&requested_process.to_lowercase())
+        })
     else {
-        return;
+        panic!("requested UIA QA application is not visible");
     };
-    let x = window.x + window.width as i32 / 2;
-    let y = window.y + window.height as i32 / 2;
-    match native.query_ui_hierarchy_at_point(x, y) {
-        Ok(chain) => {
-            assert!(chain.len() >= 2, "控件和顶层窗口必须都真实返回");
-            assert_eq!(
-                chain.last().unwrap().level,
-                app_core::RegionHierarchyLevel::TopLevelWindow
-            );
-            assert!(chain
-                .windows(2)
-                .all(|pair| pair[0].parent_id == Some(pair[1].region_id)));
+
+    let samples = [
+        (1, 4, 1, 4),
+        (1, 2, 1, 3),
+        (3, 4, 1, 3),
+        (1, 2, 2, 3),
+        (3, 4, 2, 3),
+    ];
+    let mut successful_chains = 0;
+    for (x_num, x_den, y_num, y_den) in samples {
+        let x = window.x + (window.width as i64 * x_num / x_den) as i32;
+        let y = window.y + (window.height as i64 * y_num / y_den) as i32;
+        match native.query_ui_hierarchy_at_point(x, y) {
+            Ok(chain) => {
+                assert!(chain.len() >= 2, "控件和顶层窗口必须都真实返回");
+                assert_eq!(
+                    chain.last().unwrap().level,
+                    app_core::RegionHierarchyLevel::TopLevelWindow
+                );
+                assert!(chain
+                    .windows(2)
+                    .all(|pair| pair[0].parent_id == Some(pair[1].region_id)));
+                successful_chains += 1;
+            }
+            Err(HalError::Unsupported(_)) => {}
+            Err(other) => panic!("unexpected Windows UIAutomation error: {other}"),
         }
-        Err(HalError::Unsupported(_)) => {}
-        Err(other) => panic!("unexpected Windows UIAutomation error: {other}"),
     }
+    eprintln!(
+        "Windows UIAutomation returned {successful_chains} valid chain(s) across {} sample point(s)",
+        samples.len()
+    );
+    assert!(
+        successful_chains > 0,
+        "requested QA application had no usable UIA control chain"
+    );
 }
