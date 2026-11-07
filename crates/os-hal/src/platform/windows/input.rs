@@ -12,8 +12,9 @@ use windows::Win32::{
     Foundation::HWND,
     UI::{
         Input::KeyboardAndMouse::{
-            SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VK_C,
-            VK_CONTROL, VK_V,
+            GetAsyncKeyState, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT,
+            KEYEVENTF_KEYUP, VK_C, VK_CONTROL, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN,
+            VK_RCONTROL, VK_RMENU, VK_RSHIFT, VK_RWIN, VK_V,
         },
         WindowsAndMessaging::{
             GetForegroundWindow, GetWindowThreadProcessId, IsWindow, SetForegroundWindow,
@@ -209,6 +210,39 @@ pub(in crate::platform) fn send_shortcut(
         'v' => VK_V,
         _ => return Err(HalError::Unsupported("windows_physical_shortcut")),
     };
+    // SendInput 不会重置物理按键状态。等待启动热键松开，避免把 Ctrl+V 变成
+    // Ctrl+Shift+V / Ctrl+Alt+V，也不擅自松开用户仍按着的修饰键。
+    let deadline = Instant::now() + Duration::from_millis(750);
+    wait_for_keyboard_release(
+        || {
+            [
+                VK_LCONTROL,
+                VK_RCONTROL,
+                VK_LSHIFT,
+                VK_RSHIFT,
+                VK_LMENU,
+                VK_RMENU,
+                VK_LWIN,
+                VK_RWIN,
+                key,
+            ]
+            .iter()
+            .any(|key| unsafe { GetAsyncKeyState(key.0 as i32) } < 0)
+        },
+        || {
+            if Instant::now() >= deadline {
+                return false;
+            }
+            thread::sleep(Duration::from_millis(10));
+            true
+        },
+    )?;
+    // 等待期间用户可能切换窗口，发送前必须重新确认目标。
+    validate_live_target(target)?;
+    let current = unsafe { GetForegroundWindow() };
+    if !target_is_foreground(target, current.0 as isize, process_id(current)) {
+        return Err(native_error("等待按键释放时前台窗口已变化，已取消快捷键"));
+    }
     let inputs = [
         keyboard_input(VK_CONTROL, false),
         keyboard_input(key, false),
@@ -223,6 +257,18 @@ pub(in crate::platform) fn send_shortcut(
             "SendInput 仅接受 {sent}/{} 个物理按键事件；快捷键未确认",
             inputs.len()
         )));
+    }
+    Ok(())
+}
+
+fn wait_for_keyboard_release(
+    mut any_key_down: impl FnMut() -> bool,
+    mut wait_again: impl FnMut() -> bool,
+) -> HalResult<()> {
+    while any_key_down() {
+        if !wait_again() {
+            return Err(native_error("物理修饰键仍未松开，已取消快捷键"));
+        }
     }
     Ok(())
 }

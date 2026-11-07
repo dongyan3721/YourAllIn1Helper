@@ -1,6 +1,36 @@
 use super::*;
 
 #[test]
+fn shortcut_waits_for_physical_keys_without_releasing_them() {
+    let mut states = [true, true, false].into_iter();
+    let mut waits = 0;
+    wait_for_keyboard_release(
+        || states.next().expect("must stop after release"),
+        || {
+            waits += 1;
+            true
+        },
+    )
+    .unwrap();
+    assert_eq!(waits, 2);
+}
+
+#[test]
+fn held_physical_keys_cancel_shortcut_at_deadline() {
+    let mut waits = 0;
+    assert!(wait_for_keyboard_release(
+        || true,
+        || {
+            waits += 1;
+            waits < 3
+        },
+    )
+    .is_err());
+    assert_eq!(waits, 3);
+    wait_for_keyboard_release(|| false, || panic!("released keyboard must not wait")).unwrap();
+}
+
+#[test]
 fn paste_target_must_be_external_and_have_matching_foreground_identity() {
     let own_process_id = std::process::id();
     let target_process_id = own_process_id.wrapping_add(1).max(1);

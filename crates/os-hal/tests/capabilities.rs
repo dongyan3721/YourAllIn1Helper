@@ -161,6 +161,7 @@ fn windows_ui_hierarchy_reports_real_chain_or_unsupported_provider() {
     let y = window.y + window.height as i32 / 2;
     match native.query_ui_hierarchy_at_point(x, y) {
         Ok(chain) => {
+            eprintln!("Windows UIAutomation returned {} region(s)", chain.len());
             assert!(chain.len() >= 2, "控件和顶层窗口必须都真实返回");
             assert_eq!(
                 chain.last().unwrap().level,
@@ -170,7 +171,9 @@ fn windows_ui_hierarchy_reports_real_chain_or_unsupported_provider() {
                 .windows(2)
                 .all(|pair| pair[0].parent_id == Some(pair[1].region_id)));
         }
-        Err(HalError::Unsupported(_)) => {}
+        Err(HalError::Unsupported(capability)) => {
+            eprintln!("Windows UIAutomation unavailable: {capability}");
+        }
         Err(other) => panic!("unexpected Windows UIAutomation error: {other}"),
     }
 }

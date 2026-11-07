@@ -170,9 +170,14 @@ fn query_on_worker(x: i32, y: i32) -> HalResult<Vec<DetectedRegionRect>> {
     };
     let mut chain = Vec::new();
     // CompareElements 使用 UIA provider 身份；保留所有已比较的代理引用，避免地址复用误判。
-    let mut held_elements = vec![root.clone()];
+    let mut held_elements = Vec::new();
     let mut current = leaf;
+    let mut reached_root = false;
     for _ in 0..MAX_TREE_DEPTH {
+        if contains_element(&automation, std::slice::from_ref(&root), &current)? {
+            reached_root = true;
+            break;
+        }
         if contains_element(&automation, &held_elements, &current)? {
             break;
         }
@@ -189,9 +194,10 @@ fn query_on_worker(x: i32, y: i32) -> HalResult<Vec<DetectedRegionRect>> {
         };
         current = parent;
     }
-    if chain.len() == MAX_TREE_DEPTH {
-        return Err(HalError::NativeCallFailed(
-            "UIAutomation 父级链超过安全深度上限".into(),
+    if !reached_root {
+        // provider 提前返回空父节点、形成循环或超深时，不能补造到 HWND 的父子关系。
+        return Err(HalError::Unsupported(
+            "windows_uiautomation_incomplete_ancestry",
         ));
     }
     regions_from_chain(&chain, &root_node)
