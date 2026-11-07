@@ -59,6 +59,12 @@ export function vaultErrorKey(reason: unknown): string {
   return `vault.errors.${match?.[1] ?? 'unknown'}`;
 }
 
-export function vaultErrorText(reason: unknown): string {
-  return t(vaultErrorKey(reason));
+export function vaultErrorText(reason: unknown, deviceKeyKind?: string): string {
+  const key = vaultErrorKey(reason);
+  if (deviceKeyKind === 'windows_hello_gesture' && key.startsWith('vault.errors.')) {
+    const windowsKey = `vault.windowsHello.errors.${key.slice('vault.errors.'.length)}`;
+    const translated = t(windowsKey);
+    if (translated !== windowsKey) return translated;
+  }
+  return t(key);
 }

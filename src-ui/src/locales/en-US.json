@@ -848,6 +848,26 @@
     "biometricEnabledNotice": "Touch ID is on. You can use it after the vault locks.",
     "biometricDisabledNotice": "Touch ID is off and the device key was removed from the keychain.",
     "biometricDisabled": "Touch ID is not available on this Mac. Use the master password.",
+    "windowsHello": {
+      "title": "Windows Hello",
+      "unlockBiometric": "Unlock with Windows Hello",
+      "enableBiometric": "Register a Windows Hello device key",
+      "disableBiometric": "Remove the Windows Hello device key",
+      "biometricReady": "Decrypting the device key asks for a Windows Hello gesture: face, fingerprint, or PIN. A PIN is not macOS Touch ID and does not replace the master password. Canceling or failing leaves the vault locked.",
+      "biometricUnavailable": "This PC cannot release the device key through a Windows Hello protected private-key operation. Use the master password.",
+      "biometricNeedEnroll": "No device key is registered. Unlock with the master password, then register one. A Windows Hello PIN is not a biometric set.",
+      "biometricEnabledHint": "A Windows Hello device key is registered. The master password always works.",
+      "biometricEnabledNotice": "Registered. After locking, the device key is decrypted by the system private key, not by a boolean check.",
+      "biometricDisabledNotice": "The device key was removed. The master password still works.",
+      "errors": {
+        "biometricCanceled": "Windows Hello was canceled. The vault stays locked",
+        "biometricFailed": "Windows Hello did not succeed. The vault stays locked",
+        "biometricUnavailable": "The Windows Hello protected device key is unavailable. Use the master password",
+        "biometricNotEnrolled": "Windows Hello is not set up. Use the master password",
+        "biometricLockout": "Windows Hello is temporarily unavailable. Use the master password",
+        "biometricKeyInvalid": "The device key is no longer valid. Unlock with the master password and register it again"
+      }
+    },
     "lockedNotice": "Vault locked; local sensitive state cleared",
     "busy": "Processing securely…",
     "errors": {

@@ -87,4 +87,4 @@ $env:ALL_IN_ONE_GUI_TEST_DATA_DIR = Join-Path $PWD '.runtime_data\windows-gui'
 
 默认用户数据目录由 Tauri 的 `app_data_dir` 决定，Windows 通常是 `%APPDATA%\com.allinone.desktop`。多媒体功能额外需要 PATH 中的 `ffmpeg` / `ffprobe`；翻译需要配置对应服务；脚本需要相应解释器。缺少这些外部工具不应阻止主程序启动。
 
-Windows 尚未接入系统凭据持久化、敏感剪贴板所有权和 macOS Touch ID 等平台能力。翻译密钥只能在当前会话内使用；各功能的 Windows 验证范围见 `docs/testing` 中的执行报告。
+Windows 尚未接入系统凭据持久化和敏感剪贴板所有权。密码本的 Windows Hello 设备密钥只在 Passport 私钥解密成功后可用，PIN 不是 macOS Touch ID，硬件手势验收见 `docs/testing`。翻译密钥只能在当前会话内使用。

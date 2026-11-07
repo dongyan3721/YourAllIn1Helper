@@ -848,6 +848,26 @@
     "biometricEnabledNotice": "Touch ID を有効にしました。ロック後に使えます。",
     "biometricDisabledNotice": "Touch ID を無効にし、デバイス鍵をキーチェーンから削除しました。",
     "biometricDisabled": "この Mac では Touch ID を使えません。マスターパスワードを使ってください。",
+    "windowsHello": {
+      "title": "Windows Hello",
+      "unlockBiometric": "Windows Hello でロック解除",
+      "enableBiometric": "Windows Hello のデバイス鍵を登録",
+      "disableBiometric": "Windows Hello のデバイス鍵を削除",
+      "biometricReady": "デバイス鍵の復号時に Windows Hello のジェスチャ（顔、指紋、または PIN）が必要です。PIN は macOS の Touch ID ではなく、マスターパスワードの代わりにもなりません。キャンセルや失敗では保管庫は開きません。",
+      "biometricUnavailable": "この PC では Windows Hello で保護された秘密鍵操作からデバイス鍵を取り出せません。マスターパスワードを使ってください。",
+      "biometricNeedEnroll": "デバイス鍵は未登録です。先にマスターパスワードで開き、その後登録してください。Windows Hello の PIN は生体認証セットではありません。",
+      "biometricEnabledHint": "Windows Hello のデバイス鍵を登録済みです。マスターパスワードでも常に開けます。",
+      "biometricEnabledNotice": "登録しました。ロック後は真偽値ではなく、システム秘密鍵がデバイス鍵を復号します。",
+      "biometricDisabledNotice": "デバイス鍵を削除しました。マスターパスワードは引き続き使えます。",
+      "errors": {
+        "biometricCanceled": "Windows Hello をキャンセルしました。保管庫はロックされたままです",
+        "biometricFailed": "Windows Hello は成功しませんでした。保管庫はロックされたままです",
+        "biometricUnavailable": "Windows Hello で保護されたデバイス鍵は現在使えません。マスターパスワードを使ってください",
+        "biometricNotEnrolled": "Windows Hello が設定されていません。マスターパスワードを使ってください",
+        "biometricLockout": "Windows Hello は一時的に使えません。マスターパスワードを使ってください",
+        "biometricKeyInvalid": "デバイス鍵は無効です。マスターパスワードで開いてから登録し直してください"
+      }
+    },
     "lockedNotice": "ロック済み。ローカルの機密状態を消去しました",
     "busy": "安全に処理中…",
     "errors": {

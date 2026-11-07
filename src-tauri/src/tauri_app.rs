@@ -40,14 +40,14 @@ impl mod_password_vault::VaultEventSink for TauriVaultEventSink {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 thread_local! {
     static VAULT_NATIVE_OBSERVER: std::cell::RefCell<
         Option<mod_password_vault::native::NativeVaultObserver>
     > = const { std::cell::RefCell::new(None) };
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn stop_vault_native_observer() {
     VAULT_NATIVE_OBSERVER.with(|slot| {
         if let Some(observer) = slot.borrow_mut().take() {
@@ -56,10 +56,10 @@ fn stop_vault_native_observer() {
     });
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn stop_vault_native_observer() {}
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn sync_vault_native_observer(app: &AppHandle) {
     let Some(host) = app.try_state::<Arc<DesktopHost>>() else {
         return;
@@ -87,7 +87,7 @@ fn sync_vault_native_observer(app: &AppHandle) {
     });
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn sync_vault_native_observer(_app: &AppHandle) {}
 
 fn to_core_error(error: impl std::fmt::Display) -> CoreError {
