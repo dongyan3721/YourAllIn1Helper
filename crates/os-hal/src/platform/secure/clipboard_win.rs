@@ -29,7 +29,7 @@ use windows::{
                 RegisterClipboardFormatW, SetClipboardData,
             },
             Memory::{GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE},
-            Ole::CF_UNICODETEXT,
+            Ole::{CF_DIBV5, CF_UNICODETEXT},
         },
         UI::WindowsAndMessaging::{
             CreateWindowExW, DestroyWindow, HWND_MESSAGE, WINDOW_EX_STYLE, WINDOW_STYLE,
@@ -406,6 +406,104 @@ pub(super) fn clear_if_unchanged(token: &ClipboardWriteToken) -> HalResult<bool>
     unsafe { EmptyClipboard() }.map_err(|error| clipboard_error("清空", error))?;
     drop(session);
     Ok(true)
+}
+
+/// 把 RGBA8 图像写入系统剪贴板。
+///
+/// arboard 用 NULL 所有者打开剪贴板，清空后写入全屏大小的 `CF_DIBV5` 会得到
+/// `ERROR_CLIPBOARD_NOT_OPEN`（1418）。这里在同一线程创建消息窗口作为所有者，
+/// 先放入位图，再尽力放入 PNG；PNG 失败不撤销已经写入的位图。
+pub(super) fn write_rgba_clipboard(width: u32, height: u32, rgba: &[u8]) -> HalResult<()> {
+    let dib = rgba_to_dibv5(width, height, rgba)?;
+    let png = encode_png(width, height, rgba)?;
+    let owner = OwnerWindow::new()?;
+    let session = open_clipboard_on(&owner)?;
+    // SAFETY: 持有本线程打开的剪贴板事务，所有者是上面的消息窗口。
+    unsafe { EmptyClipboard() }.map_err(|error| clipboard_error("清空", error))?;
+    set_format("写入位图", CF_DIBV5.0 as u32, &dib)?;
+    if let Ok(png_format) = register_format("PNG") {
+        // PNG 是给支持该格式的程序用的；失败时位图仍然有效。
+        let _ = set_format("写入 PNG", png_format, &png);
+    }
+    drop(session);
+    Ok(())
+}
+
+/// 编码 PNG。失败时不打开剪贴板。
+fn encode_png(width: u32, height: u32, rgba: &[u8]) -> HalResult<Vec<u8>> {
+    let mut png = Vec::new();
+    image::ImageEncoder::write_image(
+        image::codecs::png::PngEncoder::new(&mut png),
+        rgba,
+        width,
+        height,
+        image::ExtendedColorType::Rgba8,
+    )
+    .map_err(|error| clipboard_error("编码 PNG", error))?;
+    Ok(png)
+}
+
+/// 生成自下而上的 `BITMAPV5HEADER` + BGRA 像素。纯函数，不触碰剪贴板。
+pub(super) fn rgba_to_dibv5(width: u32, height: u32, rgba: &[u8]) -> HalResult<Vec<u8>> {
+    const HEADER_LEN: usize = 124;
+    let pixel_count = (width as u64)
+        .checked_mul(height as u64)
+        .ok_or_else(|| clipboard_error("准备位图", "图像尺寸溢出"))?;
+    let pixel_bytes = pixel_count
+        .checked_mul(4)
+        .ok_or_else(|| clipboard_error("准备位图", "图像尺寸溢出"))?;
+    if width == 0
+        || height == 0
+        || pixel_bytes != rgba.len() as u64
+        || pixel_bytes > 256 * 1024 * 1024
+    {
+        return Err(clipboard_error(
+            "准备位图",
+            format!(
+                "无效的 RGBA 尺寸 {width}x{height}，缓冲区 {} 字节",
+                rgba.len()
+            ),
+        ));
+    }
+    let mut dib = vec![0u8; HEADER_LEN + pixel_bytes as usize];
+    put_u32(&mut dib, 0, HEADER_LEN as u32);
+    put_i32(&mut dib, 4, width as i32);
+    put_i32(&mut dib, 8, height as i32);
+    put_u16(&mut dib, 12, 1);
+    put_u16(&mut dib, 14, 32);
+    put_u32(&mut dib, 16, 3); // BI_BITFIELDS
+    put_u32(&mut dib, 20, pixel_bytes as u32);
+    put_u32(&mut dib, 40, 0x00ff_0000);
+    put_u32(&mut dib, 44, 0x0000_ff00);
+    put_u32(&mut dib, 48, 0x0000_00ff);
+    put_u32(&mut dib, 52, 0xff00_0000);
+    put_u32(&mut dib, 56, 0x7352_4742); // LCS_sRGB
+    let width = width as usize;
+    let height = height as usize;
+    for y in 0..height {
+        let src_y = height - 1 - y;
+        for x in 0..width {
+            let src = (src_y * width + x) * 4;
+            let dst = HEADER_LEN + (y * width + x) * 4;
+            dib[dst] = rgba[src + 2];
+            dib[dst + 1] = rgba[src + 1];
+            dib[dst + 2] = rgba[src];
+            dib[dst + 3] = rgba[src + 3];
+        }
+    }
+    Ok(dib)
+}
+
+fn put_u16(buf: &mut [u8], offset: usize, value: u16) {
+    buf[offset..offset + 2].copy_from_slice(&value.to_le_bytes());
+}
+
+fn put_u32(buf: &mut [u8], offset: usize, value: u32) {
+    buf[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+}
+
+fn put_i32(buf: &mut [u8], offset: usize, value: i32) {
+    put_u32(buf, offset, value as u32);
 }
 
 /// 把动态 GIF 字节放入系统剪贴板（非敏感，不排除剪贴板历史）。

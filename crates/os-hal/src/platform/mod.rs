@@ -17,7 +17,9 @@ mod windows;
 mod winocr;
 
 pub use biometry::{touch_id_probe, TouchIdProbe};
-pub use secure::{clipboard_content_is_concealed, write_animated_gif_clipboard};
+pub use secure::{
+    clipboard_content_is_concealed, write_animated_gif_clipboard, write_rgba_clipboard,
+};
 
 use crate::{HalError, OsHalBundle};
 use std::sync::{atomic::AtomicUsize, Arc};

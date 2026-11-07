@@ -247,7 +247,9 @@ fn windows_audio_active_decision_logic_covers_all_branches() {
     );
     assert_eq!(
         evaluate_windows_audio_active(
-            Err(HalError::NativeCallFailed("session unsupported".to_string())),
+            Err(HalError::NativeCallFailed(
+                "session unsupported".to_string()
+            )),
             Ok(false)
         )
         .unwrap(),

@@ -29,7 +29,6 @@ use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{
-    borrow::Cow,
     fs::{self, OpenOptions},
     io::Write,
     path::PathBuf,
@@ -442,12 +441,24 @@ impl ScreenInkModule {
     ) -> anyhow::Result<()> {
         let dynamic_img = image::load_from_memory(png_bytes)?;
         let rgba = dynamic_img.to_rgba8();
-        let mut clipboard = arboard::Clipboard::new()?;
-        clipboard.set_image(arboard::ImageData {
-            width: width as usize,
-            height: height as usize,
-            bytes: Cow::Borrowed(&rgba.into_raw()),
-        })?;
+        if rgba.width() != width || rgba.height() != height {
+            anyhow::bail!("合成图像尺寸 {width}x{height} 与解码结果不一致");
+        }
+        #[cfg(target_os = "windows")]
+        {
+            // 全屏位图不能走 arboard：NULL 所有者清空后 SetClipboardData 会返回 1418。
+            os_hal::write_rgba_clipboard(width, height, rgba.as_raw())
+                .map_err(anyhow::Error::msg)?;
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let mut clipboard = arboard::Clipboard::new()?;
+            clipboard.set_image(arboard::ImageData {
+                width: width as usize,
+                height: height as usize,
+                bytes: std::borrow::Cow::Borrowed(rgba.as_raw()),
+            })?;
+        }
         Ok(())
     }
 

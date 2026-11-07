@@ -21,8 +21,8 @@ pub mod types;
 pub use mock::MockOsHal;
 pub use mock_secure::MockSecureServices;
 pub use platform::{
-    clipboard_content_is_concealed, touch_id_probe, write_animated_gif_clipboard, NativeOsHal,
-    TouchIdProbe,
+    clipboard_content_is_concealed, touch_id_probe, write_animated_gif_clipboard,
+    write_rgba_clipboard, NativeOsHal, TouchIdProbe,
 };
 pub use secure::{ClipboardOwnership, ClipboardWriteToken, SecretStore};
 pub use traits::{

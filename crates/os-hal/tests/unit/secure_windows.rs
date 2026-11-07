@@ -336,3 +336,31 @@ fn identical_text_copied_after_close_is_still_preemption_and_never_cleared() {
     assert_eq!(external_read_text().as_deref(), Some("same-text"));
     external_clear();
 }
+
+#[test]
+fn dibv5_is_bottom_up_bgra_and_rejects_a_short_buffer() {
+    let rgba = [1u8, 2, 3, 4, 5, 6, 7, 8];
+    let dib = clipboard_win::rgba_to_dibv5(1, 2, &rgba).unwrap();
+    assert_eq!(dib.len(), 124 + 8);
+    assert_eq!(u32::from_le_bytes(dib[0..4].try_into().unwrap()), 124);
+    assert_eq!(i32::from_le_bytes(dib[4..8].try_into().unwrap()), 1);
+    assert_eq!(i32::from_le_bytes(dib[8..12].try_into().unwrap()), 2);
+    assert_eq!(u16::from_le_bytes(dib[14..16].try_into().unwrap()), 32);
+    // 正高度是自下而上，第一个像素来自源图像最后一行。
+    assert_eq!(&dib[124..128], &[7, 6, 5, 8]);
+    assert_eq!(&dib[128..132], &[3, 2, 1, 4]);
+    assert!(clipboard_win::rgba_to_dibv5(2, 2, &rgba).is_err());
+}
+
+#[test]
+#[ignore = "会覆盖真实系统剪贴板，需显式运行；覆盖全屏尺寸的 1418 回归"]
+fn fullscreen_rgba_clipboard_write_survives_where_null_owner_fails() {
+    use windows::Win32::System::{DataExchange::IsClipboardFormatAvailable, Ole::CF_DIBV5};
+    let _gate = clipboard_gate();
+    let width = 1920u32;
+    let height = 1080u32;
+    let rgba = vec![12u8; width as usize * height as usize * 4];
+    clipboard_win::write_rgba_clipboard(width, height, &rgba).expect("全屏 RGBA 写入剪贴板");
+    let available = unsafe { IsClipboardFormatAvailable(CF_DIBV5.0 as u32) };
+    assert!(available.is_ok(), "写入后剪贴板必须带有 CF_DIBV5");
+}

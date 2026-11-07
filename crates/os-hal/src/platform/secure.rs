@@ -35,6 +35,17 @@ pub fn write_animated_gif_clipboard(bytes: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
+/// 把 RGBA8 图像放进系统剪贴板。Windows 使用带所有者窗口的位图写入。
+#[cfg(target_os = "windows")]
+pub fn write_rgba_clipboard(width: u32, height: u32, rgba: &[u8]) -> Result<(), String> {
+    clipboard_win::write_rgba_clipboard(width, height, rgba).map_err(|error| error.to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn write_rgba_clipboard(_width: u32, _height: u32, _rgba: &[u8]) -> Result<(), String> {
+    Err("当前系统还不能通过这条路径写入图像剪贴板".to_string())
+}
+
 /// Windows：注册 `image/gif`（主）与 `GIF`（辅）格式写入 GIF 字节。
 #[cfg(target_os = "windows")]
 pub fn write_animated_gif_clipboard(bytes: &[u8]) -> Result<(), String> {

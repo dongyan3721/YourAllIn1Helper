@@ -177,7 +177,9 @@ impl Default for NativeUsageEvents {
             #[cfg(target_os = "macos")]
             monitor: Arc::new(macos_events::MacUsageEventMonitor::new(Arc::clone(&state))),
             #[cfg(target_os = "windows")]
-            monitor: Arc::new(windows_events::WinUsageEventMonitor::new(Arc::clone(&state))),
+            monitor: Arc::new(windows_events::WinUsageEventMonitor::new(Arc::clone(
+                &state,
+            ))),
             #[cfg(not(any(target_os = "macos", target_os = "windows")))]
             monitor: (),
             state,
