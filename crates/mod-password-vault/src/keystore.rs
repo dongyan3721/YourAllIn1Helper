@@ -9,7 +9,7 @@ use zeroize::Zeroizing;
 
 pub(crate) const MACOS_BIOMETRY_BACKEND: &str = "macos_keychain_biometry_current_set_v1";
 pub(crate) const MACOS_BIOMETRY_BACKEND_ID: u8 = 1;
-/// Windows Hello 手势保护的 NGC RSA-OAEP 槽。不是 biometryCurrentSet，也不是 DPAPI 门控。
+/// Windows Hello 手势保护的 NGC RSA 槽。为兼容数据库保留旧标签，填充由信封版本确定。
 pub(crate) const WINDOWS_HELLO_BACKEND: &str = "windows_hello_ngc_rsa_oaep_v1";
 pub(crate) const WINDOWS_HELLO_BACKEND_ID: u8 = 2;
 #[cfg(target_os = "macos")]

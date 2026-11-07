@@ -1,7 +1,9 @@
 //! 设备密钥信封与撤销顺序。不调用 Windows Hello，也不读取真实秘密。
 use crate::{
     error::VaultError,
-    hello_store::{parse_envelope, HelloBackend, WindowsHelloKeyStore, ENVELOPE_LEN, OAEP_LEN},
+    hello_store::{
+        parse_envelope, HelloBackend, WindowsHelloKeyStore, ENVELOPE_LEN, OAEP_LEN, PKCS1_PREFIX,
+    },
     keystore::{VaultKeyStore, WINDOWS_HELLO_BACKEND},
     model::DeviceKeyKind,
 };
@@ -33,6 +35,7 @@ struct FakeHello {
     unprotect_calls: AtomicUsize,
     delete_calls: AtomicUsize,
     bad_length: bool,
+    pkcs1: bool,
 }
 
 impl FakeHello {
@@ -58,6 +61,9 @@ impl HelloBackend for FakeHello {
         wrapped[..32].copy_from_slice(dkek);
         for (index, byte) in wrapped.iter_mut().enumerate().take(16) {
             *byte ^= index as u8;
+        }
+        if self.pkcs1 {
+            wrapped = [PKCS1_PREFIX.as_slice(), &wrapped].concat();
         }
         self.blobs
             .lock()
@@ -88,7 +94,12 @@ impl HelloBackend for FakeHello {
             return Err(VaultError::BiometricKeyInvalid);
         }
         let mut dkek = Zeroizing::new([0u8; 32]);
-        dkek.copy_from_slice(&stored[..32]);
+        let ciphertext = if self.pkcs1 {
+            &stored[PKCS1_PREFIX.len()..]
+        } else {
+            &stored
+        };
+        dkek.copy_from_slice(&ciphertext[..32]);
         for (index, byte) in dkek.iter_mut().enumerate().take(16) {
             *byte ^= index as u8;
         }
@@ -119,6 +130,25 @@ fn envelope_rejects_raw_dkek_and_wrong_header() {
         parse_envelope(&bytes),
         Err(VaultError::BiometricKeyInvalid)
     ));
+}
+
+#[test]
+fn experimental_signature_and_prf_envelopes_are_not_treated_as_oaep_keys() {
+    // SIG1 曾把派生 AES 密钥所需的签名本身一同落盘，绝不能兼容解锁。
+    // PRF1 试验路径没有完成平台支持与认证校验，也不隐式降级成 RSA。
+    for prefix in [b"SIG1", b"PRF1"] {
+        let payload = [prefix.as_slice(), &[0x42; 256]].concat();
+        let envelope = [
+            b"AIOHELLO\x02\x00".as_slice(),
+            &(payload.len() as u16).to_le_bytes(),
+            &payload,
+        ]
+        .concat();
+        assert!(matches!(
+            parse_envelope(&envelope),
+            Err(VaultError::BiometricKeyInvalid)
+        ));
+    }
 }
 
 #[test]
@@ -153,6 +183,27 @@ fn protect_unprotect_revoke_and_repeat_do_not_keep_temp_files() {
     ));
     assert!(!path.exists());
     assert!(!temp.path().join(format!("{slot}.tmp")).exists());
+}
+
+#[test]
+fn pkcs1_envelope_has_an_explicit_version_and_round_trips_without_a_signature() {
+    let root = TempDir::new().unwrap();
+    let fake = Arc::new(FakeHello {
+        pkcs1: true,
+        ..FakeHello::new()
+    });
+    let keystore = store(fake, root.path());
+    let slot = Uuid::new_v4();
+    keystore.protect(&slot, &[0x73; 32]).unwrap();
+    let bytes = fs::read(root.path().join(format!("{slot}.oaep"))).unwrap();
+    assert_eq!(bytes.len(), ENVELOPE_LEN);
+    assert_eq!(&bytes[..10], b"AIOHELLO\x03\x00");
+    assert_eq!(
+        parse_envelope(&bytes).unwrap().len(),
+        OAEP_LEN + PKCS1_PREFIX.len()
+    );
+    assert_eq!(keystore.unprotect(&slot).unwrap().as_slice(), &[0x73; 32]);
+    keystore.revoke(&slot).unwrap();
 }
 
 #[test]

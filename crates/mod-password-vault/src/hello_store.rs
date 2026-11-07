@@ -1,6 +1,6 @@
 //! Windows Hello 设备密钥的本地信封。
 //!
-//! 文件里只保存 RSA-OAEP 密文，不保存 DKEK，也不经过 DPAPI 或凭据管理器。
+//! 文件里只保存带版本的 RSA 密文，不保存 DKEK，也不经过 DPAPI 或凭据管理器。
 //! 能否解开完全取决于 `HelloBackend::unprotect_key` 的私钥操作。
 use crate::{
     error::{VaultError, VaultResult},
@@ -16,6 +16,7 @@ use uuid::Uuid;
 use zeroize::{Zeroize, Zeroizing};
 
 pub(crate) const OAEP_LEN: usize = 256;
+pub(crate) const PKCS1_PREFIX: &[u8; 4] = b"PKC1";
 const MAGIC: &[u8] = b"AIOHELLO";
 const VERSION: u8 = 1;
 const HEADER_LEN: usize = MAGIC.len() + 2;
@@ -100,7 +101,6 @@ pub(crate) fn parse_envelope(bytes: &[u8]) -> VaultResult<Zeroizing<Vec<u8>>> {
     if bytes.len() != ENVELOPE_LEN
         || bytes.len() == 32
         || &bytes[..MAGIC.len()] != MAGIC
-        || bytes[MAGIC.len()] != VERSION
         || bytes[MAGIC.len() + 1] != 0
     {
         return Err(VaultError::BiometricKeyInvalid);
@@ -109,19 +109,32 @@ pub(crate) fn parse_envelope(bytes: &[u8]) -> VaultResult<Zeroizing<Vec<u8>>> {
     if ciphertext.len() != OAEP_LEN {
         return Err(VaultError::BiometricKeyInvalid);
     }
-    Ok(Zeroizing::new(ciphertext.to_vec()))
+    match bytes[MAGIC.len()] {
+        VERSION => Ok(Zeroizing::new(ciphertext.to_vec())),
+        // v2 是未完成且不安全的 SIG1/PRF1 试验格式，不兼容解锁。
+        3 => Ok(Zeroizing::new(
+            [PKCS1_PREFIX.as_slice(), ciphertext].concat(),
+        )),
+        _ => Err(VaultError::BiometricKeyInvalid),
+    }
 }
 
 fn write_envelope(path: &Path, ciphertext: &[u8]) -> VaultResult<()> {
-    if ciphertext.len() != OAEP_LEN {
+    let (version, ciphertext) = if ciphertext.len() == OAEP_LEN {
+        (VERSION, ciphertext)
+    } else if ciphertext.len() == OAEP_LEN + PKCS1_PREFIX.len()
+        && ciphertext.starts_with(PKCS1_PREFIX)
+    {
+        (3, &ciphertext[PKCS1_PREFIX.len()..])
+    } else {
         return Err(VaultError::BiometricUnavailable);
-    }
+    };
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|_| VaultError::BiometricUnavailable)?;
     }
     let mut bytes = Zeroizing::new(Vec::with_capacity(ENVELOPE_LEN));
     bytes.extend_from_slice(MAGIC);
-    bytes.push(VERSION);
+    bytes.push(version);
     bytes.push(0);
     bytes.extend_from_slice(ciphertext);
     let tmp = temp_path(path);

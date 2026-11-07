@@ -421,6 +421,23 @@ async fn ipc(app: AppHandle, mut request: IpcRequest) -> IpcResponse {
     }
     let host = app.state::<Arc<DesktopHost>>().inner().clone();
     if request.cmd.starts_with("vault_") {
+        #[cfg(target_os = "windows")]
+        if matches!(
+            request.cmd.as_str(),
+            "vault_unlock_biometric" | "vault_set_biometric_enabled"
+        ) {
+            // 将真实主窗口交给 Passport KSP；不再靠额外的临时窗口抢前台。
+            let owner = app
+                .get_webview_window("dashboard")
+                .and_then(|window| window.hwnd().ok())
+                .ok_or(mod_password_vault::VaultError::BiometricUnavailable)
+                .and_then(|hwnd| {
+                    mod_password_vault::set_windows_hello_owner_window(hwnd.0 as isize)
+                });
+            if let Err(error) = owner {
+                return IpcResponse::err(error.to_string());
+            }
+        }
         return host.invoke_vault_ipc(&request.cmd, request.args).await;
     }
     if matches!(

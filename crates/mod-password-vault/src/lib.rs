@@ -16,6 +16,9 @@ mod store;
 #[cfg(target_os = "windows")]
 mod windows_hello;
 
+#[cfg(target_os = "windows")]
+pub use windows_hello::set_owner_window as set_windows_hello_owner_window;
+
 #[cfg(test)]
 #[path = "../tests/unit/lib.rs"]
 mod unit_tests;
