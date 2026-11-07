@@ -413,7 +413,8 @@ pub fn probe_for(ctx: &ModuleContext, script_type: ScriptType) -> CoreResult<Int
             let cmd = std::env::var_os("COMSPEC")
                 .map(std::path::PathBuf::from)
                 .filter(|path| path.is_file())
-                .or_else(|| ctx.env_probe.find_in_system_path("cmd"));
+                // PATH 查询是关联函数，Windows 分支同样通过类型调用。
+                .or_else(|| app_core::EnvProbeService::find_in_system_path("cmd"));
             return Ok(match cmd {
                 Some(path) => InterpreterStatus {
                     script_type,

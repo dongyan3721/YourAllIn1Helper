@@ -101,12 +101,13 @@ impl NativeOsHal {
 
     pub(super) fn usage_screen_locked_windows(&self) -> HalResult<bool> {
         use windows::Win32::System::StationsAndDesktops::{
-            CloseDesktop, OpenInputDesktop, DESKTOP_SWITCHDESKTOP,
+            CloseDesktop, OpenInputDesktop, DESKTOP_CONTROL_FLAGS, DESKTOP_SWITCHDESKTOP,
         };
 
         unsafe {
             // 锁屏时通常无法打开输入桌面；能打开则说明会话仍可交互。
-            match OpenInputDesktop(0, false, DESKTOP_SWITCHDESKTOP) {
+            // windows-rs 使用强类型标志，空标志也需要显式包装。
+            match OpenInputDesktop(DESKTOP_CONTROL_FLAGS(0), false, DESKTOP_SWITCHDESKTOP) {
                 Ok(desktop) => {
                     let _ = CloseDesktop(desktop);
                     Ok(false)

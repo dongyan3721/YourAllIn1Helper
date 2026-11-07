@@ -3,7 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "setup": "pnpm --dir src-ui install --frozen-lockfile",
+    "tauri": "node src-ui/node_modules/@tauri-apps/cli/tauri.js",
+    "dev": "pnpm tauri dev",
     "build:ui": "pnpm --dir src-ui run build:fast",
-    "build:app": "node src-ui/node_modules/@tauri-apps/cli/bin/tauri.js build --bundles app"
+    "build:app": "pnpm tauri build",
+    "build:desktop": "pnpm tauri build --debug --no-bundle"
   }
 }
