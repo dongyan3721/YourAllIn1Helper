@@ -31,9 +31,11 @@ pub struct ClipboardWriteToken {
 pub trait ClipboardOwnership: Send + Sync + 'static {
     /// 写入文本并标记为敏感：
     /// - macOS 附加 `org.nspasteboard.ConcealedType`，遵守该约定的剪贴板管理器不会记录；
-    /// - Windows 写入 `CF_UNICODETEXT` 并设置「Exclude Clipboard Content From Monitor
-    ///   Processing」与「Can Include In Clipboard History / Can Upload To Cloud Clipboard = FALSE」
-    ///   标记，Windows 剪贴板历史（Win+V）与云同步都不会记录；任一标记写入失败会回滚清空
+    /// - Windows 写入 `CF_UNICODETEXT` 并设置微软文档《Clipboard Formats》→ Cloud Clipboard
+    ///   and Clipboard History Formats 小节的准确注册标记（注意注册名无空格）：
+    ///   `ExcludeClipboardContentFromMonitorProcessing`（总控）与
+    ///   `CanIncludeInClipboardHistory = 0` / `CanUploadToCloudClipboard = 0`（细粒度 DWORD），
+    ///   Windows 剪贴板历史（Win+V）与云同步都不会记录；任一标记写入失败会回滚清空
     ///   并返回错误，绝不留下未隐藏的秘密。
     ///
     /// 调用方必须在敏感内容停留于剪贴板期间持有事件总线的剪贴板屏蔽租约，

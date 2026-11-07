@@ -34,19 +34,28 @@ fn text_with_interior_nul_is_rejected_before_touching_clipboard() {
 
 #[test]
 fn concealed_marker_and_gif_format_names_are_the_documented_windows_values() {
-    // 锁定微软文档化的注册格式名，防止改动时意外漂移导致秘密进入剪贴板历史。
+    // 锁定微软文档《Clipboard Formats》→ Cloud Clipboard and Clipboard History Formats
+    // 小节给出的准确注册格式名（无空格），防止漂移导致秘密进入剪贴板历史/云同步。
     assert_eq!(
         clipboard_win::EXCLUDE_MONITOR_FORMAT,
-        "Exclude Clipboard Content From Monitor Processing"
+        "ExcludeClipboardContentFromMonitorProcessing"
     );
     assert_eq!(
         clipboard_win::HISTORY_OPT_OUT_FORMAT,
-        "Can Include In Clipboard History"
+        "CanIncludeInClipboardHistory"
     );
     assert_eq!(
         clipboard_win::CLOUD_OPT_OUT_FORMAT,
-        "Can Upload To Cloud Clipboard"
+        "CanUploadToCloudClipboard"
     );
+    // 三个排除格式名都不得含空格（带空格的旧名 Windows 不认识，等于没有排除标记）。
+    for name in [
+        clipboard_win::EXCLUDE_MONITOR_FORMAT,
+        clipboard_win::HISTORY_OPT_OUT_FORMAT,
+        clipboard_win::CLOUD_OPT_OUT_FORMAT,
+    ] {
+        assert!(!name.contains(' '), "注册格式名不得含空格：{}", name);
+    }
     // GIF 主/辅格式名与 macOS 双 UTI 写入口径对应。
     assert_eq!(clipboard_win::GIF_PRIMARY_FORMAT, "image/gif");
     assert_eq!(clipboard_win::GIF_SECONDARY_FORMAT, "GIF");

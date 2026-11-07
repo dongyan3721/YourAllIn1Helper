@@ -30,13 +30,14 @@ use windows::{
     },
 };
 
-/// 敏感排除标记（微软文档化的注册剪贴板格式名）：
+/// 敏感排除标记（微软文档《Clipboard Formats》→ Cloud Clipboard and Clipboard History Formats
+/// 小节给出的准确注册格式名，无空格）：
 /// 存在该格式时，剪贴板历史与云同步（漫游剪贴板）都不记录本次内容。
-pub(super) const EXCLUDE_MONITOR_FORMAT: &str = "Exclude Clipboard Content From Monitor Processing";
-/// 细粒度标记：值为 `0`（FALSE）时不进入 Windows 剪贴板历史。
-pub(super) const HISTORY_OPT_OUT_FORMAT: &str = "Can Include In Clipboard History";
-/// 细粒度标记：值为 `0`（FALSE）时不上传云剪贴板（漫游）。
-pub(super) const CLOUD_OPT_OUT_FORMAT: &str = "Can Upload To Cloud Clipboard";
+pub(super) const EXCLUDE_MONITOR_FORMAT: &str = "ExcludeClipboardContentFromMonitorProcessing";
+/// 细粒度标记：序列化 DWORD 值为 `0`（FALSE）时不进入 Windows 剪贴板历史。
+pub(super) const HISTORY_OPT_OUT_FORMAT: &str = "CanIncludeInClipboardHistory";
+/// 细粒度标记：序列化 DWORD 值为 `0`（FALSE）时不上传云剪贴板（漫游）。
+pub(super) const CLOUD_OPT_OUT_FORMAT: &str = "CanUploadToCloudClipboard";
 
 /// 动态 GIF 主格式名（MIME 命名，对应 macOS `com.compuserve.gif`）。
 pub(super) const GIF_PRIMARY_FORMAT: &str = "image/gif";

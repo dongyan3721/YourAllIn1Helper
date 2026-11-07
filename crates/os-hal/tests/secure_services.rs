@@ -360,10 +360,11 @@ mod windows_native {
             .write_concealed_text("fictional-clipboard-001")
             .unwrap();
         assert_eq!(raw_read_text().as_deref(), Some("fictional-clipboard-001"));
-        // 敏感标记必须齐备：剪贴板历史与云同步排除（独立读取验证，不走被测实现）。
-        assert!(format_available("Exclude Clipboard Content From Monitor Processing"));
-        assert!(format_available("Can Include In Clipboard History"));
-        assert!(format_available("Can Upload To Cloud Clipboard"));
+        // 敏感标记必须齐备：剪贴板历史与云同步排除（独立读取验证，不走被测实现）；
+        // 格式名为微软文档《Clipboard Formats》小节的准确注册名（无空格）。
+        assert!(format_available("ExcludeClipboardContentFromMonitorProcessing"));
+        assert!(format_available("CanIncludeInClipboardHistory"));
+        assert!(format_available("CanUploadToCloudClipboard"));
         // 探测函数与标记一致（监听器过滤依据）。
         assert!(clipboard_content_is_concealed());
 
