@@ -219,7 +219,7 @@ async function cancelGif() {
   border-radius: 26px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
   color: #fff;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--app-font-sans);
   font-size: 13px;
   user-select: none;
   cursor: default;

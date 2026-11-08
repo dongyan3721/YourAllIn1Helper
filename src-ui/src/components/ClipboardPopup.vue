@@ -324,7 +324,7 @@ onMounted(async () => {
 
 .text-preview {
   font-size: 12px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--app-font-sans);
   color: var(--macos-text-primary);
   white-space: nowrap;
   overflow: hidden;

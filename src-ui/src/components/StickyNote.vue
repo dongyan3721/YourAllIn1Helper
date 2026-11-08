@@ -814,7 +814,7 @@ onMounted(async () => {
   outline: none;
   padding: 10px 12px;
   color: var(--macos-text-primary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--app-font-sans);
   font-size: 12.5px;
   line-height: 1.5;
   resize: none;
