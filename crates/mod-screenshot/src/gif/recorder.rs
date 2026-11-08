@@ -9,7 +9,7 @@ use super::{
 };
 use crate::export::timestamped_stem;
 use app_core::SelectionBox;
-use os_hal::ScreenCapturer;
+use os_hal::{ScreenCapturer, WindowHandleId};
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -286,6 +286,12 @@ impl GifRecordingSession {
         let start_time = Instant::now();
         let max_duration = Duration::from_secs(config.max_duration_secs);
         let overlay = decode_overlay(overlay_png.as_deref());
+        // macOS 传 CGWindowID；Windows 传 0，由遮罩显示时登记、平台实现持有的 64 位 HWND 补齐。
+        let exclusion = if exclude_window_id != 0 {
+            Some(exclude_window_id as WindowHandleId)
+        } else {
+            capturer.active_capture_exclusion()
+        };
         let mut auto_stopped = false;
 
         while !stop_signal.load(Ordering::SeqCst) {
@@ -299,12 +305,12 @@ impl GifRecordingSession {
                 break;
             }
 
-            match capturer.capture_region_below(capture_bounds, exclude_window_id) {
+            match capturer.capture_region_excluding(capture_bounds, exclusion) {
                 Ok(frame) => {
                     let mut pixels = frame.rgba_bytes;
                     // 排除了遮罩时，抓到的是底下的动态画面，墨迹要再叠一次。
-                    // 没拿到窗口号时，抓屏已经包含遮罩上的墨迹，不能再叠。
-                    if exclude_window_id != 0 {
+                    // 没排除时，抓屏已经包含遮罩上的墨迹，不能再叠。
+                    if exclusion.is_some() {
                         if let Some(ink) = &overlay {
                             blend_overlay(&mut pixels, frame.width, frame.height, ink);
                         }

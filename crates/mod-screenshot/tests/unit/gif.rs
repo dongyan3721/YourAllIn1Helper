@@ -13,9 +13,12 @@ use crate::gif::{
     options::{GifFramerate, GifRecordingConfig, GifResolutionPreset},
     recorder::GifRecordingSession,
 };
-use os_hal::{CapturedFrame, DisplayMonitorInfo, HalResult, ScreenCapturer};
+use os_hal::{CapturedFrame, DisplayMonitorInfo, HalResult, ScreenCapturer, WindowHandleId};
 use std::io::Cursor;
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use tempfile::tempdir;
 
 #[test]
@@ -250,5 +253,181 @@ fn test_gif_recording_session_cancellation_deletes_temp_file() {
         entries.is_empty(),
         "No temp files should remain after cancel: {:?}",
         entries
+    );
+}
+
+/// 记录排除标识是否真正传到抓屏端，并返回单一颜色的帧。
+struct ExclusionAwareCapturer {
+    seen_exclusion: AtomicBool,
+    rgba: [u8; 4],
+}
+
+impl ScreenCapturer for ExclusionAwareCapturer {
+    fn list_monitors(&self) -> HalResult<Vec<DisplayMonitorInfo>> {
+        Ok(vec![])
+    }
+    fn capture_monitor(&self, _id: Option<u32>) -> HalResult<CapturedFrame> {
+        unimplemented!()
+    }
+    fn capture_region(&self, bounds: app_core::SelectionBox) -> HalResult<CapturedFrame> {
+        let mut pixels = Vec::with_capacity((bounds.width * bounds.height * 4) as usize);
+        for _ in 0..(bounds.width * bounds.height) {
+            pixels.extend_from_slice(&self.rgba);
+        }
+        Ok(CapturedFrame {
+            width: bounds.width,
+            height: bounds.height,
+            scale_factor_milli: 1000,
+            rgba_bytes: pixels,
+        })
+    }
+    fn capture_region_excluding(
+        &self,
+        bounds: app_core::SelectionBox,
+        exclusion: Option<WindowHandleId>,
+    ) -> HalResult<CapturedFrame> {
+        self.seen_exclusion
+            .store(exclusion.is_some(), Ordering::SeqCst);
+        self.capture_region(bounds)
+    }
+}
+
+fn solid_overlay_png(width: u32, height: u32, rgba: [u8; 4]) -> Vec<u8> {
+    let image = image::RgbaImage::from_pixel(width, height, image::Rgba(rgba));
+    let mut bytes = Vec::new();
+    image::DynamicImage::ImageRgba8(image)
+        .write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Png)
+        .expect("overlay PNG encode");
+    bytes
+}
+
+fn first_frame_rgb(bytes: &[u8]) -> (u8, u8, u8) {
+    let mut reader = gif::DecodeOptions::new()
+        .read_info(Cursor::new(bytes))
+        .expect("GIF must decode");
+    let frame = reader
+        .read_next_frame()
+        .expect("read first frame")
+        .expect("GIF must contain a frame");
+    let palette = frame.palette.as_ref().expect("frame palette");
+    let index = frame.buffer[0] as usize * 3;
+    (palette[index], palette[index + 1], palette[index + 2])
+}
+
+fn recording_config() -> GifRecordingConfig {
+    GifRecordingConfig {
+        resolution_preset: GifResolutionPreset::Original,
+        framerate: GifFramerate::Fps30,
+        max_duration_secs: 5,
+        max_frames: 2,
+        sample_factor: 1,
+    }
+}
+
+#[test]
+fn test_gif_recording_blends_ink_when_capture_excludes_overlay() {
+    let dir = tempdir().unwrap();
+    let capturer = Arc::new(ExclusionAwareCapturer {
+        seen_exclusion: AtomicBool::new(false),
+        // 抓到的真实画面是黑的；只有重新合成红色墨迹后才应呈现红色。
+        rgba: [0, 0, 0, 255],
+    });
+    let overlay = solid_overlay_png(8, 8, [255, 0, 0, 255]);
+    let selection = app_core::SelectionBox {
+        x: 0,
+        y: 0,
+        width: 8,
+        height: 8,
+    };
+    let session = GifRecordingSession::new(
+        "test_gif_exclusion".to_string(),
+        selection,
+        selection,
+        dir.path().to_path_buf(),
+        "Screenshot".to_string(),
+        recording_config(),
+        capturer.clone(),
+        None,
+        Some(overlay),
+        99,
+    )
+    .expect("Session create");
+
+    std::thread::sleep(std::time::Duration::from_millis(250));
+    session.stop();
+    session.wait_finished(std::time::Duration::from_secs(2));
+
+    assert!(
+        capturer.seen_exclusion.load(Ordering::SeqCst),
+        "recorder must forward the overlay exclusion to the capturer"
+    );
+    let status = session.status();
+    let pending = status.pending_path.expect("pending GIF must exist");
+    let bytes = std::fs::read(pending).unwrap();
+    let (r, g, b) = first_frame_rgb(&bytes);
+    assert!(
+        r > 150 && g < 80 && b < 80,
+        "excluded overlay must reveal live pixels and re-blend ink, got rgb({r}, {g}, {b})"
+    );
+}
+
+#[test]
+fn test_gif_recording_keeps_capture_when_overlay_is_not_excluded() {
+    let dir = tempdir().unwrap();
+    let capturer = Arc::new(ExclusionAwareCapturer {
+        seen_exclusion: AtomicBool::new(false),
+        rgba: [0, 0, 255, 255],
+    });
+    let overlay = solid_overlay_png(8, 8, [255, 0, 0, 255]);
+    let selection = app_core::SelectionBox {
+        x: 0,
+        y: 0,
+        width: 8,
+        height: 8,
+    };
+    let session = GifRecordingSession::new(
+        "test_gif_no_exclusion".to_string(),
+        selection,
+        selection,
+        dir.path().to_path_buf(),
+        "Screenshot".to_string(),
+        recording_config(),
+        capturer.clone(),
+        None,
+        Some(overlay),
+        0,
+    )
+    .expect("Session create");
+
+    std::thread::sleep(std::time::Duration::from_millis(250));
+    session.stop();
+    session.wait_finished(std::time::Duration::from_secs(2));
+
+    assert!(
+        !capturer.seen_exclusion.load(Ordering::SeqCst),
+        "no exclusion must be registered for a normal capture"
+    );
+    let status = session.status();
+    let pending = status.pending_path.expect("pending GIF must exist");
+    let bytes = std::fs::read(pending).unwrap();
+    let (r, g, b) = first_frame_rgb(&bytes);
+    assert!(
+        b > 150 && r < 80 && g < 80,
+        "capture already contains the overlay, so ink must not be blended twice; got rgb({r}, {g}, {b})"
+    );
+}
+
+#[test]
+fn test_gif_encoder_preserves_non_black_content() {
+    let mut output = Vec::new();
+    let mut encoder = GifStreamEncoder::new(&mut output, 8, 8, GifFramerate::Fps30, 1).unwrap();
+    let white = vec![255u8; 8 * 8 * 4];
+    encoder.add_frame(&white, 8, 8).unwrap();
+    encoder.finish().unwrap();
+
+    let (r, g, b) = first_frame_rgb(&output);
+    assert!(
+        r > 200 && g > 200 && b > 200,
+        "bright RGBA input must not decay to a black GIF frame, got rgb({r}, {g}, {b})"
     );
 }
