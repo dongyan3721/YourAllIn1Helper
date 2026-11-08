@@ -571,6 +571,11 @@
     }
   },
   "screenshot": {
+    "saveAs": "Save as…",
+    "quickSave": "Quick save",
+    "quickSaveHint": "Save to the default folder (⌘/Ctrl+Shift+S)",
+    "pngFilter": "PNG image",
+    "gifFilter": "GIF animation",
     "overlay": {
       "loadFailed": "Failed to load screenshot",
       "cancel": "Cancel",
@@ -729,6 +734,8 @@
       "autoStopped": "Recording limit reached. It is saved only after you keep it.",
       "previewTitle": "GIF Recording Finished",
       "savedSuccess": "GIF successfully recorded and saved",
+      "preset": "Resolution",
+      "fps": "Frame rate",
       "presetOriginal": "Original",
       "preset1080p": "1080p",
       "preset720p": "720p",

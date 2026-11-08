@@ -97,7 +97,21 @@ pub fn sanitize_file_name(raw: &str, kind: SaveKind) -> String {
         .unwrap_or("");
     let cleaned: String = leaf
         .chars()
-        .map(|c| if c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|' || c.is_control() { '_' } else { c })
+        .map(|c| {
+            if c == ':'
+                || c == '*'
+                || c == '?'
+                || c == '"'
+                || c == '<'
+                || c == '>'
+                || c == '|'
+                || c.is_control()
+            {
+                '_'
+            } else {
+                c
+            }
+        })
         .collect();
     let cleaned = cleaned.trim();
     let fallback = format!("screenshot.{}", kind.extension());
@@ -134,7 +148,9 @@ pub(crate) fn parse_spec(args: &Value) -> CoreResult<SaveDialogSpec> {
             .unwrap_or("保存截图")
             .to_string(),
         default_file_name: sanitize_file_name(
-            args.get("default_name").and_then(Value::as_str).unwrap_or(""),
+            args.get("default_name")
+                .and_then(Value::as_str)
+                .unwrap_or(""),
             kind,
         ),
         kind,
@@ -162,7 +178,8 @@ fn ensure_screenshot_enabled(host: &DesktopHost) -> CoreResult<()> {
 
 /// 同一时刻只允许一个系统保存对话框，避免多窗口并发呼出叠加。
 /// 用原子标志而非互斥锁守卫：守卫需跨 `.await` 持有，必须保持 `Send`。
-static SAVE_DIALOG_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static SAVE_DIALOG_ACTIVE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 struct SingleDialogGuard;
 
@@ -214,10 +231,7 @@ async fn pick_screenshot_save_path_result(
 ) -> CoreResult<Option<PathBuf>> {
     ensure_screenshot_enabled(host)?;
     let mut spec = parse_spec(&args)?;
-    spec.owner_label = resolve_owner_label(
-        app,
-        args.get("owner_label").and_then(Value::as_str),
-    );
+    spec.owner_label = resolve_owner_label(app, args.get("owner_label").and_then(Value::as_str));
     let _active_dialog = SingleDialogGuard::acquire()?;
     let chosen = platform::show_save_dialog(app, &spec).await?;
     if let Some(path) = chosen.as_ref() {
@@ -231,6 +245,7 @@ mod platform {
     use super::*;
     use std::ffi::c_void;
     use tauri::Manager;
+    use windows::core::{HRESULT, PCWSTR, PWSTR};
     use windows::Win32::Foundation::HWND;
     use windows::Win32::System::Com::{
         CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_INPROC_SERVER,
@@ -239,9 +254,8 @@ mod platform {
     use windows::Win32::UI::Shell::Common::COMDLG_FILTERSPEC;
     use windows::Win32::UI::Shell::{
         FileSaveDialog, IFileSaveDialog, IShellItem, FOS_FORCEFILESYSTEM, FOS_NOCHANGEDIR,
-        FOS_OVERWRITEPROMPT, SIGDN_FILESYSPATH,
+        FOS_OVERWRITEPROMPT, FOS_STRICTFILETYPES, SIGDN_FILESYSPATH,
     };
-    use windows::core::{HRESULT, PCWSTR, PWSTR};
 
     /// `HRESULT_FROM_WIN32(ERROR_CANCELLED)`；`E_ABORT` 也按取消处理。
     const ERROR_CANCELLED_HRESULT: HRESULT = HRESULT(0x8007_04C7u32 as i32);
@@ -264,10 +278,7 @@ mod platform {
             unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }
                 .ok()
                 .map_err(|error| {
-                    CoreError::Internal(anyhow::anyhow!(
-                        "COM 初始化失败：{}",
-                        error.message()
-                    ))
+                    CoreError::Internal(anyhow::anyhow!("COM 初始化失败：{}", error.message()))
                 })?;
             Ok(Self)
         }
@@ -307,7 +318,10 @@ mod platform {
         // SAFETY: COM 已在本线程以 STA 初始化；对话框对象在本函数内全程持有。
         let dialog: IFileSaveDialog = unsafe {
             CoCreateInstance(&FileSaveDialog, None, CLSCTX_INPROC_SERVER).map_err(|error| {
-                CoreError::Internal(anyhow::anyhow!("创建系统保存对话框失败：{}", error.message()))
+                CoreError::Internal(anyhow::anyhow!(
+                    "创建系统保存对话框失败：{}",
+                    error.message()
+                ))
             })?
         };
         let name_w = wide(&spec.filter_label);
@@ -318,8 +332,12 @@ mod platform {
         }];
         let default_ext = wide(spec.kind.extension());
         let file_name = wide(&spec.default_file_name);
+        let title = wide(&spec.title);
         // SAFETY: 传入的宽字符串在调用期间保持存活；COM 会复制这些缓冲区。
         unsafe {
+            dialog
+                .SetTitle(PCWSTR(title.as_ptr()))
+                .map_err(|error| internal_error("设置保存标题", error))?;
             dialog
                 .SetFileTypes(&filters)
                 .map_err(|error| internal_error("设置文件类型", error))?;
@@ -333,7 +351,13 @@ mod platform {
                 .GetOptions()
                 .map_err(|error| internal_error("读取对话框选项", error))?;
             dialog
-                .SetOptions(options | FOS_FORCEFILESYSTEM | FOS_NOCHANGEDIR | FOS_OVERWRITEPROMPT)
+                .SetOptions(
+                    options
+                        | FOS_FORCEFILESYSTEM
+                        | FOS_NOCHANGEDIR
+                        | FOS_OVERWRITEPROMPT
+                        | FOS_STRICTFILETYPES,
+                )
                 .map_err(|error| internal_error("设置对话框选项", error))?;
         }
         let hwnd = HWND(owner as *mut c_void);
@@ -356,11 +380,9 @@ mod platform {
             if raw.is_null() {
                 return Err(CoreError::Internal(anyhow::anyhow!("保存路径为空")));
             }
-            let path = raw
-                .to_string()
-                .map_err(|error| {
-                    CoreError::Internal(anyhow::anyhow!("转换保存路径失败：{}", error))
-                })?;
+            let path = raw.to_string().map_err(|error| {
+                CoreError::Internal(anyhow::anyhow!("转换保存路径失败：{}", error))
+            })?;
             CoTaskMemFree(Some(raw.0 as *const c_void));
             Ok(Some(PathBuf::from(path)))
         }
@@ -475,95 +497,5 @@ mod platform {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn save_path_registry_is_one_shot_and_matches_kind() {
-        let registry = SavePathRegistry::default();
-        let path = PathBuf::from("/tmp/媒体 文件/截图.png");
-        registry.register(path.clone(), SaveKind::Png);
-        // 未登记的路径被拒绝（模拟 HTTP/WebView 直接指定任意路径）。
-        assert!(registry
-            .consume(Path::new("/tmp/other.png"), SaveKind::Png)
-            .is_err());
-        // 格式不匹配被拒绝。
-        assert!(registry.consume(&path, SaveKind::Gif).is_err());
-        // 首次消费成功，重放（同一路径二次覆盖写）被拒绝。
-        assert!(registry.consume(&path, SaveKind::Png).is_ok());
-        assert!(registry.consume(&path, SaveKind::Png).is_err());
-    }
-
-    #[test]
-    fn save_path_registry_evicts_oldest_beyond_capacity() {
-        let registry = SavePathRegistry::default();
-        for index in 0..(MAX_RECENT_SELECTIONS + 1) {
-            registry.register(PathBuf::from(format!("p{}.png", index)), SaveKind::Png);
-        }
-        assert!(registry
-            .consume(Path::new("p0.png"), SaveKind::Png)
-            .is_err());
-        assert!(registry
-            .consume(Path::new("p8.png"), SaveKind::Png)
-            .is_ok());
-    }
-
-    #[test]
-    fn save_path_registry_rejects_cancel_that_never_registered() {
-        let registry = SavePathRegistry::default();
-        // 取消不登记：后续伪造同一路径的写入必须被拒绝。
-        assert!(registry
-            .consume(Path::new("/tmp/未选择.png"), SaveKind::Png)
-            .is_err());
-    }
-
-    #[test]
-    fn sanitize_file_name_keeps_chinese_spaces_and_strips_separators() {
-        assert_eq!(
-            sanitize_file_name("截图 文件 01", SaveKind::Png),
-            "截图 文件 01.png"
-        );
-        // 目录穿越只取叶子名，非法字符替换为下划线。
-        assert_eq!(
-            sanitize_file_name("..\\..\\evil name.png", SaveKind::Png),
-            "evil name.png"
-        );
-        assert_eq!(
-            sanitize_file_name("a/b\\c:*.gif", SaveKind::Gif),
-            "c__.gif"
-        );
-        // 空 / 纯空白退回安全缺省名。
-        assert_eq!(sanitize_file_name("", SaveKind::Png), "screenshot.png");
-        assert_eq!(sanitize_file_name("   ", SaveKind::Gif), "screenshot.gif");
-        // 显式扩展名保持原样。
-        assert_eq!(
-            sanitize_file_name("动图.PNG", SaveKind::Gif),
-            "动图.PNG"
-        );
-    }
-
-    #[test]
-    fn parse_spec_validates_kind_and_fills_labels() {
-        let spec = parse_spec(&json!({"kind": "GIF", "default_name": "x/y"})).unwrap();
-        assert_eq!(spec.kind, SaveKind::Gif);
-        assert_eq!(spec.default_file_name, "y.gif");
-        assert_eq!(spec.filter_label, "GIF animation");
-        assert_eq!(spec.title, "保存截图");
-        assert!(parse_spec(&json!({"kind": "jpg"})).is_err());
-        assert!(parse_spec(&json!({})).is_err());
-    }
-
-    #[test]
-    fn module_disable_is_rejected_before_any_dialog_work() {
-        let dir = tempfile::tempdir().unwrap();
-        let host = DesktopHost::bootstrap(dir.path(), true).unwrap();
-        host.kernel()
-            .set_module_enabled("screenshot", false)
-            .unwrap();
-        assert!(ensure_screenshot_enabled(&host).is_err());
-        host.kernel()
-            .set_module_enabled("screenshot", true)
-            .unwrap();
-        assert!(ensure_screenshot_enabled(&host).is_ok());
-    }
-}
+#[path = "../tests/unit/native_save_dialog.rs"]
+mod tests;

@@ -651,8 +651,9 @@ impl ScreenshotModule {
 
         // 编码大图期间先隐藏遮罩，用户立即回到桌面。
         let _ = ctx.window_pool.set_window_visible(OVERLAY_LABEL, false);
-        let result =
-            self.perform_export(ctx, &session, &selection, image, action, save_path, &settings);
+        let result = self.perform_export(
+            ctx, &session, &selection, image, action, save_path, &settings,
+        );
         match result {
             Ok(outcome) => {
                 if let Err(error) = self.finish_session_locked(ctx) {
@@ -710,8 +711,10 @@ impl ScreenshotModule {
                     // 快捷默认保存：目标目录 + 时间戳文件名，同名自动加序号，绝不覆盖。
                     None => {
                         let dir = self.save_directory(ctx, settings);
-                        let stem =
-                            export::timestamped_stem(&settings.file_name_prefix, chrono::Local::now());
+                        let stem = export::timestamped_stem(
+                            &settings.file_name_prefix,
+                            chrono::Local::now(),
+                        );
                         export::write_exclusive(&dir, &stem, &png)?
                     }
                 };
@@ -1251,8 +1254,8 @@ impl ScreenshotModule {
     ) -> CoreResult<gif::GifRecordingStatus> {
         let session = self
             .active_gif
-            .write()
-            .take()
+            .read()
+            .clone()
             .ok_or_else(|| internal("当前没有可保存的 GIF"))?;
         let path = match save_path {
             Some(target) => {
@@ -1274,6 +1277,8 @@ impl ScreenshotModule {
             }
         }
         status.saved_path = Some(path.to_string_lossy().to_string());
+        // 只有成功写入后才释放会话；路径不可写时预览与临时文件仍然可重试。
+        self.active_gif.write().take();
         *self.last_gif_status.write() = Some(status.clone());
         let _ = self.finish_session_locked(ctx);
         Ok(status)

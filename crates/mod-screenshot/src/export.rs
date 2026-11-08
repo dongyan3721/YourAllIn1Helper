@@ -135,18 +135,21 @@ pub fn write_exact(path: &Path, bytes: &[u8]) -> CoreResult<PathBuf> {
         fs::create_dir_all(parent)
             .map_err(|e| internal(format!("无法创建保存目录 {}：{}", parent.display(), e)))?;
     }
-    match fs::write(path, bytes) {
-        Ok(()) => Ok(path.to_path_buf()),
-        Err(error) => {
-            // 覆盖写失败时目标可能已是半成品：删除本次残缺内容，不保留损坏文件。
-            let _ = fs::remove_file(path);
-            Err(internal(format!(
-                "写入截图文件 {} 失败：{}",
-                path.display(),
-                error
-            )))
-        }
-    }
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let write = || -> std::io::Result<()> {
+        // 替换前不截断目标；临时文件与目标同目录，保证 Windows 上原子移动可用。
+        let mut pending = tempfile::NamedTempFile::new_in(parent)?;
+        pending.write_all(bytes)?;
+        pending.as_file().sync_all()?;
+        pending.persist(path).map_err(|error| error.error)?;
+        Ok(())
+    };
+    write()
+        .map_err(|error| internal(format!("写入截图文件 {} 失败：{}", path.display(), error)))?;
+    Ok(path.to_path_buf())
 }
 
 #[cfg(test)]

@@ -141,9 +141,10 @@
         <button class="tool-btn" :title="t('screenshot.overlay.pin') + ' (F3)'" :disabled="exporting" @click="doExport('pin')">
           <Icons name="pin" :size="16" />
         </button>
-        <button class="tool-btn" :title="t('screenshot.overlay.save') + ' (⌘/Ctrl+S)'" :disabled="exporting" @click="doExport('save')">
+        <button class="tool-btn" :title="t('screenshot.saveAs') + ' (⌘/Ctrl+S)'" :disabled="exporting" @click="doExport('save')">
           <Icons name="download" :size="16" />
         </button>
+        <button class="tool-btn text-btn" :title="t('screenshot.quickSaveHint')" :disabled="exporting" @click="doExport('save', true)">{{ t('screenshot.quickSave') }}</button>
         <button class="tool-btn" :title="t('screenshot.overlay.cancel') + ' (Esc)'" :disabled="exporting" @click="cancelCapture">
           <Icons name="close" :size="16" />
         </button>
@@ -223,7 +224,8 @@
       <strong>{{ gifAutoStopped ? t('screenshot.gif.autoStopped') : t('screenshot.gif.previewTitle') }}</strong>
       <img :src="gifPreviewUrl" alt="" />
       <div class="gif-preview-actions">
-        <button class="tool-btn text-btn" @click="confirmGif">{{ t('screenshot.gif.keep') }}</button>
+        <button class="tool-btn text-btn" :disabled="exporting" @click="confirmGif()">{{ t('screenshot.saveAs') }}</button>
+        <button class="tool-btn text-btn" :disabled="exporting" :title="t('screenshot.quickSaveHint')" @click="confirmGif(true)">{{ t('screenshot.quickSave') }}</button>
         <button class="tool-btn text-btn" @click="copyGifToClipboard">{{ t('screenshot.gif.copy') }}</button>
         <button class="tool-btn text-btn" @click="discardGif">{{ t('screenshot.gif.discard') }}</button>
       </div>
@@ -331,6 +333,7 @@ import {
 } from '../utils/screenshot/annotations';
 import { readPixel, toHex, toRgbText } from '../utils/screenshot/color';
 import { outerBorderRect, shouldPassthroughWheel } from '../utils/screenshot/scroll';
+import { runSaveFlow } from '../utils/screenshot/save';
 import { renderAnnotations, TEXT_FONT_FAMILY, TEXT_LINE_HEIGHT, type FrameSource, type MosaicCache } from '../utils/screenshot/render';
 
 type DragState =
@@ -955,6 +958,9 @@ async function showGifPreview(autoStopped: boolean) {
     showToast(err?.message || String(err), 'error');
     liveMode.value = null;
     setLiveHole(false);
+  } finally {
+    // 这是一次加载的并发保护；放弃预览后再次录制仍应允许展示结果。
+    gifFinishing = false;
   }
 }
 
@@ -1119,12 +1125,18 @@ async function cancelGifRecording() {
   }
 }
 
-async function confirmGif() {
+async function confirmGif(useDefault = false) {
+  if (exporting.value) return;
+  exporting.value = true;
   try {
-    const status = await screenshotApi.gifConfirm();
-    showToast(t('screenshot.gif.kept', { path: status.saved_path || '' }), 'info');
+    const status = await runSaveFlow(useDefault,
+      () => screenshotApi.pickSavePath('gif', t('screenshot.saveAs'), t('screenshot.gifFilter')),
+      path => screenshotApi.gifConfirm(path));
+    if (status) showToast(t('screenshot.gif.kept', { path: status.saved_path || '' }), 'info');
   } catch (err: any) {
     showToast(err?.message || String(err), 'error');
+  } finally {
+    exporting.value = false;
   }
 }
 
@@ -1165,18 +1177,25 @@ async function renderOverlayPng(sel: Rect): Promise<Uint8Array | null> {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
-async function doExport(action: ExportAction) {
+async function doExport(action: ExportAction, useDefault = false) {
   const sel = selection.value;
   if (!sel || !session.value || exporting.value) return;
   if (textEditor.value) commitText();
   exporting.value = true;
   try {
     const png = await renderOverlayPng(sel);
-    await exportSelection(session.value.session_id, sel, action, png);
+    if (action === 'save') {
+      await runSaveFlow(useDefault,
+        () => screenshotApi.pickSavePath('png', t('screenshot.saveAs'), t('screenshot.pngFilter')),
+        path => exportSelection(session.value!.session_id, sel, action, png, path));
+    } else {
+      await exportSelection(session.value.session_id, sel, action, png);
+    }
     // 成功后后端销毁本窗口；以下状态仅在窗口尚未销毁时生效。
   } catch (err: any) {
-    exporting.value = false;
     showToast(err?.message || String(err), 'error');
+  } finally {
+    exporting.value = false;
   }
 }
 
@@ -1228,6 +1247,9 @@ function onKeyDown(e: KeyboardEvent) {
     } else if (e.key === 'Enter' && liveMode.value === 'gif') {
       e.preventDefault();
       void stopGifRecording();
+    } else if (gifPreviewUrl.value && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      void confirmGif(e.shiftKey);
     }
     return;
   }
@@ -1281,7 +1303,7 @@ function onKeyDown(e: KeyboardEvent) {
   }
   if (mod && (key === 's' || key === 'S')) {
     e.preventDefault();
-    void doExport('save');
+    void doExport('save', e.shiftKey);
     return;
   }
   if (key === 'Enter' && session.value?.intent === 'ocr') {

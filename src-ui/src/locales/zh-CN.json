@@ -571,6 +571,11 @@
     }
   },
   "screenshot": {
+    "saveAs": "另存为…",
+    "quickSave": "默认保存",
+    "quickSaveHint": "保存到默认目录（⌘/Ctrl+Shift+S）",
+    "pngFilter": "PNG 图像",
+    "gifFilter": "GIF 动画",
     "overlay": {
       "loadFailed": "截图加载失败",
       "cancel": "取消",
@@ -729,6 +734,8 @@
       "autoStopped": "已到录制上限，确认后才会保存",
       "previewTitle": "GIF 录制完成",
       "savedSuccess": "GIF 录制成功并已保存",
+      "preset": "分辨率",
+      "fps": "帧率",
       "presetOriginal": "原画",
       "preset1080p": "1080p",
       "preset720p": "720p",

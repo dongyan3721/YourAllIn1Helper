@@ -16,8 +16,9 @@
           </button>
           <button class="action-btn" :disabled="loading || exporting" @click="doExport('save')">
             <Icons name="download" :size="15" />
-            <span>{{ t('screenshot.overlay.save') }}</span>
+            <span>{{ t('screenshot.saveAs') }}</span>
           </button>
+          <button class="action-btn" :disabled="loading || exporting" :title="t('screenshot.quickSaveHint')" @click="doExport('save', true)">{{ t('screenshot.quickSave') }}</button>
           <button class="action-btn primary" :disabled="loading || exporting" @click="doExport('copy')">
             <Icons name="check" :size="15" />
             <span>{{ t('screenshot.overlay.copy') }}</span>
@@ -74,6 +75,7 @@ import {
   type GifStatus,
 } from '../api/screenshot';
 import { formatGifDuration, formatFileSize } from '../utils/screenshot/gif';
+import { runSaveFlow } from '../utils/screenshot/save';
 
 const urlParams = new URLSearchParams(window.location.search);
 const isScroll = computed(() => urlParams.get('type') !== 'gif');
@@ -87,6 +89,7 @@ const gifStatus = ref<GifStatus | null>(null);
 const toast = ref<{ text: string; kind: 'info' | 'error' } | null>(null);
 
 onMounted(async () => {
+  window.addEventListener('keydown', onKeyDown);
   if (isScroll.value) {
     try {
       const infoRes = await screenshotApi.scrollInfo();
@@ -134,8 +137,17 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  window.removeEventListener('keydown', onKeyDown);
   scrollCanvasUrl.value = null;
 });
+
+/** 与选区、贴图保持一致：保存弹出路径选择，Shift 变体使用默认目录。 */
+function onKeyDown(event: KeyboardEvent) {
+  if (isScroll.value && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+    event.preventDefault();
+    void doExport('save', event.shiftKey);
+  }
+}
 
 function showToast(text: string, kind: 'info' | 'error' = 'info') {
   toast.value = { text, kind };
@@ -144,11 +156,16 @@ function showToast(text: string, kind: 'info' | 'error' = 'info') {
   }, 3000);
 }
 
-async function doExport(action: ExportAction) {
+async function doExport(action: ExportAction, useDefault = false) {
   if (exporting.value) return;
   exporting.value = true;
   try {
-    const outcome = await screenshotApi.scrollExport(action);
+    const outcome = action === 'save'
+      ? await runSaveFlow(useDefault,
+        () => screenshotApi.pickSavePath('png', t('screenshot.saveAs'), t('screenshot.pngFilter')),
+        path => screenshotApi.scrollExport(action, path))
+      : await screenshotApi.scrollExport(action);
+    if (!outcome) return;
     if (action === 'copy') {
       showToast(t('screenshot.scroll.copySuccess'), 'info');
     } else if (action === 'save') {
@@ -158,6 +175,7 @@ async function doExport(action: ExportAction) {
     }
   } catch (e: any) {
     showToast(e?.message || '导出长截图失败', 'error');
+  } finally {
     exporting.value = false;
   }
 }
@@ -181,7 +199,7 @@ async function close() {
   height: 100vh;
   background: #1c1c1e;
   color: #fff;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--app-font-sans);
   user-select: none;
   overflow: hidden;
 }
@@ -367,7 +385,7 @@ async function close() {
   background: rgba(0, 0, 0, 0.3);
   padding: 8px 12px;
   border-radius: 6px;
-  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-family: var(--app-font-mono);
 }
 
 .preview-toast {

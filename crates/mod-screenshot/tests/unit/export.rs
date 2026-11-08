@@ -170,7 +170,11 @@ fn write_exact_writes_and_overwrites_chinese_space_paths() {
 #[test]
 fn write_exact_creates_missing_parent_directories() {
     let dir = tempfile::tempdir().unwrap();
-    let nested = dir.path().join("新建 文件夹").join("子目录").join("shot.png");
+    let nested = dir
+        .path()
+        .join("新建 文件夹")
+        .join("子目录")
+        .join("shot.png");
     let path = write_exact(&nested, b"ok").unwrap();
     assert_eq!(path, nested);
     assert_eq!(std::fs::read(&nested).unwrap(), b"ok");

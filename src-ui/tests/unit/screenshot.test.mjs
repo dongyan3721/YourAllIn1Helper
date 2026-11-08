@@ -28,6 +28,7 @@ import {
 } from '../../src/utils/screenshot/annotations.ts';
 import { pixelateBlocks } from '../../src/utils/screenshot/mosaic.ts';
 import { readPixel, toHex, toRgbText } from '../../src/utils/screenshot/color.ts';
+import { runSaveFlow } from '../../src/utils/screenshot/save.ts';
 import {
   COLLAPSED_SIZE,
   MAX_ZOOM,
@@ -40,6 +41,31 @@ import {
 } from '../../src/utils/screenshot/pinView.ts';
 
 const FRAME = { x: 0, y: 0, width: 200, height: 100 };
+
+test('cancelling a save picker never writes or falls back to the default path', async () => {
+  let writes = 0;
+  assert.equal(await runSaveFlow(false, async () => null, async () => { writes++; }), null);
+  assert.equal(writes, 0);
+});
+
+test('quick save skips the picker and a chosen Unicode path is passed unchanged', async () => {
+  const paths = [];
+  const write = async path => { paths.push(path); return 'saved'; };
+  assert.equal(await runSaveFlow(true, async () => { throw Error('picker must not open'); }, write), 'saved');
+  const selected = 'D:\\截图 测试\\图像 01.png';
+  assert.equal(await runSaveFlow(false, async () => selected, write), 'saved');
+  assert.deepEqual(paths, [undefined, selected]);
+});
+
+test('picker or write errors remain errors and allow an explicit retry', async () => {
+  let writes = 0;
+  const write = async () => { writes++; throw Error('disk full'); };
+  await assert.rejects(runSaveFlow(false, async () => { throw Error('dialog failed'); }, write), /dialog failed/);
+  assert.equal(writes, 0);
+  await assert.rejects(runSaveFlow(false, async () => 'D:\\test.png', write), /disk full/);
+  assert.equal(writes, 1);
+  assert.equal(await runSaveFlow(false, async () => 'D:\\retry.png', async () => 'retried'), 'retried');
+});
 
 test('drag points normalize in any direction and selections serialize like SelectionBox', () => {
   const r = rectFromPoints({ x: 50.4, y: 80 }, { x: 10, y: 20.6 });

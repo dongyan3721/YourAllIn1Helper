@@ -278,6 +278,13 @@ fn gif_confirm_save_as_writes_chosen_path_and_cleans_pending() {
     let stopped = module.stop_gif(ctx).expect("stop_gif");
     assert!(stopped.pending_path.is_some());
 
+    // 目标是目录时替换失败：保留待确认会话和临时文件，之后可以选择另一个路径重试。
+    let blocked = dir.path().join("不能覆盖的目录.gif");
+    std::fs::create_dir(&blocked).unwrap();
+    assert!(module.confirm_gif(ctx, Some(&blocked)).is_err());
+    assert!(PathBuf::from(stopped.pending_path.as_ref().unwrap()).is_file());
+    assert!(module.gif_bytes().is_ok());
+
     let chosen = dir.path().join("动图 目录").join("录制结果");
     let confirmed = module
         .confirm_gif(ctx, Some(&chosen))
