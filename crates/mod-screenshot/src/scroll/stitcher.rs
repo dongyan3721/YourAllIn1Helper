@@ -355,7 +355,8 @@ impl ScrollStitcher {
         if self.fixed_footer > 0 {
             if let Some(last) = &self.last_frame {
                 let row_bytes = self.width * 4;
-                let footer_start = self.initial_frame_height.saturating_sub(self.fixed_footer) * row_bytes;
+                let footer_start =
+                    self.initial_frame_height.saturating_sub(self.fixed_footer) * row_bytes;
                 if footer_start < last.len() {
                     self.stitched_rgba.extend_from_slice(&last[footer_start..]);
                     self.current_height += self.fixed_footer;

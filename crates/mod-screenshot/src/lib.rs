@@ -877,11 +877,19 @@ impl ScreenshotModule {
                 destroy_on_blur: false,
             },
         };
-        ctx.window_pool.open_window(spec)?;
+        self.capturer
+            .prepare_live_capture()
+            .map_err(|error| internal(error.to_string()))?;
+        if let Err(error) = ctx.window_pool.open_window(spec) {
+            let _ = self.capturer.finish_live_capture();
+            return Err(error);
+        }
         // 选区要能滚到底下的窗口。控制条是另一个窗口，仍然接收点击。
-        let _ = ctx
-            .window_pool
-            .set_mouse_passthrough(OVERLAY_LABEL, true);
+        if let Err(error) = ctx.window_pool.set_mouse_passthrough(OVERLAY_LABEL, true) {
+            let _ = ctx.window_pool.destroy_window(CONTROL_LABEL);
+            let _ = self.capturer.finish_live_capture();
+            return Err(error);
+        }
 
         let sim = self.input_simulator.read().clone();
         let sink = self.event_sink.read().clone();
@@ -907,9 +915,7 @@ impl ScreenshotModule {
         scroll.stop();
         scroll.wait_finished(Duration::from_secs(2));
 
-        let _ = ctx
-            .window_pool
-            .set_mouse_passthrough(OVERLAY_LABEL, false);
+        let _ = ctx.window_pool.set_mouse_passthrough(OVERLAY_LABEL, false);
         let _ = ctx.window_pool.destroy_window(CONTROL_LABEL);
         // 预览窗口不能被全屏遮罩盖住。
         let _ = self.finish_session_locked(ctx);
@@ -951,11 +957,12 @@ impl ScreenshotModule {
             scroll.wait_finished(Duration::from_secs(1));
         }
         *self.last_stitched.write() = None;
-        let _ = ctx
-            .window_pool
-            .set_mouse_passthrough(OVERLAY_LABEL, false);
+        let _ = ctx.window_pool.set_mouse_passthrough(OVERLAY_LABEL, false);
         let _ = ctx.window_pool.destroy_window(CONTROL_LABEL);
         let _ = ctx.window_pool.destroy_window(PREVIEW_LABEL);
+        self.capturer
+            .finish_live_capture()
+            .map_err(|error| internal(error.to_string()))?;
         Ok(true)
     }
 
@@ -1144,6 +1151,9 @@ impl ScreenshotModule {
         let settings = self.settings(ctx);
         let save_dir = self.save_directory(ctx, &settings);
         let sink = self.event_sink.read().clone();
+        self.capturer
+            .prepare_live_capture()
+            .map_err(|error| internal(error.to_string()))?;
         let recording = gif::GifRecordingSession::new(
             session_id.to_string(),
             selection,
@@ -1156,7 +1166,10 @@ impl ScreenshotModule {
             overlay_png,
             self.overlay_window_id.load(Ordering::SeqCst),
         )
-        .map_err(|e| internal(e.to_string()))?;
+        .map_err(|e| {
+            let _ = self.capturer.finish_live_capture();
+            internal(e.to_string())
+        })?;
 
         let status = recording.status();
         *self.active_gif.write() = Some(recording);
@@ -1173,6 +1186,11 @@ impl ScreenshotModule {
         session.stop();
         session.wait_finished(Duration::from_secs(3));
         let status = session.status();
+        if !status.is_recording {
+            self.capturer
+                .finish_live_capture()
+                .map_err(|error| internal(error.to_string()))?;
+        }
         *self.last_gif_status.write() = Some(status.clone());
         Ok(status)
     }
@@ -1210,9 +1228,14 @@ impl ScreenshotModule {
     /// 预览用的 GIF 字节（临时文件或已确认文件）。
     pub fn gif_bytes(&self) -> CoreResult<Vec<u8>> {
         if let Some(session) = self.active_gif.read().clone() {
-            return session
+            let bytes = session
                 .read_pending()
-                .map_err(|e| internal(e.to_string()));
+                .map_err(|e| internal(e.to_string()))?;
+            // 自动到达录制上限也经此入口展示预览，不能只依赖用户点击停止来恢复窗口。
+            self.capturer
+                .finish_live_capture()
+                .map_err(|error| internal(error.to_string()))?;
+            return Ok(bytes);
         }
         Err(internal("当前没有可预览的 GIF"))
     }
@@ -1226,6 +1249,9 @@ impl ScreenshotModule {
         }
         let _ = ctx.window_pool.destroy_window(CONTROL_LABEL);
         let _ = ctx.window_pool.destroy_window(PREVIEW_LABEL);
+        self.capturer
+            .finish_live_capture()
+            .map_err(|error| internal(error.to_string()))?;
         Ok(true)
     }
 
@@ -1234,7 +1260,16 @@ impl ScreenshotModule {
         self.active_gif
             .read()
             .as_ref()
-            .map(|s| s.status())
+            .map(|s| {
+                let mut status = s.status();
+                if !status.is_recording {
+                    // 包括后台抓取失败和自动停止；即使没有预览文件，也恢复选区正常显示。
+                    if let Err(error) = self.capturer.finish_live_capture() {
+                        status.error.get_or_insert_with(|| error.to_string());
+                    }
+                }
+                status
+            })
             .or_else(|| self.last_gif_status.read().clone())
     }
 

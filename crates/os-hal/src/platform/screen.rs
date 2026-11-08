@@ -101,30 +101,47 @@ impl ScreenCapturer for NativeOsHal {
     }
 
     fn set_capture_exclusion(&self, handle: Option<WindowHandleId>) -> HalResult<()> {
+        let next = handle.filter(|window| *window != 0);
+        // 登记与恢复由同一把锁串行化，替换窗口时不会留下旧的捕获排除。
+        let mut registered = self.capture_exclusion.lock();
         #[cfg(target_os = "windows")]
         {
-            match handle {
-                Some(window) if window != 0 => {
-                    set_windows_capture_exclusion(window, true)?;
-                }
-                _ => {
-                    if let Some(previous) = self.active_capture_exclusion() {
-                        // 遮罩通常在清空前已销毁；失效句柄的清理失败不应阻断会话收尾。
-                        let _ = set_windows_capture_exclusion(previous, false);
-                    }
-                }
+            if let Some(window) = next {
+                // 登记本身不隐藏普通选区和结果预览；真正采集前由 prepare_live_capture 启用。
+                hwnd_from_window_handle(window)?;
+            }
+            if let Some(previous) = registered.filter(|previous| Some(*previous) != next) {
+                // 旧窗口可能已销毁；不让失效句柄妨碍会话收尾。
+                let _ = set_windows_capture_exclusion(previous, false);
             }
         }
-        #[cfg(not(target_os = "windows"))]
-        {
-            let _ = handle;
-        }
-        *self.capture_exclusion.lock() = handle.filter(|window| *window != 0);
+        *registered = next;
         Ok(())
     }
 
     fn active_capture_exclusion(&self) -> Option<WindowHandleId> {
         *self.capture_exclusion.lock()
+    }
+
+    fn prepare_live_capture(&self) -> HalResult<()> {
+        #[cfg(target_os = "windows")]
+        {
+            let window = self.active_capture_exclusion().ok_or_else(|| {
+                HalError::NativeCallFailed(
+                    "Windows 实时捕获的遮罩排除未就绪，请取消截图后重试".to_string(),
+                )
+            })?;
+            set_windows_capture_exclusion(window, true)?;
+        }
+        Ok(())
+    }
+
+    fn finish_live_capture(&self) -> HalResult<()> {
+        #[cfg(target_os = "windows")]
+        if let Some(window) = self.active_capture_exclusion() {
+            set_windows_capture_exclusion(window, false)?;
+        }
+        Ok(())
     }
 
     fn capture_region_excluding(
@@ -366,32 +383,5 @@ fn capture_below_window(bounds: SelectionBox, below_window_id: u32) -> HalResult
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn explicit_below_window_id_takes_precedence() {
-        assert_eq!(resolve_capture_exclusion(42, Some(7)), Some(42));
-        assert_eq!(resolve_capture_exclusion(0, Some(7)), Some(7));
-        assert_eq!(resolve_capture_exclusion(0, None), None);
-    }
-
-    #[test]
-    fn clearing_an_unregistered_exclusion_is_safe() {
-        let hal = NativeOsHal::new();
-        hal.set_capture_exclusion(None).unwrap();
-        assert_eq!(hal.active_capture_exclusion(), None);
-    }
-
-    #[cfg(all(target_os = "windows", target_pointer_width = "64"))]
-    #[test]
-    fn windows_hwnd_keeps_all_64_bits() {
-        let handle: WindowHandleId = 0x0000_7FFE_1234_5678;
-        let hwnd = hwnd_from_window_handle(handle).expect("64-bit HWND must fit usize");
-        assert_eq!(hwnd.0 as usize as WindowHandleId, handle);
-        assert!(
-            hwnd_from_window_handle(0).is_err(),
-            "null handle must be rejected"
-        );
-    }
-}
+#[path = "../../tests/unit/capture_exclusion.rs"]
+mod tests;

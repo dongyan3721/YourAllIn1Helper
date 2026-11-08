@@ -183,7 +183,11 @@ fn test_gif_recording_session_completion_and_file_creation() {
 
     let st = session.status();
     assert!(!st.is_recording);
-    assert!(st.pending_path.is_some(), "Pending GIF must exist: {:?}", st);
+    assert!(
+        st.pending_path.is_some(),
+        "Pending GIF must exist: {:?}",
+        st
+    );
     assert!(st.saved_path.is_none());
     let saved_path = session.commit().expect("confirm save");
     assert!(saved_path.exists());
@@ -367,7 +371,7 @@ fn test_gif_recording_blends_ink_when_capture_excludes_overlay() {
     let (r, g, b) = first_frame_rgb(&bytes);
     assert!(
         r > 150 && g < 80 && b < 80,
-        "excluded overlay must reveal live pixels and re-blend ink, got rgb({r}, {g}, {b})"
+        "excluded overlay annotations must be re-blended once, got rgb({r}, {g}, {b})"
     );
 }
 
@@ -430,4 +434,59 @@ fn test_gif_encoder_preserves_non_black_content() {
         r > 200 && g > 200 && b > 200,
         "bright RGBA input must not decay to a black GIF frame, got rgb({r}, {g}, {b})"
     );
+}
+
+/// 单测注入抓屏失败；不依赖真实桌面或系统权限。
+struct FailingCapturer;
+
+impl ScreenCapturer for FailingCapturer {
+    fn list_monitors(&self) -> HalResult<Vec<DisplayMonitorInfo>> {
+        Ok(vec![])
+    }
+
+    fn capture_monitor(&self, _id: Option<u32>) -> HalResult<CapturedFrame> {
+        Err(os_hal::HalError::NativeCallFailed(
+            "native capture failed".into(),
+        ))
+    }
+
+    fn capture_region(&self, _bounds: app_core::SelectionBox) -> HalResult<CapturedFrame> {
+        self.capture_monitor(None)
+    }
+}
+
+#[test]
+fn test_gif_native_capture_failure_stops_and_removes_partial_file() {
+    let dir = tempdir().unwrap();
+    let selection = app_core::SelectionBox {
+        x: 0,
+        y: 0,
+        width: 8,
+        height: 8,
+    };
+    let session = GifRecordingSession::new(
+        "failed-capture".into(),
+        selection,
+        selection,
+        dir.path().to_path_buf(),
+        "Screenshot".into(),
+        recording_config(),
+        Arc::new(FailingCapturer),
+        None,
+        None,
+        0,
+    )
+    .unwrap();
+    // 等待实际工作线程自行结束，测试不主动停止来掩盖无限重试。
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while session.status().is_recording && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let status = session.status();
+    session.wait_finished(std::time::Duration::from_secs(2));
+    assert!(!status.is_recording);
+    assert!(status.error.unwrap().contains("native capture failed"));
+    assert!(status.pending_path.is_none());
+    assert!(status.saved_path.is_none());
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
 }

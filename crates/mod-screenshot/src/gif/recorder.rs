@@ -242,7 +242,9 @@ impl GifRecordingSession {
     ) {
         info!(session_id = %session_id, target_w, target_h, fps = ?config.framerate, "GIF recording worker started");
 
-        if let Err(e) = fs::create_dir_all(temp_file_path.parent().unwrap_or(std::path::Path::new("."))) {
+        if let Err(e) =
+            fs::create_dir_all(temp_file_path.parent().unwrap_or(std::path::Path::new(".")))
+        {
             let msg = format!("创建 GIF 保存目录失败：{}", e);
             warn!(%msg);
             let mut st = status.write();
@@ -293,6 +295,7 @@ impl GifRecordingSession {
             capturer.active_capture_exclusion()
         };
         let mut auto_stopped = false;
+        let mut recording_error = None;
 
         while !stop_signal.load(Ordering::SeqCst) {
             let tick_start = Instant::now();
@@ -317,10 +320,15 @@ impl GifRecordingSession {
                     }
                     if let Err(e) = encoder.add_frame(&pixels, frame.width, frame.height) {
                         warn!(%e, "Failed to encode GIF frame");
+                        recording_error = Some(format!("GIF 帧编码失败：{e}"));
+                        break;
                     }
                 }
                 Err(e) => {
                     warn!(%e, "Failed to capture region frame for GIF");
+                    // 原生排除或抓屏失败时停止并删除半成品，不把部分帧伪装成成功录制。
+                    recording_error = Some(format!("GIF 实时抓取失败：{e}"));
+                    break;
                 }
             }
 
@@ -366,6 +374,11 @@ impl GifRecordingSession {
             let _ = fs::remove_file(&temp_file_path);
             let mut st = status.write();
             st.is_recording = false;
+        } else if let Some(error) = recording_error {
+            let _ = fs::remove_file(&temp_file_path);
+            let mut st = status.write();
+            st.is_recording = false;
+            st.error = Some(error);
         } else if encoded_count == 0 {
             info!(session_id = %session_id, "No frames captured, removing empty GIF file");
             let _ = fs::remove_file(&temp_file_path);

@@ -44,6 +44,17 @@ pub trait ScreenCapturer: Send + Sync + 'static {
         None
     }
 
+    /// 实时录制前检查原生遮罩排除是否就绪；普通冻结截图不依赖此能力。
+    /// 测试适配器及不要求预登记的平台保持默认行为。
+    fn prepare_live_capture(&self) -> HalResult<()> {
+        Ok(())
+    }
+
+    /// 实时采集结束后恢复窗口的正常捕获；保留登记，允许当前选区重新录制。
+    fn finish_live_capture(&self) -> HalResult<()> {
+        Ok(())
+    }
+
     /// 抓取区域并排除 `exclusion` 指定的原生窗口。
     ///
     /// 默认把可容纳进 `u32` 的标识转交 [`Self::capture_region_below`]，保持旧适配器行为。

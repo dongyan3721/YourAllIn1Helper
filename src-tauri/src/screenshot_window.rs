@@ -19,8 +19,8 @@ pub(crate) fn present_capture_overlay(app: &AppHandle, overlay: &WebviewWindow) 
     Ok(())
 }
 
-/// Windows：登记遮罩 HWND，抓屏时由 WDA_EXCLUDEFROMCAPTURE 把它从画面中移除。
-/// GIF / 长截图只抓选区；遮罩内透明洞口露出的是真实桌面，而不是 GDI 合成的黑面。
+/// Windows：登记遮罩 HWND，实时采集开始时才启用 WDA_EXCLUDEFROMCAPTURE。
+/// 普通选区与结果预览保持正常可捕获；登记失败会由实时采集预检明确报错。
 #[cfg(target_os = "windows")]
 fn register_windows_capture_exclusion(app: &AppHandle, overlay: &WebviewWindow) {
     if overlay.label() != mod_screenshot::OVERLAY_LABEL {
@@ -35,7 +35,7 @@ fn register_windows_capture_exclusion(app: &AppHandle, overlay: &WebviewWindow) 
     };
     if let Some(host) = app.try_state::<std::sync::Arc<crate::DesktopHost>>() {
         if let Err(error) = host.screenshot().set_overlay_native_handle(handle) {
-            // 注册失败不应阻止遮罩显示；但 GIF/长截图可能仍会拍到遮罩，必须留痕。
+            // 冻结截图仍可用；GIF/长截图的 prepare_live_capture 会拒绝缺少登记的录制。
             tracing::warn!(%error, "Failed to exclude screenshot overlay from capture");
         }
     }
