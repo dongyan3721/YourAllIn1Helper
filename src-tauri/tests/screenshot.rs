@@ -70,6 +70,7 @@ fn capture_save_pin_flow_through_json_and_binary_entry_points() {
         },
         ExportAction::Copy,
         None,
+        None,
     );
     assert!(copy.unwrap_err().to_string().contains("未接入系统剪贴板"));
 
@@ -83,6 +84,7 @@ fn capture_save_pin_flow_through_json_and_binary_entry_points() {
                 height: 8,
             },
             ExportAction::Save,
+            None,
             None,
         )
         .unwrap();
@@ -105,6 +107,7 @@ fn capture_save_pin_flow_through_json_and_binary_entry_points() {
                 height: 4,
             },
             ExportAction::Pin,
+            None,
             None,
         )
         .unwrap();
@@ -137,6 +140,7 @@ fn disabling_screenshot_rejects_json_and_binary_ipc_and_releases_everything() {
                 height: 4,
             },
             ExportAction::Pin,
+            None,
             None,
         )
         .unwrap();
@@ -171,6 +175,7 @@ fn disabling_screenshot_rejects_json_and_binary_ipc_and_releases_everything() {
                 height: 1
             },
             ExportAction::Save,
+            None,
             None
         )
         .is_err());
@@ -230,6 +235,115 @@ fn settings_update_is_atomic_persistent_and_keeps_unknown_fields() {
     assert_eq!(config["settings"]["default_color"], "#00ff00");
     assert_eq!(config["settings"]["from_future_version"], json!([1, 2]));
     assert_eq!(config["overlay"]["show_magnifier"], false);
+    host.kernel().shutdown().unwrap();
+}
+
+#[test]
+fn save_path_must_come_from_the_save_dialog_and_is_consumed_once() {
+    use all_in_one_host::SaveKind;
+    let dir = tempfile::tempdir().unwrap();
+    let host = DesktopHost::bootstrap(dir.path(), true).unwrap();
+    let info = call(&host, "screenshot_start_capture", json!({}));
+    let session_id = info["session_id"].as_str().unwrap().to_string();
+    let pinned = host
+        .screenshot_export(
+            &session_id,
+            SelectionBox {
+                x: 0,
+                y: 0,
+                width: 4,
+                height: 4,
+            },
+            ExportAction::Pin,
+            None,
+            None,
+        )
+        .unwrap();
+    let pin_id = pinned.pin.unwrap().pin_id;
+
+    // 未登记路径：所有「另存为」写入入口都被拒绝，HTTP/WebView 无法绕过覆盖确认。
+    let chosen = dir.path().join("另存 文件.png");
+    let chosen_str = chosen.to_string_lossy().to_string();
+    let rejected = host.invoke_ipc(
+        "screenshot_pin_save",
+        json!({"pin_id": pin_id, "path": chosen_str}),
+    );
+    assert!(!rejected.ok);
+    assert!(
+        rejected.error.unwrap().contains("保存对话框"),
+        "unregistered path must be rejected before any write"
+    );
+    for (cmd, args) in [
+        (
+            "screenshot_scroll_export",
+            json!({"action": "save", "path": chosen_str}),
+        ),
+        ("screenshot_gif_confirm", json!({"path": chosen_str})),
+        ("screenshot_gif_save_as", json!({"path": chosen_str})),
+    ] {
+        assert!(
+            !host.invoke_ipc(cmd, args).ok,
+            "{cmd} must reject unregistered save path"
+        );
+    }
+    // 二进制区域导出同理；非 Save 动作携带 path 直接拒绝。
+    assert!(host
+        .screenshot_export(
+            &session_id,
+            SelectionBox {
+                x: 0,
+                y: 0,
+                width: 4,
+                height: 4,
+            },
+            ExportAction::Copy,
+            None,
+            Some(&chosen),
+        )
+        .is_err());
+
+    // 登记（等价于保存对话框确认）后可写一次；同路径重放（二次覆盖）被拒绝。
+    host.save_paths().register(chosen.clone(), SaveKind::Png);
+    let saved = call(
+        &host,
+        "screenshot_pin_save",
+        json!({"pin_id": pin_id, "path": chosen_str}),
+    );
+    assert_eq!(
+        std::path::PathBuf::from(saved["saved_path"].as_str().unwrap()),
+        chosen
+    );
+    assert!(chosen.exists());
+    assert!(
+        !host
+            .invoke_ipc("screenshot_pin_save", json!({"pin_id": pin_id, "path": chosen_str}))
+            .ok
+    );
+    // 快捷默认保存不受影响：不带 path 依旧防覆盖落盘。
+    let default = call(&host, "screenshot_pin_save", json!({"pin_id": pin_id}));
+    assert!(std::path::PathBuf::from(default["saved_path"].as_str().unwrap()).exists());
+
+    // 格式不匹配：GIF 授权不能用于 PNG 保存。
+    let gif_only = dir.path().join("动图.gif");
+    host.save_paths().register(gif_only.clone(), SaveKind::Gif);
+    assert!(
+        !host
+            .invoke_ipc(
+                "screenshot_pin_save",
+                json!({"pin_id": pin_id, "path": gif_only.to_string_lossy()})
+            )
+            .ok
+    );
+
+    // 保存对话框必须走异步原生分派；同步/HTTP 入口只得到拒绝，无法弹出对话框。
+    assert!(
+        !host
+            .invoke_ipc(
+                "screenshot_pick_save_path",
+                json!({"kind": "png", "default_name": "x.png"})
+            )
+            .ok
+    );
     host.kernel().shutdown().unwrap();
 }
 

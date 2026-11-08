@@ -422,6 +422,7 @@ fn copy_export_writes_selection_sized_image_and_finishes_session() {
             },
             None,
             ExportAction::Copy,
+            None,
         )
         .unwrap();
     // 超出帧的部分被裁掉：(70,50)-(80,60)。
@@ -457,6 +458,7 @@ fn copy_failure_keeps_session_and_reshows_overlay_for_retry() {
             sel,
             None,
             ExportAction::Copy,
+            None,
         )
         .unwrap_err();
     assert!(err.to_string().contains("clipboard busy"));
@@ -473,6 +475,7 @@ fn copy_failure_keeps_session_and_reshows_overlay_for_retry() {
             sel,
             None,
             ExportAction::Save,
+            None,
         )
         .unwrap();
     assert!(saved.saved_path.is_some());
@@ -518,6 +521,7 @@ fn save_export_never_overwrites_and_annotations_are_composited() {
                 sel,
                 Some(&png),
                 ExportAction::Save,
+                None,
             )
             .unwrap();
         assert!(!out.copied);
@@ -558,6 +562,7 @@ fn pin_export_creates_resident_window_at_capture_position_and_close_frees_it() {
             },
             None,
             ExportAction::Pin,
+            None,
         )
         .unwrap();
     let pin = out.pin.unwrap();
@@ -603,6 +608,7 @@ fn pin_window_failure_rolls_back_record_and_keeps_session() {
         },
         None,
         ExportAction::Pin,
+        None,
     );
     assert!(err.is_err());
     assert!(h.module.list_pins().is_empty());
@@ -664,6 +670,7 @@ fn disabling_module_destroys_overlay_and_pins_and_reenable_works() {
             },
             None,
             ExportAction::Pin,
+            None,
         )
         .unwrap();
     h.module

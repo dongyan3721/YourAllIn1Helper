@@ -114,6 +114,41 @@ pub fn write_exclusive(directory: &Path, stem: &str, bytes: &[u8]) -> CoreResult
     )))
 }
 
+/// 规范化「另存为」完整路径的扩展名：缺省或空扩展名时补上目标格式扩展名，
+/// 用户明确书写的其他扩展名保持不变（与系统保存对话框行为一致）。
+pub fn resolve_save_path(path: &Path, extension: &str) -> PathBuf {
+    let mut resolved = path.to_path_buf();
+    let missing = resolved
+        .extension()
+        .map_or(true, |ext| ext.to_str().map_or(true, str::is_empty));
+    if missing {
+        resolved.set_extension(extension);
+    }
+    resolved
+}
+
+/// 向用户明确选择的完整路径写入文件；仅用于「另存为」路径（写入前宿主已核验
+/// 该路径来自系统保存对话框并完成覆盖确认）。覆盖已有文件、失败时清理半成品，
+/// 与 [`write_exclusive`] 的「绝不覆盖」语义互补。
+pub fn write_exact(path: &Path, bytes: &[u8]) -> CoreResult<PathBuf> {
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        fs::create_dir_all(parent)
+            .map_err(|e| internal(format!("无法创建保存目录 {}：{}", parent.display(), e)))?;
+    }
+    match fs::write(path, bytes) {
+        Ok(()) => Ok(path.to_path_buf()),
+        Err(error) => {
+            // 覆盖写失败时目标可能已是半成品：删除本次残缺内容，不保留损坏文件。
+            let _ = fs::remove_file(path);
+            Err(internal(format!(
+                "写入截图文件 {} 失败：{}",
+                path.display(),
+                error
+            )))
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "../tests/unit/export.rs"]
 mod tests;

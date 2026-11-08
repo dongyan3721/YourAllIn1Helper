@@ -451,6 +451,10 @@ async fn ipc(app: AppHandle, mut request: IpcRequest) -> IpcResponse {
         )
         .await;
     }
+    if request.cmd == "screenshot_pick_save_path" {
+        // 截图「另存为」系统保存对话框（异步，不阻塞 UI）；截图导出分派由本任务维护。
+        return crate::native_save_dialog::pick_screenshot_save_path(&app, &host, request.args).await;
+    }
     let module_id = request
         .args
         .get("module_id")
