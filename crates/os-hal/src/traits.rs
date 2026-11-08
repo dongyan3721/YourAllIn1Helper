@@ -186,6 +186,9 @@ pub trait InputSimulator: Send + Sync + 'static {
     fn remember_paste_target(&self) -> HalResult<()> {
         Ok(())
     }
+    /// Drop a remembered destination whose popup session ended without pasting, so a later
+    /// paste from another surface can never be sent to a window the user already left.
+    fn forget_paste_target(&self) {}
     /// Permission preflight before clipboard/window mutations; may show system consent UI.
     fn check_input_permission(&self) -> HalResult<()> {
         Ok(())

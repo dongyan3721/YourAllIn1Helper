@@ -61,6 +61,12 @@ impl InputSimulator for NativeOsHal {
         Ok(())
     }
 
+    fn forget_paste_target(&self) {
+        // macOS keeps its existing reactivation behaviour; only Windows drops the HWND.
+        #[cfg(target_os = "windows")]
+        super::windows::input::forget_paste_target(self);
+    }
+
     fn check_input_permission(&self) -> HalResult<()> {
         #[cfg(target_os = "macos")]
         if !super::selection::macos::is_accessibility_trusted() {

@@ -147,7 +147,15 @@ impl WindowBackend for TauriWindowBackend {
                 window.unminimize().map_err(to_core_error)?;
             }
             window.show().map_err(to_core_error)?;
-            if spec.focus {
+            if spec.label == "clipboard-popup" {
+                if let Err(reason) = crate::clipboard_window::focus_popup(&window) {
+                    let _ = window.destroy();
+                    return Err(CoreError::WindowLifecycle {
+                        label: spec.label.clone(),
+                        reason,
+                    });
+                }
+            } else if spec.focus {
                 window.set_focus().map_err(to_core_error)?;
             }
             if spec.label == "screen-ink-toolbar" {
@@ -236,6 +244,15 @@ impl WindowBackend for TauriWindowBackend {
             {
                 let _ = window.destroy();
                 return Err(error);
+            }
+        }
+        if spec.label == "clipboard-popup" {
+            if let Err(reason) = crate::clipboard_window::present_new_popup(&window) {
+                let _ = window.destroy();
+                return Err(CoreError::WindowLifecycle {
+                    label: spec.label.clone(),
+                    reason,
+                });
             }
         }
         Ok(())
