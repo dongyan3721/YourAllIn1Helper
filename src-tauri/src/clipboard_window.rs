@@ -48,12 +48,30 @@ pub(crate) fn focus_popup(window: &WebviewWindow) -> Result<(), String> {
 pub(crate) fn present_new_popup(window: &WebviewWindow) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        windows_focus::acquire(window)
+        let result = windows_focus::acquire(window);
+        // 仅调试构建输出窗口激活结果，不记录剪贴板正文。
+        #[cfg(debug_assertions)]
+        eprintln!("Clipboard popup activation: {result:?}");
+        result
     }
     #[cfg(not(target_os = "windows"))]
     {
         let _ = window;
         Ok(())
+    }
+}
+
+/// Windows 顶层窗口交焦给 WebView2 子控件时也可能收到 Focused(false)。
+/// 只有真正离开本候选窗的前台才应销毁，不能把内部焦点切换当作用户取消。
+pub(crate) fn owns_foreground(window: &tauri::Window) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        windows_focus::owns_foreground(window)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = window;
+        false
     }
 }
 
@@ -121,6 +139,12 @@ mod windows_focus {
         process_id
     }
 
+    pub(super) fn owns_foreground(window: &tauri::Window) -> bool {
+        window
+            .hwnd()
+            .is_ok_and(|hwnd| popup_is_foreground(hwnd.0 as isize, foreground_handle()))
+    }
+
     pub(super) fn acquire(window: &WebviewWindow) -> Result<(), String> {
         // Tauri exposes the HWND of its own `windows` crate version; compare as integers.
         let popup = window.hwnd().map_err(|error| error.to_string())?.0 as isize;
@@ -146,11 +170,11 @@ mod windows_focus {
         );
         if !acquired {
             let foreground = foreground_handle();
-            return Err(foreground_denied_message(
-                popup,
-                foreground,
-                process_of(foreground),
-            ));
+            let reason = foreground_denied_message(popup, foreground, process_of(foreground));
+            // 调试构建直接输出失败原因，便于桌面专项区分激活被拒和 WebView 焦点问题。
+            #[cfg(debug_assertions)]
+            eprintln!("{reason}");
+            return Err(reason);
         }
 
         // The top-level window being active does not move keyboard focus into WebView2.
