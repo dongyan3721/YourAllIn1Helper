@@ -294,8 +294,8 @@ impl ScrollStitcher {
 
                 // 从当前帧提取新增的 dy 行并追加到画布
                 // 新出现的行位于当前帧中排除固定页脚后的底部 dy 行
-                let copy_start_y = height - self.fixed_footer - dy;
-                let copy_end_y = height - self.fixed_footer;
+                let copy_end_y = height.saturating_sub(self.fixed_footer);
+                let copy_start_y = copy_end_y.saturating_sub(dy);
 
                 let row_bytes = width * 4;
                 let start_offset = copy_start_y * row_bytes;
@@ -355,7 +355,7 @@ impl ScrollStitcher {
         if self.fixed_footer > 0 {
             if let Some(last) = &self.last_frame {
                 let row_bytes = self.width * 4;
-                let footer_start = (self.initial_frame_height - self.fixed_footer) * row_bytes;
+                let footer_start = self.initial_frame_height.saturating_sub(self.fixed_footer) * row_bytes;
                 if footer_start < last.len() {
                     self.stitched_rgba.extend_from_slice(&last[footer_start..]);
                     self.current_height += self.fixed_footer;
