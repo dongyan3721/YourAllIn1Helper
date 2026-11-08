@@ -21,7 +21,7 @@ pub use secure::{
     clipboard_content_is_concealed, write_animated_gif_clipboard, write_rgba_clipboard,
 };
 
-use crate::{HalError, OsHalBundle};
+use crate::{HalError, OsHalBundle, WindowHandleId};
 use std::sync::{atomic::AtomicUsize, Arc};
 
 pub(super) fn native_error(error: impl std::fmt::Display) -> HalError {
@@ -36,6 +36,8 @@ pub struct NativeOsHal {
     #[cfg(target_os = "windows")]
     paste_target: Arc<std::sync::Mutex<Option<(isize, u32)>>>,
     paste_triggers: Arc<AtomicUsize>,
+    /// 已登记的原生捕获排除窗口。Windows 为 64 位 HWND，macOS 不使用持久排除。
+    capture_exclusion: Arc<parking_lot::Mutex<Option<WindowHandleId>>>,
     /// 锁屏/息屏/睡眠事件观察者；平台无关包装，业务模块只看到 trait。
     usage_events: usage::NativeUsageEvents,
 }

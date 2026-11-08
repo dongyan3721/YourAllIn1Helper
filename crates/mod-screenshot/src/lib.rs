@@ -224,6 +224,18 @@ impl ScreenshotModule {
         self.overlay_window_id.store(window_id, Ordering::SeqCst);
     }
 
+    /// 登记遮罩的 64 位原生句柄（Windows HWND）。平台实现负责把它从抓屏结果中排除。
+    pub fn set_overlay_native_handle(&self, handle: os_hal::WindowHandleId) -> CoreResult<()> {
+        self.capturer
+            .set_capture_exclusion(Some(handle))
+            .map_err(|error| internal(format!("启用遮罩原生捕获排除失败：{error}")))
+    }
+
+    /// 结束遮罩生命周期时撤销原生排除，避免后续抓屏误排除被系统复用的窗口句柄。
+    pub fn clear_overlay_native_handle(&self) {
+        let _ = self.capturer.set_capture_exclusion(None);
+    }
+
     /// 注入输入模拟器（供自动滚轮滚动）。
     pub fn set_input_simulator(&self, simulator: Arc<dyn os_hal::InputSimulator>) {
         *self.input_simulator.write() = Some(simulator);
@@ -608,6 +620,7 @@ impl ScreenshotModule {
     fn finish_session_locked(&self, ctx: &ModuleContext) -> CoreResult<()> {
         let had_session = self.session.write().take().is_some();
         self.overlay_visible.store(false, Ordering::SeqCst);
+        self.clear_overlay_native_handle();
         if had_session || ctx.window_pool.get_active_window(OVERLAY_LABEL).is_some() {
             ctx.window_pool.destroy_window(OVERLAY_LABEL)?;
         }

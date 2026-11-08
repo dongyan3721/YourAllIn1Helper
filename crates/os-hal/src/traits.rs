@@ -19,6 +19,8 @@ pub trait ScreenCapturer: Send + Sync + 'static {
 
     /// 同 [`capture_region`]，但 `below_window_id != 0` 时只采集该窗口之下的画面。
     /// 用于 GIF / 长截图避开自身遮罩。默认忽略窗口号，退回普通区域抓取。
+    /// Windows 的遮罩是 64 位 HWND，无法由 `u32` 表达；Windows 调用方应先通过
+    /// [`Self::set_capture_exclusion`] 登记句柄，再以 0 调用本方法复用已登记的排除。
     fn capture_region_below(
         &self,
         bounds: SelectionBox,
@@ -27,6 +29,35 @@ pub trait ScreenCapturer: Send + Sync + 'static {
         let _ = below_window_id;
         self.capture_region(bounds)
     }
+
+    /// 登记一个原生窗口，使后续区域抓取不再包含它的内容。
+    ///
+    /// Windows 使用 `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)`：遮罩从抓屏中消失，
+    /// 露出底下真实画面；macOS 的排除由 [`Self::capture_region_excluding`] 的窗口号参数完成。
+    /// 默认实现不维护原生状态，调用方仍可显式传入排除标识。
+    fn set_capture_exclusion(&self, _handle: Option<WindowHandleId>) -> HalResult<()> {
+        Ok(())
+    }
+
+    /// 当前已登记的原生排除窗口（64 位，不截断 HWND）。
+    fn active_capture_exclusion(&self) -> Option<WindowHandleId> {
+        None
+    }
+
+    /// 抓取区域并排除 `exclusion` 指定的原生窗口。
+    ///
+    /// 默认把可容纳进 `u32` 的标识转交 [`Self::capture_region_below`]，保持旧适配器行为。
+    fn capture_region_excluding(
+        &self,
+        bounds: SelectionBox,
+        exclusion: Option<WindowHandleId>,
+    ) -> HalResult<CapturedFrame> {
+        match exclusion.and_then(|handle| u32::try_from(handle).ok()) {
+            Some(window_id) if window_id != 0 => self.capture_region_below(bounds, window_id),
+            _ => self.capture_region(bounds),
+        }
+    }
+
     /// 抓屏前的权限预检：只检查、不申请，也不修改系统安全设置。
     /// 没有独立屏幕录制授权概念的平台（如 Windows 桌面会话）保持默认 `Ok`；
     /// macOS 未授权时系统仍会返回仅含壁纸的画面，因此必须显式预检并返回 `PermissionDenied`。
