@@ -8,7 +8,7 @@
     @pointermove="onPointerMove"
     @pointerup="onPointerUp"
     @pointercancel="onPointerUp"
-    @wheel.prevent="onWheel"
+    @wheel="onWheel"
     @contextmenu.prevent="onContextMenu"
     @dblclick="onDoubleClick"
   >
@@ -24,20 +24,20 @@
     </div>
 
     <!-- 尚未选区时的操作提示 -->
-    <div v-if="ready && !selection" class="capture-hint">{{ idleHint }}</div>
+    <div v-if="ready && !selection && !liveMode" class="capture-hint">{{ idleHint }}</div>
 
     <!-- 智能区域名称 -->
-    <div v-if="ready && !selection && hoverCss && hoverRegion?.label" class="region-label" :style="labelStyle(hoverCss)">
+    <div v-if="ready && !selection && !liveMode && hoverCss && hoverRegion?.label" class="region-label" :style="labelStyle(hoverCss)">
       {{ hoverRegion.label }}
     </div>
 
     <!-- 选区尺寸（帧像素，即导出图片的真实像素） -->
-    <div v-if="selectionCss" class="size-badge" :style="labelStyle(selectionCss)">
+    <div v-if="selectionCss && !liveMode" class="size-badge" :style="labelStyle(selectionCss)">
       {{ selection!.width }} × {{ selection!.height }}
     </div>
 
     <!-- 八个调整手柄 -->
-    <template v-if="selectionCss && !exporting">
+    <template v-if="selectionCss && !exporting && !liveMode">
       <div
         v-for="h in RESIZE_HANDLES"
         :key="h"
@@ -330,6 +330,7 @@ import {
   type AnnotationTool,
 } from '../utils/screenshot/annotations';
 import { readPixel, toHex, toRgbText } from '../utils/screenshot/color';
+import { outerBorderRect, shouldPassthroughWheel } from '../utils/screenshot/scroll';
 import { renderAnnotations, TEXT_FONT_FAMILY, TEXT_LINE_HEIGHT, type FrameSource, type MosaicCache } from '../utils/screenshot/render';
 
 type DragState =
@@ -538,10 +539,18 @@ function renderUi() {
   ctx.fillRect(0, 0, width, height);
   const focus = sel ?? hoverRegion.value;
   if (focus) {
-    // 清除遮罩露出冻结帧原样像素。
+    // 边框严格绘制在选区外围（使用 outerBorderRect），确保描边位于暗色遮罩区，绝不向内侵占选区像素
+    ctx.save();
+    ctx.strokeStyle = sel ? '#0a84ff' : 'rgba(10, 132, 255, 0.95)';
+    ctx.lineWidth = sel ? lineWidth : lineWidth * 2;
+    const outer = outerBorderRect(focus, ctx.lineWidth);
+    ctx.strokeRect(outer.x, outer.y, outer.width, outer.height);
+    ctx.restore();
+
+    // 清除选区内部遮罩，并彻底擦除任何可能向内溢出的边框抗锯齿次像素，保证选区 100% 纯净透明
     ctx.clearRect(focus.x, focus.y, focus.width, focus.height);
   }
-  if (sel) {
+  if (sel && !liveMode.value) {
     ctx.save();
     ctx.beginPath();
     ctx.rect(sel.x, sel.y, sel.width, sel.height);
@@ -557,13 +566,6 @@ function renderUi() {
       }
     }
     if (draft.value) renderAnnotations(ctx, [draft.value], frame, new Map());
-    ctx.restore();
-  }
-  if (focus) {
-    ctx.save();
-    ctx.strokeStyle = sel ? '#0a84ff' : 'rgba(10, 132, 255, 0.95)';
-    ctx.lineWidth = sel ? lineWidth : lineWidth * 2;
-    ctx.strokeRect(focus.x + ctx.lineWidth / 2, focus.y + ctx.lineWidth / 2, focus.width - ctx.lineWidth, focus.height - ctx.lineWidth);
     ctx.restore();
   }
 }
@@ -725,7 +727,9 @@ function onPointerUp(e: PointerEvent) {
 }
 
 function onWheel(e: WheelEvent) {
+  if (shouldPassthroughWheel(liveMode.value)) return;
   if (selection.value || !session.value?.settings.wheel_expand || !session.value.settings.smart_regions) return;
+  e.preventDefault();
   levelSteps = Math.min(8, Math.max(0, levelSteps + (e.deltaY < 0 ? 1 : -1)));
   levelAnchorCss = { x: e.clientX, y: e.clientY };
   scheduleResolve(framePoint(e));
@@ -1017,6 +1021,7 @@ async function startScrollCapture() {
     liveMode.value = 'scroll';
     scrollHeight.value = sel.height;
     setLiveHole(true);
+    requestRender();
     beginLivePoll();
   } catch (err: any) {
     setLiveHole(false);
@@ -1029,20 +1034,28 @@ async function stopScrollCapture() {
   scrollStopping = true;
   stopLiveTimer();
   liveMode.value = null;
+  setLiveHole(false);
+  requestRender();
+  if (scrollThumbUrl.value) {
+    URL.revokeObjectURL(scrollThumbUrl.value);
+    scrollThumbUrl.value = null;
+  }
   try {
     await screenshotApi.scrollStop();
   } catch (err: any) {
-    setLiveHole(false);
     showToast(err?.message || String(err), 'error');
+  } finally {
+    scrollStopping = false;
   }
 }
 
 async function cancelScrollCapture() {
   stopLiveTimer();
   liveMode.value = null;
+  setLiveHole(false);
+  requestRender();
   if (scrollThumbUrl.value) URL.revokeObjectURL(scrollThumbUrl.value);
   scrollThumbUrl.value = null;
-  setLiveHole(false);
   try {
     await screenshotApi.scrollCancel();
   } catch (err: any) {
@@ -1409,7 +1422,7 @@ onUnmounted(() => {
   user-select: none;
   -webkit-user-select: none;
 }
-.capture-root.live-hole { background: transparent; }
+.capture-root.live-hole { background: transparent !important; }
 .cursor-cross { cursor: crosshair; }
 .cursor-move { cursor: move; }
 .cursor-grab { cursor: grab; }
@@ -1761,5 +1774,8 @@ body.capture-overlay-body.live-hole {
   background: #000;
 }
 .gif-preview-actions { display: flex; gap: 8px; }
-.live-bar { z-index: 22; }
+.live-bar {
+  z-index: 22;
+  pointer-events: auto !important;
+}
 </style>

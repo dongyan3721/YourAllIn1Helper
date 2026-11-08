@@ -237,6 +237,33 @@ test('M3 scroll utils: format pixel height and confidence percentage', async () 
   assert.equal(formatConfidence(1.0), '100%');
 });
 
+test('M3 scroll utils: outerBorderRect keeps stroke strictly outside selection and wheel passthrough logic', async () => {
+  const { outerBorderRect, shouldPassthroughWheel } = await import('../../src/utils/screenshot/scroll.ts');
+  const sel = { x: 100, y: 150, width: 400, height: 300 };
+  const lineWidth = 2;
+  const outer = outerBorderRect(sel, lineWidth);
+
+  // 描边中心位于 outer 坐标，描边内外各 lineWidth/2
+  // outer 边界：[outer.x - 1, outer.x + outer.width + 1] -> [98, 502]
+  // 选区内部：[100, 500] 绝对不受侵占
+  assert.equal(outer.x, 99);
+  assert.equal(outer.y, 149);
+  assert.equal(outer.width, 402);
+  assert.equal(outer.height, 302);
+
+  // 检查高分屏/非整数缩放
+  const outerDpr = outerBorderRect(sel, 1.5);
+  assert.equal(outerDpr.x, 100 - 0.75);
+  assert.equal(outerDpr.y, 150 - 0.75);
+  assert.equal(outerDpr.width, 401.5);
+  assert.equal(outerDpr.height, 301.5);
+
+  // 滚轮透传判断：长截图录制期间透传，其他模式或空闲时不透传
+  assert.equal(shouldPassthroughWheel('scroll'), true);
+  assert.equal(shouldPassthroughWheel('gif'), false);
+  assert.equal(shouldPassthroughWheel(null), false);
+});
+
 test('M3 gif utils: format duration, file size and presets', async () => {
   const { formatGifDuration, formatFileSize, GIF_FPS_OPTIONS, GIF_RESOLUTION_PRESETS } = await import('../../src/utils/screenshot/gif.ts');
   assert.equal(formatGifDuration(0), '00:00');

@@ -357,3 +357,100 @@ fn test_scroll_session_cancellation_releases_all() {
     // 取消后结果必须被清理丢弃
     assert!(session.take_stitched_image().is_none());
 }
+
+#[test]
+fn test_scroll_edge_pixels_preserved_without_cropping_or_pollution() {
+    let width = 100;
+    let full_height = 400;
+    let view_height = 120;
+
+    // 构造测试长图，首列、尾列与内部有严格的特征标记
+    let mut page = generate_synthetic_page(width, full_height);
+    for y in 0..full_height {
+        // 首列标记 (x = 0)
+        let idx0 = y * width * 4;
+        page[idx0] = 11;
+        page[idx0 + 1] = 22;
+        page[idx0 + 2] = 33;
+        page[idx0 + 3] = 255;
+
+        // 尾列标记 (x = width - 1)
+        let idx_last = (y * width + (width - 1)) * 4;
+        page[idx_last] = 44;
+        page[idx_last + 1] = 55;
+        page[idx_last + 2] = 66;
+        page[idx_last + 3] = 255;
+    }
+
+    let mut stitcher = ScrollStitcher::new(StitcherConfig::default());
+
+    // 模拟多次向下滚动
+    let f0 = slice_frame(&page, width, 0, view_height);
+    let f1 = slice_frame(&page, width, 30, view_height);
+    let f2 = slice_frame(&page, width, 70, view_height);
+
+    stitcher.push_frame(&f0, width, view_height);
+    let r1 = stitcher.push_frame(&f1, width, view_height);
+    assert!(matches!(r1, StitchStepResult::Stitched { dy: 30, .. }));
+
+    let r2 = stitcher.push_frame(&f2, width, view_height);
+    assert!(matches!(r2, StitchStepResult::Stitched { dy: 40, .. }));
+
+    let stitched = stitcher.finish(None);
+    assert_eq!(stitched.width, width as u32);
+    assert_eq!(stitched.height, 190);
+
+    // 关键保证：绝对不能以裁减用户真实选区像素来掩盖边框！
+    // 宽高度必须与选区完全一致，左右边界像素 100% 完整无损
+    for y in 0..stitched.height as usize {
+        let idx0 = y * width * 4;
+        assert_eq!(
+            &stitched.rgba_bytes[idx0..idx0 + 4],
+            &[11, 22, 33, 255],
+            "Leftmost pixel at row {} must be preserved exactly",
+            y
+        );
+
+        let idx_last = (y * width + (width - 1)) * 4;
+        assert_eq!(
+            &stitched.rgba_bytes[idx_last..idx_last + 4],
+            &[44, 55, 66, 255],
+            "Rightmost pixel at row {} must be preserved exactly",
+            y
+        );
+    }
+
+    // 逐像素与原始长图前 190 行比对
+    assert_eq!(
+        &stitched.rgba_bytes[..],
+        &page[..(width * 190 * 4)],
+        "Stitched pixels must be 100% pixel-perfect identical to the original page"
+    );
+}
+
+#[test]
+fn test_scroll_boundary_saturating_arithmetic_prevents_overflow() {
+    let width = 60;
+    let height = 80;
+    let page = generate_synthetic_page(width, 200);
+
+    let mut stitcher = ScrollStitcher::new(StitcherConfig {
+        max_height: 500,
+        ncc: NccConfig {
+            template_height: 20,
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+
+    let f0 = slice_frame(&page, width, 0, height);
+    stitcher.push_frame(&f0, width, height);
+
+    // 即使在边界尺寸极小或 dy 与 fixed_footer 接近甚至相等的极限输入下，也不得出现算术溢出 panic
+    let f1 = slice_frame(&page, width, 10, height);
+    let res = stitcher.push_frame(&f1, width, height);
+    assert!(matches!(res, StitchStepResult::Stitched { .. }));
+
+    let finished = stitcher.finish(None);
+    assert!(finished.height >= height as u32);
+}
