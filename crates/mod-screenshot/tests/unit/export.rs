@@ -124,3 +124,73 @@ fn timestamped_stem_uses_sortable_local_time() {
         "screenshot_20261025_090807"
     );
 }
+
+#[test]
+fn resolve_save_path_appends_missing_extension_and_keeps_explicit_one() {
+    // 缺省 / 空扩展名补全为目标格式。
+    assert_eq!(
+        resolve_save_path(Path::new("/tmp/截图 文件"), "png"),
+        PathBuf::from("/tmp/截图 文件.png")
+    );
+    assert_eq!(
+        resolve_save_path(Path::new("/tmp/anim."), "gif"),
+        PathBuf::from("/tmp/anim.gif")
+    );
+    // 用户明确书写的扩展名（即使与目标格式不同）原样保留，与系统保存对话框一致。
+    assert_eq!(
+        resolve_save_path(Path::new("/tmp/截图 文件.PNG"), "gif"),
+        PathBuf::from("/tmp/截图 文件.PNG")
+    );
+    assert_eq!(
+        resolve_save_path(Path::new("C:\\媒体 文件\\一 二.jpg"), "png"),
+        PathBuf::from("C:\\媒体 文件\\一 二.jpg")
+    );
+    // 无目录的纯文件名同样适用。
+    assert_eq!(
+        resolve_save_path(Path::new("shot"), "png"),
+        PathBuf::from("shot.png")
+    );
+}
+
+#[test]
+fn write_exact_writes_and_overwrites_chinese_space_paths() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("媒体 文件 01.png");
+
+    let first = write_exact(&target, b"first").unwrap();
+    assert_eq!(first, target);
+    assert_eq!(std::fs::read(&target).unwrap(), b"first");
+
+    // 「另存为」路径的覆盖语义：用户已在保存对话框确认覆盖。
+    let second = write_exact(&target, b"second-bytes").unwrap();
+    assert_eq!(second, target);
+    assert_eq!(std::fs::read(&target).unwrap(), b"second-bytes");
+}
+
+#[test]
+fn write_exact_creates_missing_parent_directories() {
+    let dir = tempfile::tempdir().unwrap();
+    let nested = dir.path().join("新建 文件夹").join("子目录").join("shot.png");
+    let path = write_exact(&nested, b"ok").unwrap();
+    assert_eq!(path, nested);
+    assert_eq!(std::fs::read(&nested).unwrap(), b"ok");
+}
+
+#[test]
+fn write_exact_failure_reports_error_without_half_written_files() {
+    let dir = tempfile::tempdir().unwrap();
+    // 父「目录」实际是文件：建目录失败、报错，既有文件与目录都不受影响。
+    let file_as_parent = dir.path().join("plain");
+    std::fs::write(&file_as_parent, b"f").unwrap();
+    let err = write_exact(&file_as_parent.join("x.png"), b"data").unwrap_err();
+    assert!(err.to_string().contains("无法创建"), "{err}");
+    assert_eq!(std::fs::read(&file_as_parent).unwrap(), b"f");
+    assert!(!dir.path().join("x.png").exists());
+
+    // 目标本身是已存在目录：写入失败必须报错而不是静默成功，目录不被破坏。
+    let target_dir = dir.path().join("目标目录.png");
+    std::fs::create_dir(&target_dir).unwrap();
+    let err = write_exact(&target_dir, b"data").unwrap_err();
+    assert!(err.to_string().contains("失败"), "{err}");
+    assert!(target_dir.is_dir());
+}

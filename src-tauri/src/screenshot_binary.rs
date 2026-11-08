@@ -22,6 +22,9 @@ struct ExportMeta {
     session_id: String,
     selection: SelectionBox,
     action: ExportAction,
+    /// 「另存为」完整路径（须来自系统保存对话框的一次性授权）；缺省走默认目录快捷保存。
+    #[serde(default)]
+    save_path: Option<std::path::PathBuf>,
 }
 
 fn host(app: &AppHandle) -> Arc<DesktopHost> {
@@ -82,6 +85,7 @@ pub(crate) async fn screenshot_export(
             meta.selection,
             meta.action,
             overlay.as_deref(),
+            meta.save_path.as_deref(),
         ) {
             Ok(outcome) => IpcResponse::success(outcome),
             Err(error) => IpcResponse::err(error.to_string()),

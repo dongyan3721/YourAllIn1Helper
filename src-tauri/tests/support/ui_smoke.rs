@@ -151,6 +151,7 @@ fn check_screenshot_lifecycle(app: &AppHandle, host: &Arc<DesktopHost>) -> anyho
         },
         mod_screenshot::export::ExportAction::Pin,
         None,
+        None,
     )?;
     let pin_label = pinned.pin.as_ref().unwrap().label.clone();
     anyhow::ensure!(

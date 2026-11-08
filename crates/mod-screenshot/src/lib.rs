@@ -38,7 +38,7 @@ use session::{
     SharedSession,
 };
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, AtomicU32, Ordering},
         Arc,
@@ -630,6 +630,9 @@ impl ScreenshotModule {
     // ───────────────────────────── 导出 ─────────────────────────────
 
     /// 按选区导出：复制 / 保存 / 贴图。成功后结束会话；失败时重新显示遮罩以便重试。
+    ///
+    /// `save_path` 为 `Some` 时保存到用户在系统保存对话框中选择的完整路径（覆盖写入），
+    /// 为 `None` 时保持默认目录 + 防覆盖落盘的快捷保存。
     pub fn export(
         &self,
         ctx: &ModuleContext,
@@ -637,6 +640,7 @@ impl ScreenshotModule {
         selection: SelectionBox,
         overlay_png: Option<&[u8]>,
         action: ExportAction,
+        save_path: Option<&Path>,
     ) -> CoreResult<ExportOutcome> {
         let _gate = self.gate.lock();
         let session = self.current_session(session_id)?;
@@ -647,7 +651,8 @@ impl ScreenshotModule {
 
         // 编码大图期间先隐藏遮罩，用户立即回到桌面。
         let _ = ctx.window_pool.set_window_visible(OVERLAY_LABEL, false);
-        let result = self.perform_export(ctx, &session, &selection, image, action, &settings);
+        let result =
+            self.perform_export(ctx, &session, &selection, image, action, save_path, &settings);
         match result {
             Ok(outcome) => {
                 if let Err(error) = self.finish_session_locked(ctx) {
@@ -674,6 +679,7 @@ impl ScreenshotModule {
         selection: &SelectionBox,
         image: image::RgbaImage,
         action: ExportAction,
+        save_path: Option<&Path>,
         settings: &ScreenshotSettings,
     ) -> CoreResult<ExportOutcome> {
         let mut outcome = ExportOutcome {
@@ -696,10 +702,19 @@ impl ScreenshotModule {
             }
             ExportAction::Save => {
                 let png = export::encode_png(&image)?;
-                let dir = self.save_directory(ctx, settings);
-                let stem =
-                    export::timestamped_stem(&settings.file_name_prefix, chrono::Local::now());
-                let path = export::write_exclusive(&dir, &stem, &png)?;
+                let path = match save_path {
+                    // 用户在保存对话框中选择的完整路径：覆盖确认已在对话框完成。
+                    Some(target) => {
+                        export::write_exact(&export::resolve_save_path(target, "png"), &png)?
+                    }
+                    // 快捷默认保存：目标目录 + 时间戳文件名，同名自动加序号，绝不覆盖。
+                    None => {
+                        let dir = self.save_directory(ctx, settings);
+                        let stem =
+                            export::timestamped_stem(&settings.file_name_prefix, chrono::Local::now());
+                        export::write_exclusive(&dir, &stem, &png)?
+                    }
+                };
                 outcome.saved_path = Some(path.to_string_lossy().to_string());
                 if settings.copy_after_save {
                     match self.clipboard().write_image(
@@ -829,13 +844,27 @@ impl ScreenshotModule {
             .map_err(|e| internal(format!("复制到系统剪贴板失败：{}", e)))
     }
 
-    /// 把贴图另存为新文件（独占创建）。
-    pub fn save_pin(&self, ctx: &ModuleContext, pin_id: &str) -> CoreResult<String> {
+    /// 把贴图另存为新文件。`save_path` 为 `Some` 时写到「另存为」对话框选择的完整路径
+    /// （覆盖写入），为 `None` 时保持默认目录 + 防覆盖落盘的快捷保存。
+    pub fn save_pin(
+        &self,
+        ctx: &ModuleContext,
+        pin_id: &str,
+        save_path: Option<&Path>,
+    ) -> CoreResult<String> {
         let record = self.pin(pin_id)?;
-        let settings = self.settings(ctx);
-        let dir = self.save_directory(ctx, &settings);
-        let stem = export::timestamped_stem(&settings.file_name_prefix, chrono::Local::now());
-        let path = export::write_exclusive(&dir, &stem, &record.png)?;
+        let path = match save_path {
+            Some(target) => {
+                export::write_exact(&export::resolve_save_path(target, "png"), &record.png)?
+            }
+            None => {
+                let settings = self.settings(ctx);
+                let dir = self.save_directory(ctx, &settings);
+                let stem =
+                    export::timestamped_stem(&settings.file_name_prefix, chrono::Local::now());
+                export::write_exclusive(&dir, &stem, &record.png)?
+            }
+        };
         Ok(path.to_string_lossy().to_string())
     }
 
@@ -1017,10 +1046,14 @@ impl ScreenshotModule {
     }
 
     /// 导出拼接完成的长截图（复制 / 保存 / 贴图）。
+    ///
+    /// `save_path` 为 `Some` 时保存到「另存为」对话框选择的完整路径（覆盖写入），
+    /// 为 `None` 时保持默认目录 + 防覆盖落盘的快捷保存。
     pub fn export_scroll(
         &self,
         ctx: &ModuleContext,
         action: ExportAction,
+        save_path: Option<&Path>,
     ) -> CoreResult<ExportOutcome> {
         let guard = self.last_stitched.read();
         let img = guard
@@ -1059,10 +1092,22 @@ impl ScreenshotModule {
                 }
             }
             ExportAction::Save => {
-                let dir = self.save_directory(ctx, &settings);
-                let stem =
-                    export::timestamped_stem(&settings.file_name_prefix, chrono::Local::now());
-                match export::write_exclusive(&dir, &stem, &png_bytes) {
+                let written = match save_path {
+                    // 用户在保存对话框中选择的完整路径：覆盖确认已在对话框完成。
+                    Some(target) => {
+                        export::write_exact(&export::resolve_save_path(target, "png"), &png_bytes)
+                    }
+                    // 快捷默认保存：目标目录 + 时间戳文件名，同名自动加序号，绝不覆盖。
+                    None => {
+                        let dir = self.save_directory(ctx, &settings);
+                        let stem = export::timestamped_stem(
+                            &settings.file_name_prefix,
+                            chrono::Local::now(),
+                        );
+                        export::write_exclusive(&dir, &stem, &png_bytes)
+                    }
+                };
+                match written {
                     Ok(path) => {
                         saved_path = Some(path.to_string_lossy().to_string());
                     }
@@ -1195,19 +1240,50 @@ impl ScreenshotModule {
         Ok(status)
     }
 
-    /// 确认保留：把临时 GIF 独占写成最终文件，并结束截图遮罩。
-    pub fn confirm_gif(&self, ctx: &ModuleContext) -> CoreResult<gif::GifRecordingStatus> {
+    /// 确认保留：把临时 GIF 写成最终文件，并结束截图遮罩。
+    ///
+    /// `save_path` 为 `Some` 时保存到「另存为」对话框选择的完整路径（覆盖写入），
+    /// 为 `None` 时保持默认目录 + 防覆盖落盘的快捷保存。
+    pub fn confirm_gif(
+        &self,
+        ctx: &ModuleContext,
+        save_path: Option<&Path>,
+    ) -> CoreResult<gif::GifRecordingStatus> {
         let session = self
             .active_gif
             .write()
             .take()
             .ok_or_else(|| internal("当前没有可保存的 GIF"))?;
-        let path = session.commit().map_err(|e| internal(e.to_string()))?;
+        let path = match save_path {
+            Some(target) => {
+                let bytes = session
+                    .read_pending()
+                    .map_err(|e| internal(e.to_string()))?;
+                let written =
+                    export::write_exact(&export::resolve_save_path(target, "gif"), &bytes)?;
+                // 覆盖写入完成后再清理临时文件，失败时临时文件保留供重试。
+                session.discard_pending();
+                written
+            }
+            None => session.commit().map_err(|e| internal(e.to_string()))?,
+        };
         let mut status = session.status();
+        if status.file_size_bytes == 0 {
+            if let Ok(meta) = std::fs::metadata(&path) {
+                status.file_size_bytes = meta.len();
+            }
+        }
         status.saved_path = Some(path.to_string_lossy().to_string());
         *self.last_gif_status.write() = Some(status.clone());
         let _ = self.finish_session_locked(ctx);
         Ok(status)
+    }
+
+    /// 把当前（未确认或已确认的）GIF 复制另存到指定完整路径，不改变确认状态。
+    pub fn save_gif_copy(&self, path: &Path) -> CoreResult<String> {
+        let bytes = self.gif_bytes()?;
+        let written = export::write_exact(&export::resolve_save_path(path, "gif"), &bytes)?;
+        Ok(written.to_string_lossy().to_string())
     }
 
     /// 把尚未确认的 GIF 写入系统剪贴板。
@@ -1236,6 +1312,16 @@ impl ScreenshotModule {
                 .finish_live_capture()
                 .map_err(|error| internal(error.to_string()))?;
             return Ok(bytes);
+        }
+        // 会话已确认时（文档承诺「临时文件或已确认文件」）从最终文件回读。
+        let saved = self
+            .last_gif_status
+            .read()
+            .as_ref()
+            .and_then(|status| status.saved_path.clone());
+        if let Some(path) = saved {
+            return std::fs::read(&path)
+                .map_err(|e| internal(format!("读取 GIF 文件 {} 失败：{}", path, e)));
         }
         Err(internal("当前没有可预览的 GIF"))
     }
