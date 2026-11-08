@@ -3,6 +3,7 @@
  */
 import { invokeIpc, type IpcResponse } from './ipc';
 import type { Rect } from '../utils/screenshot/geometry';
+import { encodeExportMetadata } from '../utils/screenshot/save';
 
 export type CapabilityState =
   | { state: 'available' }
@@ -213,7 +214,7 @@ export async function exportSelection(
   overlayPng: Uint8Array | null,
   savePath?: string
 ): Promise<ExportOutcome> {
-  const meta = JSON.stringify({ session_id: sessionId, selection, action, save_path: savePath });
+  const meta = encodeExportMetadata({ session_id: sessionId, selection, action, save_path: savePath });
   const res: IpcResponse<ExportOutcome> = await tauriCore().invoke(
     'screenshot_export',
     overlayPng ?? new Uint8Array(0),

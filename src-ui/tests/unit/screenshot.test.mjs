@@ -28,7 +28,7 @@ import {
 } from '../../src/utils/screenshot/annotations.ts';
 import { pixelateBlocks } from '../../src/utils/screenshot/mosaic.ts';
 import { readPixel, toHex, toRgbText } from '../../src/utils/screenshot/color.ts';
-import { runSaveFlow } from '../../src/utils/screenshot/save.ts';
+import { encodeExportMetadata, runSaveFlow } from '../../src/utils/screenshot/save.ts';
 import {
   COLLAPSED_SIZE,
   MAX_ZOOM,
@@ -41,6 +41,15 @@ import {
 } from '../../src/utils/screenshot/pinView.ts';
 
 const FRAME = { x: 0, y: 0, width: 200, height: 100 };
+
+test('binary export headers preserve Unicode paths without violating the Headers ByteString contract', () => {
+  const original = { session_id: 'qa', selection: FRAME, action: 'save', save_path: 'D:\\截图 保存\\中文 🖼️ 01.png' };
+  assert.throws(() => new Headers({ 'x-aio-screenshot-export': JSON.stringify(original) }), TypeError);
+  const encoded = encodeExportMetadata(original);
+  assert.match(encoded, /^[\x20-\x7e]+$/);
+  assert.equal(new Headers({ 'x-aio-screenshot-export': encoded }).get('x-aio-screenshot-export'), encoded);
+  assert.deepEqual(JSON.parse(encoded), original);
+});
 
 test('cancelling a save picker never writes or falls back to the default path', async () => {
   let writes = 0;

@@ -8,3 +8,9 @@ export async function runSaveFlow<T>(
   if (path === null) return null;
   return write(path);
 }
+
+/** 请求头必须为 ASCII；JSON 的 Unicode 转义保留中文路径、emoji 和反斜杠原值。 */
+export function encodeExportMetadata(value: object): string {
+  return JSON.stringify(value).replace(/[\u007f-\uffff]/g,
+    char => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`);
+}
