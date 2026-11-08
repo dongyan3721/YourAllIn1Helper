@@ -510,6 +510,15 @@ impl ClipboardModule {
         self.input_simulator
             .check_input_permission()
             .map_err(|e| CoreError::Internal(anyhow::anyhow!(e)))?;
+        if ctx
+            .window_pool
+            .get_active_window("clipboard-popup")
+            .is_none()
+        {
+            // 没有活动弹窗会话时，之前记住的目标已经过期（弹窗被取消或失焦关闭），
+            // 不能把 Dashboard 等其他界面的粘贴送给用户已离开的窗口。
+            self.input_simulator.forget_paste_target();
+        }
         prepare(&record)?;
 
         // 模拟按键前先彻底销毁瞬态弹窗，将焦点归还给原前台应用窗口
@@ -654,13 +663,22 @@ impl AppModule for ClipboardModule {
                 .get_active_window("clipboard-popup")
                 .is_some()
             {
-                ctx.window_pool.destroy_window("clipboard-popup")?;
+                // 再次按快捷键等同取消：销毁成功与否都不再保留这次会话的粘贴目标。
+                let closed = ctx.window_pool.destroy_window("clipboard-popup");
+                self.input_simulator.forget_paste_target();
+                closed?;
             } else {
                 self.input_simulator
                     .remember_paste_target()
                     .map_err(|e| CoreError::Internal(anyhow::anyhow!(e)))?;
-                ctx.window_pool
-                    .open_window(WindowSpec::clipboard_popup(480.0, 320.0))?;
+                if let Err(error) = ctx
+                    .window_pool
+                    .open_window(WindowSpec::clipboard_popup(480.0, 320.0))
+                {
+                    // 弹窗没能成为可键盘操作的前台窗口，会话作废，目标不得残留。
+                    self.input_simulator.forget_paste_target();
+                    return Err(error);
+                }
             }
         }
         Ok(())

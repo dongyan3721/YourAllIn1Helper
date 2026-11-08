@@ -131,6 +131,20 @@ pub(in crate::platform) fn remember_paste_target(hal: &NativeOsHal) -> HalResult
     })
 }
 
+fn forget_target(slot: &mut Option<(isize, u32)>) {
+    *slot = None;
+}
+
+/// 弹窗会话结束但没有粘贴时丢弃目标，避免之后从其他界面误粘到已离开的窗口。
+pub(in crate::platform) fn forget_paste_target(hal: &NativeOsHal) {
+    forget_target(
+        &mut hal
+            .paste_target
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()),
+    );
+}
+
 /// 恢复并确认原 HWND 仍是前台后，才发送物理 Ctrl+V。
 pub(in crate::platform) fn restore_and_paste(hal: &NativeOsHal) -> HalResult<()> {
     let remembered = hal

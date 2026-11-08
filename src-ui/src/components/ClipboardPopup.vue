@@ -1,5 +1,5 @@
 <template>
-  <div class="macos-window clipboard-popup-container" @keydown="handleKeyNavigation" tabindex="0">
+  <div class="macos-window clipboard-popup-container" tabindex="0">
     <!-- 顶部标题栏（展示产品矢量 Logo 与多语言标题） -->
     <header class="macos-titlebar">
       <div class="macos-title">
@@ -101,7 +101,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { invokeIpc, type ClipboardRecord } from '../api/ipc';
 import Icons from './Icons.vue';
 import ProductLogo from './ProductLogo.vue';
@@ -190,8 +190,22 @@ async function closePopup() {
   }
 }
 
-/** 键盘方向键快捷选择 */
+/** 让键盘高亮项保持在列表可视区域内 */
+function scrollSelectedIntoView() {
+  nextTick(() => {
+    document
+      .querySelector('.clip-card.is-active')
+      ?.scrollIntoView?.({ block: 'nearest' });
+  });
+}
+
+/**
+ * 键盘快捷选择，挂在 window 上：候选窗刚获得原生前台时 WebView 内可能还没有任何
+ * 元素持有焦点（activeElement 为 body），只绑在容器或输入框上会漏掉方向键。
+ */
 function handleKeyNavigation(e: KeyboardEvent) {
+  // 输入法组词期间的方向键/回车/Esc 属于候选词选择，不能被列表导航抢走。
+  if (e.isComposing || e.defaultPrevented) return;
   // Esc 是窗口生命周期操作，不能被“空列表/无搜索结果”的导航短路拦截。
   if (e.key === 'Escape') {
     e.preventDefault();
@@ -204,11 +218,28 @@ function handleKeyNavigation(e: KeyboardEvent) {
   if (e.key === 'ArrowDown') {
     e.preventDefault();
     selectedIndex.value = (selectedIndex.value + 1) % listLen;
+    scrollSelectedIntoView();
   } else if (e.key === 'ArrowUp') {
     e.preventDefault();
     selectedIndex.value = (selectedIndex.value - 1 + listLen) % listLen;
+    scrollSelectedIntoView();
+  } else if (e.key === 'Enter') {
+    // 聚焦在按钮上时 Enter 属于按钮自身的激活；搜索框的 Enter 已先 preventDefault，不会重复粘贴。
+    if ((e.target as Element | null)?.closest?.('button')) return;
+    e.preventDefault();
+    pasteCurrentOrFirst();
   }
 }
+
+/** 窗口（重新）获得前台后，把键盘焦点交回搜索框，方向键才会落在候选窗内 */
+function focusSearchInput() {
+  searchInputRef.value?.focus();
+}
+
+/** 搜索词变化后旧的高亮索引可能越界，回到第一项 */
+watch(searchQuery, () => {
+  selectedIndex.value = 0;
+});
 
 /** 时间格式化为自然显示 */
 function formatTime(timestampMs: number): string {
@@ -223,10 +254,17 @@ function formatTime(timestampMs: number): string {
 }
 
 onMounted(async () => {
+  // 先挂键盘监听再等待历史列表，避免加载期间到达的按键被丢掉。
+  window.addEventListener('keydown', handleKeyNavigation);
+  window.addEventListener('focus', focusSearchInput);
+  nextTick(focusSearchInput);
   await loadItems();
-  nextTick(() => {
-    searchInputRef.value?.focus();
-  });
+  nextTick(focusSearchInput);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleKeyNavigation);
+  window.removeEventListener('focus', focusSearchInput);
 });
 </script>
 
