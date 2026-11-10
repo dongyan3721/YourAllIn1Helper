@@ -23,6 +23,8 @@ Zed Agent / Sonnet 5.5 提供 `7ac74df` 与报告 `bc07909`：验证 Windows 前
 
 GUI 已验证：直接呼出持续显示、方向键从虚构 item B 移到 item A；在 CodeBuddy 的专用 `paste-target-final.txt` 编辑器按 Ctrl+Shift+V，候选窗保持打开，Down 改变高亮，Enter 关闭候选窗并返回原编辑器，出现未保存编辑状态。**最后 Ctrl+S 两次被电脑工具的用户输入检测中断，未核对落盘文本，不能将这一环写成完整跨应用存盘验收通过。** WorkBuddy 本身与管理员权限 IDE 仍需复测。
 
+2026-11-10 补充：已在 CodeBuddy 的新专用文件完成 Ctrl+Shift+V → Down → Enter → Ctrl+S，并从磁盘严格核对选中文本。上述存盘边界已补齐，详见 [补充验收](WINDOWS_GUI_FOLLOWUP_2026-11-10.md)；WorkBuddy 本体和管理员权限目标仍未覆盖。
+
 ## 统一验证
 
 - `cargo test --workspace --locked --all-targets -j2`：最后焦点生命周期改动后完整重跑，337 passed、0 failed、16 ignored；33 个测试程序。

@@ -1,11 +1,11 @@
 # Windows 待测与 Cursor 交接清单
 
-更新时间：2026-11-08。下列未勾选项均未完成；不要把普通单测通过等同于真实桌面或硬件验收通过。
+更新时间：2026-11-10。下列未勾选项均未完成；不要把普通单测通过等同于真实桌面或硬件验收通过。
 
 ## 当前状态与新增验收
 
 - **2026-11-08 GUI 第二轮**：GIF 黑屏、长截图蓝框、原生另存为及默认保存、Windows 无衬线字体已修复并完成主要实测；最新自动化为 Rust 337 passed / 16 ignored、前端 85 passed。详见 [最终集成报告](WINDOWS_GUI_ROUND2_2026-11-08.md)。
-- IDE 候选窗焦点已增加原生前台确认、WebView2 内部交焦保护和窗口级按键处理；CodeBuddy 呼出及方向键通过，最后跨应用粘贴的存盘文本尚未核对，不能宣称 WorkBuddy 完整回归通过。
+- IDE 候选窗焦点已增加原生前台确认、WebView2 内部交焦保护和窗口级按键处理；2026-11-10 CodeBuddy 呼出、Down、Enter 粘贴、Ctrl+S 后磁盘文本严格核对均通过，详见 [补充验收](WINDOWS_GUI_FOLLOWUP_2026-11-10.md)。WorkBuddy 本体及管理员权限目标仍待测。
 - 旧 C 盘四个 worktree、本轮 D 盘 scroll/save/focus 已清理；gif worktree 仍有未提交补充并保留。以下分支/worktree 描述属于上一轮现场记录。
 
 ### 上一轮验收记录
