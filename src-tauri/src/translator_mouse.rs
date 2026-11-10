@@ -487,6 +487,36 @@ mod windows {
 #[cfg(target_os = "windows")]
 pub use windows::{start, stop};
 
+/// 建窗后以实际外框校正位置；Windows 的无标题栏可调整窗口仍有系统尺寸边框。
+/// 初始逻辑尺寸只表示内容区，不能用它假定 HWND 的外框同样大小。
+pub(crate) fn constrain_native_popover(window: &tauri::WebviewWindow) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let monitor = window
+            .current_monitor()
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| "无法确定翻译气泡所在显示器".to_string())?;
+        let work = monitor.work_area();
+        let position = window.outer_position().map_err(|error| error.to_string())?;
+        let size = window.outer_size().map_err(|error| error.to_string())?;
+        let left = i64::from(work.position.x);
+        let top = i64::from(work.position.y);
+        let max_x = (left + i64::from(work.size.width) - i64::from(size.width)).max(left);
+        let max_y = (top + i64::from(work.size.height) - i64::from(size.height)).max(top);
+        let x = i64::from(position.x).clamp(left, max_x) as i32;
+        let y = i64::from(position.y).clamp(top, max_y) as i32;
+        if (x, y) != (position.x, position.y) {
+            // 已经是实际物理坐标，不能再次交给 LogicalPosition 乘以 DPI。
+            window
+                .set_position(tauri::PhysicalPosition::new(x, y))
+                .map_err(|error| error.to_string())?;
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = window;
+    Ok(())
+}
+
 /// Windows 显示器物理矩形、物理工作区矩形与真实缩放因子描述。
 ///
 /// Tauri 在 Windows 上报告的 `Monitor::position`、`Monitor::size` 与 `Monitor::work_area`
