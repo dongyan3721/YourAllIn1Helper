@@ -458,37 +458,233 @@ mod windows {
         width: f64,
         height: f64,
     ) -> (f64, f64) {
-        for monitor in app.available_monitors().unwrap_or_default() {
-            let scale = monitor.scale_factor();
-            let position = monitor.position();
-            let size = monitor.size();
-            let left = position.x as f64;
-            let top = position.y as f64;
-            let right = left + size.width as f64;
-            let bottom = top + size.height as f64;
-            if x as f64 >= left && (x as f64) < right && y as f64 >= top && (y as f64) < bottom {
-                let logical_left = left / scale;
-                let logical_top = top / scale;
-                let logical_width = size.width as f64 / scale;
-                let logical_height = size.height as f64 / scale;
-                return (
-                    (logical_left + (x as f64 - left + 8.0) / scale).clamp(
-                        logical_left,
-                        logical_left + (logical_width - width).max(0.0),
-                    ),
-                    (logical_top + (y as f64 - top + 8.0) / scale).clamp(
-                        logical_top,
-                        logical_top + (logical_height - height).max(0.0),
-                    ),
-                );
-            }
-        }
-        (x as f64, y as f64)
+        let monitors: Vec<super::WindowsMonitorBounds> = app
+            .available_monitors()
+            .unwrap_or_default()
+            .iter()
+            .map(super::WindowsMonitorBounds::from_monitor)
+            .collect();
+        super::logical_position_from_physical(&monitors, x, y, width, height)
+    }
+
+    pub(super) fn clamped_position(
+        app: &tauri::AppHandle,
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+    ) -> (f64, f64) {
+        let monitors: Vec<super::WindowsMonitorBounds> = app
+            .available_monitors()
+            .unwrap_or_default()
+            .iter()
+            .map(super::WindowsMonitorBounds::from_monitor)
+            .collect();
+        super::clamped_popover_position(&monitors, x, y, width, height)
     }
 }
 
 #[cfg(target_os = "windows")]
 pub use windows::{start, stop};
+
+/// Windows 显示器物理矩形、物理工作区矩形与真实缩放因子描述。
+///
+/// Tauri 在 Windows 上报告的 `Monitor::position`、`Monitor::size` 与 `Monitor::work_area`
+/// 均为物理像素，而 `WebviewWindowBuilder::position(x, y)` 接收逻辑坐标并在建窗时乘以
+/// 目标显示器的 `scale_factor`。因此所有边界判断与夹取统一在对应显示器的逻辑坐标空间完成，
+/// 避免把物理工作区坐标直接传给 Tauri 导致再次乘以 DPI。
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct WindowsMonitorBounds {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    pub work_x: i32,
+    pub work_y: i32,
+    pub work_width: u32,
+    pub work_height: u32,
+    pub scale_factor: f64,
+}
+
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+impl WindowsMonitorBounds {
+    pub fn from_monitor(monitor: &tauri::Monitor) -> Self {
+        let position = monitor.position();
+        let size = monitor.size();
+        let work_area = monitor.work_area();
+        Self {
+            x: position.x,
+            y: position.y,
+            width: size.width,
+            height: size.height,
+            work_x: work_area.position.x,
+            work_y: work_area.position.y,
+            work_width: work_area.size.width,
+            work_height: work_area.size.height,
+            scale_factor: monitor.scale_factor(),
+        }
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.width > 0
+            && self.height > 0
+            && self.scale_factor.is_finite()
+            && self.scale_factor > 0.0
+    }
+
+    /// 显示器完整物理边界 `(left, top, right, bottom)`。
+    fn physical_monitor_bounds(&self) -> (f64, f64, f64, f64) {
+        let left = f64::from(self.x);
+        let top = f64::from(self.y);
+        let right = left + f64::from(self.width);
+        let bottom = top + f64::from(self.height);
+        (left, top, right, bottom)
+    }
+
+    /// 显示器完整逻辑边界 `(left, top, right, bottom)`。
+    pub fn logical_monitor_bounds(&self) -> (f64, f64, f64, f64) {
+        let (left, top, right, bottom) = self.physical_monitor_bounds();
+        let scale = self.scale_factor;
+        (left / scale, top / scale, right / scale, bottom / scale)
+    }
+
+    /// 显示器有效逻辑工作区边界 `(left, top, right, bottom)`。
+    ///
+    /// 若系统报告的 `work_area` 尺寸为 0 或越出当前显示器范围，则裁剪到显示器范围内；
+    /// 裁剪后仍为空时退回显示器完整范围，保证窗口坐标始终落在当前显示器内。
+    pub fn logical_work_bounds(&self) -> (f64, f64, f64, f64) {
+        let (mon_left, mon_top, mon_right, mon_bottom) = self.physical_monitor_bounds();
+        let raw_left = f64::from(self.work_x);
+        let raw_top = f64::from(self.work_y);
+        let raw_right = raw_left + f64::from(self.work_width);
+        let raw_bottom = raw_top + f64::from(self.work_height);
+
+        let clamped_left = raw_left.clamp(mon_left, mon_right);
+        let clamped_top = raw_top.clamp(mon_top, mon_bottom);
+        let clamped_right = raw_right.clamp(mon_left, mon_right);
+        let clamped_bottom = raw_bottom.clamp(mon_top, mon_bottom);
+
+        let (work_left, work_top, work_right, work_bottom) = if self.work_width > 0
+            && self.work_height > 0
+            && clamped_right > clamped_left
+            && clamped_bottom > clamped_top
+        {
+            (clamped_left, clamped_top, clamped_right, clamped_bottom)
+        } else {
+            (mon_left, mon_top, mon_right, mon_bottom)
+        };
+
+        let scale = self.scale_factor;
+        (
+            work_left / scale,
+            work_top / scale,
+            work_right / scale,
+            work_bottom / scale,
+        )
+    }
+
+    /// 将逻辑坐标 `(x, y)` 按给定逻辑窗口尺寸 `(width, height)` 夹取在当前显示器逻辑工作区内。
+    pub fn clamp_logical(&self, x: f64, y: f64, width: f64, height: f64) -> (f64, f64) {
+        let (work_left, work_top, work_right, work_bottom) = self.logical_work_bounds();
+        let clean_width = if width.is_nan() || width < 0.0 {
+            0.0
+        } else {
+            width
+        };
+        let clean_height = if height.is_nan() || height < 0.0 {
+            0.0
+        } else {
+            height
+        };
+        let max_x = (work_right - clean_width).max(work_left);
+        let max_y = (work_bottom - clean_height).max(work_top);
+        let clamped_x = if x.is_finite() {
+            x.clamp(work_left, max_x)
+        } else {
+            work_left
+        };
+        let clamped_y = if y.is_finite() {
+            y.clamp(work_top, max_y)
+        } else {
+            work_top
+        };
+        (clamped_x, clamped_y)
+    }
+}
+
+/// 将 Windows 物理鼠标坐标 `(x, y)` 转换为逻辑坐标并约束在命中的显示器逻辑工作区内。
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+pub(crate) fn logical_position_from_physical(
+    monitors: &[WindowsMonitorBounds],
+    x: i32,
+    y: i32,
+    width: f64,
+    height: f64,
+) -> (f64, f64) {
+    let px = f64::from(x);
+    let py = f64::from(y);
+    let matched = monitors
+        .iter()
+        .filter(|m| m.is_valid())
+        .find(|m| {
+            let (left, top, right, bottom) = m.physical_monitor_bounds();
+            px >= left && px < right && py >= top && py < bottom
+        })
+        .or_else(|| {
+            monitors.iter().filter(|m| m.is_valid()).find(|m| {
+                let (left, top, right, bottom) = m.physical_monitor_bounds();
+                px >= left && px <= right && py >= top && py <= bottom
+            })
+        });
+
+    if let Some(monitor) = matched {
+        let scale = monitor.scale_factor;
+        let logical_x = (px + 8.0) / scale;
+        let logical_y = (py + 8.0) / scale;
+        return monitor.clamp_logical(logical_x, logical_y, width, height);
+    }
+    (px, py)
+}
+
+/// 将已经是逻辑坐标的翻译气泡位置 `(x, y)` 约束在所属显示器的逻辑工作区内。
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+pub(crate) fn clamped_popover_position(
+    monitors: &[WindowsMonitorBounds],
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> (f64, f64) {
+    if !x.is_finite() || !y.is_finite() {
+        if let Some(first) = monitors.iter().find(|m| m.is_valid()) {
+            return first.clamp_logical(x, y, width, height);
+        }
+        return (
+            if x.is_finite() { x } else { 0.0 },
+            if y.is_finite() { y } else { 0.0 },
+        );
+    }
+
+    let matched = monitors
+        .iter()
+        .filter(|m| m.is_valid())
+        .find(|m| {
+            let (left, top, right, bottom) = m.logical_monitor_bounds();
+            x >= left && x < right && y >= top && y < bottom
+        })
+        .or_else(|| {
+            monitors.iter().filter(|m| m.is_valid()).find(|m| {
+                let (left, top, right, bottom) = m.logical_monitor_bounds();
+                x >= left && x <= right && y >= top && y <= bottom
+            })
+        });
+
+    if let Some(monitor) = matched {
+        return monitor.clamp_logical(x, y, width, height);
+    }
+    (x, y)
+}
 
 /// 翻译气泡按本次尺寸留在当前显示器内。
 pub fn popover_position(
@@ -502,13 +698,17 @@ pub fn popover_position(
     {
         macos::clamped_position(app, x, y, width, height)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        windows::clamped_position(app, x, y, width, height)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let _ = (app, width, height);
         (x, y)
     }
 }
 
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
 #[path = "../tests/unit/translator_mouse.rs"]
 mod tests;
