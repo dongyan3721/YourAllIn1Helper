@@ -16,7 +16,7 @@ use crate::gif::{
 use os_hal::{CapturedFrame, DisplayMonitorInfo, HalResult, ScreenCapturer, WindowHandleId};
 use std::io::Cursor;
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
     Arc,
 };
 use tempfile::tempdir;
@@ -486,6 +486,237 @@ fn test_gif_native_capture_failure_stops_and_removes_partial_file() {
     session.wait_finished(std::time::Duration::from_secs(2));
     assert!(!status.is_recording);
     assert!(status.error.unwrap().contains("native capture failed"));
+    assert!(status.pending_path.is_none());
+    assert!(status.saved_path.is_none());
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+}
+
+fn tiny_selection() -> app_core::SelectionBox {
+    app_core::SelectionBox {
+        x: 0,
+        y: 0,
+        width: 8,
+        height: 8,
+    }
+}
+
+fn solid_frame(bounds: app_core::SelectionBox) -> CapturedFrame {
+    let pixels = (bounds.width * bounds.height) as usize;
+    CapturedFrame {
+        width: bounds.width,
+        height: bounds.height,
+        scale_factor_milli: 1000,
+        rgba_bytes: vec![20, 40, 60, 255].repeat(pixels),
+    }
+}
+
+fn wait_recording_ended(session: &GifRecordingSession) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    while session.status().is_recording && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    session.wait_finished(std::time::Duration::from_secs(2));
+}
+
+/// 登记句柄可在首帧之后被测试改写。抓屏始终返回成功，用来证明录制循环自己停下来。
+struct RegistryCapturer {
+    registered: parking_lot::Mutex<Option<WindowHandleId>>,
+    seen: parking_lot::Mutex<Vec<Option<WindowHandleId>>>,
+    /// `Some(next)` 在第一次抓取返回前替换登记；`None` 表示保持不变。
+    replace_after_first: Option<Option<WindowHandleId>>,
+}
+
+impl RegistryCapturer {
+    fn new(
+        initial: Option<WindowHandleId>,
+        replace_after_first: Option<Option<WindowHandleId>>,
+    ) -> Self {
+        Self {
+            registered: parking_lot::Mutex::new(initial),
+            seen: parking_lot::Mutex::new(Vec::new()),
+            replace_after_first,
+        }
+    }
+}
+
+impl ScreenCapturer for RegistryCapturer {
+    fn list_monitors(&self) -> HalResult<Vec<DisplayMonitorInfo>> {
+        Ok(vec![])
+    }
+
+    fn capture_monitor(&self, _id: Option<u32>) -> HalResult<CapturedFrame> {
+        Err(os_hal::HalError::NativeCallFailed(
+            "monitor capture is not used".into(),
+        ))
+    }
+
+    fn capture_region(&self, bounds: app_core::SelectionBox) -> HalResult<CapturedFrame> {
+        Ok(solid_frame(bounds))
+    }
+
+    fn active_capture_exclusion(&self) -> Option<WindowHandleId> {
+        *self.registered.lock()
+    }
+
+    fn capture_region_excluding(
+        &self,
+        bounds: app_core::SelectionBox,
+        exclusion: Option<WindowHandleId>,
+    ) -> HalResult<CapturedFrame> {
+        let first = {
+            let mut seen = self.seen.lock();
+            let first = seen.is_empty();
+            seen.push(exclusion);
+            first
+        };
+        if first {
+            if let Some(next) = self.replace_after_first {
+                *self.registered.lock() = next;
+            }
+        }
+        // 第二次仍返回成功帧。循环若沿用旧句柄，就会留下可预览的 GIF。
+        Ok(solid_frame(bounds))
+    }
+}
+
+fn start_registry_gif(
+    capturer: Arc<RegistryCapturer>,
+    exclude_window_id: u32,
+    session_id: &str,
+) -> (tempfile::TempDir, Arc<GifRecordingSession>) {
+    let dir = tempdir().unwrap();
+    let selection = tiny_selection();
+    let session = GifRecordingSession::new(
+        session_id.to_string(),
+        selection,
+        selection,
+        dir.path().to_path_buf(),
+        "Screenshot".to_string(),
+        recording_config(),
+        capturer,
+        None,
+        None,
+        exclude_window_id,
+    )
+    .expect("session create");
+    (dir, session)
+}
+
+#[test]
+fn test_gif_recording_accepts_stable_registered_handle() {
+    let capturer = Arc::new(RegistryCapturer::new(Some(5), None));
+    let (_dir, session) = start_registry_gif(capturer.clone(), 0, "stable-handle");
+    wait_recording_ended(&session);
+    let status = session.status();
+    assert!(
+        status.error.is_none(),
+        "stable handle must keep recording: {status:?}"
+    );
+    assert!(status.pending_path.is_some());
+    assert_eq!(capturer.seen.lock().as_slice(), &[Some(5), Some(5)]);
+}
+
+#[test]
+fn test_gif_recording_stops_when_registered_handle_changes() {
+    let capturer = Arc::new(RegistryCapturer::new(Some(11), Some(Some(22))));
+    let (dir, session) = start_registry_gif(capturer.clone(), 0, "changed-handle");
+    wait_recording_ended(&session);
+    let status = session.status();
+    assert!(!status.is_recording);
+    let error = status.error.expect("handle change must fail the recording");
+    assert!(error.contains("句柄已更换"), "unexpected error: {error}");
+    assert!(status.pending_path.is_none());
+    assert!(status.saved_path.is_none());
+    assert_eq!(capturer.seen.lock().as_slice(), &[Some(11)]);
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+}
+
+#[test]
+fn test_gif_recording_stops_when_registered_handle_disappears() {
+    let capturer = Arc::new(RegistryCapturer::new(Some(11), Some(None)));
+    let (dir, session) = start_registry_gif(capturer.clone(), 0, "lost-handle");
+    wait_recording_ended(&session);
+    let status = session.status();
+    assert!(!status.is_recording);
+    let error = status.error.expect("lost handle must fail the recording");
+    assert!(error.contains("排除已失效"), "unexpected error: {error}");
+    assert!(status.pending_path.is_none());
+    assert!(status.saved_path.is_none());
+    assert_eq!(capturer.seen.lock().as_slice(), &[Some(11)]);
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+}
+
+#[test]
+fn test_gif_recording_keeps_explicit_window_id_when_registry_changes() {
+    let capturer = Arc::new(RegistryCapturer::new(Some(11), Some(None)));
+    let (_dir, session) = start_registry_gif(capturer.clone(), 99, "explicit-window-id");
+    wait_recording_ended(&session);
+    let status = session.status();
+    assert!(
+        status.error.is_none(),
+        "explicit CGWindowID must ignore the Windows registry: {status:?}"
+    );
+    assert!(status.pending_path.is_some());
+    assert_eq!(capturer.seen.lock().as_slice(), &[Some(99), Some(99)]);
+}
+
+/// 不覆盖 `capture_region_excluding`，专门走默认实现。
+struct OverflowRegistryCapturer {
+    region_calls: AtomicUsize,
+}
+
+impl ScreenCapturer for OverflowRegistryCapturer {
+    fn list_monitors(&self) -> HalResult<Vec<DisplayMonitorInfo>> {
+        Ok(vec![])
+    }
+
+    fn capture_monitor(&self, _id: Option<u32>) -> HalResult<CapturedFrame> {
+        Err(os_hal::HalError::NativeCallFailed(
+            "monitor capture is not used".into(),
+        ))
+    }
+
+    fn capture_region(&self, bounds: app_core::SelectionBox) -> HalResult<CapturedFrame> {
+        self.region_calls.fetch_add(1, Ordering::SeqCst);
+        Ok(solid_frame(bounds))
+    }
+
+    fn active_capture_exclusion(&self) -> Option<WindowHandleId> {
+        Some(0x0000_7FFE_1234_5678)
+    }
+}
+
+#[test]
+fn test_gif_recording_rejects_overflow_exclusion_without_partial_file() {
+    let dir = tempdir().unwrap();
+    let capturer = Arc::new(OverflowRegistryCapturer {
+        region_calls: AtomicUsize::new(0),
+    });
+    let selection = tiny_selection();
+    let session = GifRecordingSession::new(
+        "overflow-handle".into(),
+        selection,
+        selection,
+        dir.path().to_path_buf(),
+        "Screenshot".into(),
+        recording_config(),
+        capturer.clone(),
+        None,
+        None,
+        0,
+    )
+    .unwrap();
+    wait_recording_ended(&session);
+    let status = session.status();
+    assert!(!status.is_recording);
+    let error = status
+        .error
+        .expect("overflow handle must fail the recording");
+    assert!(
+        error.contains("32 位"),
+        "default exclusion must reject the handle, got {error}"
+    );
+    assert_eq!(capturer.region_calls.load(Ordering::SeqCst), 0);
     assert!(status.pending_path.is_none());
     assert!(status.saved_path.is_none());
     assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);

@@ -57,14 +57,23 @@ pub trait ScreenCapturer: Send + Sync + 'static {
 
     /// 抓取区域并排除 `exclusion` 指定的原生窗口。
     ///
-    /// 默认把可容纳进 `u32` 的标识转交 [`Self::capture_region_below`]，保持旧适配器行为。
+    /// 能放进 `u32` 的非零标识仍转交 [`Self::capture_region_below`]（macOS `CGWindowID` 属于这一类）。
+    /// 超出 `u32` 的句柄必须报错：静默退回 [`Self::capture_region`] 会把遮罩重新拍进画面。
+    /// Windows 原生实现自行覆盖本方法，用完整 64 位 HWND 做捕获排除。
     fn capture_region_excluding(
         &self,
         bounds: SelectionBox,
         exclusion: Option<WindowHandleId>,
     ) -> HalResult<CapturedFrame> {
-        match exclusion.and_then(|handle| u32::try_from(handle).ok()) {
-            Some(window_id) if window_id != 0 => self.capture_region_below(bounds, window_id),
+        match exclusion {
+            Some(handle) if handle != 0 => {
+                let window_id = u32::try_from(handle).map_err(|_| {
+                    HalError::NativeCallFailed(format!(
+                        "抓屏排除标识无法用 32 位窗口号表示：{handle}"
+                    ))
+                })?;
+                self.capture_region_below(bounds, window_id)
+            }
             _ => self.capture_region(bounds),
         }
     }
@@ -241,5 +250,108 @@ impl OsHalBundle {
             active_app_watcher: adapter.clone(),
             input_simulator: adapter,
         }
+    }
+}
+
+#[cfg(test)]
+mod capture_exclusion_default_tests {
+    use super::ScreenCapturer;
+    use crate::{CapturedFrame, DisplayMonitorInfo, HalResult, WindowHandleId};
+    use app_core::SelectionBox;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct CountingCapturer {
+        region_calls: AtomicUsize,
+        below_calls: AtomicUsize,
+    }
+
+    impl CountingCapturer {
+        fn new() -> Self {
+            Self {
+                region_calls: AtomicUsize::new(0),
+                below_calls: AtomicUsize::new(0),
+            }
+        }
+    }
+
+    impl ScreenCapturer for CountingCapturer {
+        fn list_monitors(&self) -> HalResult<Vec<DisplayMonitorInfo>> {
+            Ok(vec![])
+        }
+
+        fn capture_monitor(&self, _monitor_id: Option<u32>) -> HalResult<CapturedFrame> {
+            Err(crate::HalError::NativeCallFailed(
+                "monitor capture is not used".to_string(),
+            ))
+        }
+
+        fn capture_region(&self, bounds: SelectionBox) -> HalResult<CapturedFrame> {
+            self.region_calls.fetch_add(1, Ordering::SeqCst);
+            let pixels = (bounds.width.max(1) * bounds.height.max(1) * 4) as usize;
+            Ok(CapturedFrame {
+                width: bounds.width.max(1),
+                height: bounds.height.max(1),
+                scale_factor_milli: 1000,
+                rgba_bytes: vec![9, 9, 9, 255].repeat(pixels / 4),
+            })
+        }
+
+        fn capture_region_below(
+            &self,
+            bounds: SelectionBox,
+            _below_window_id: u32,
+        ) -> HalResult<CapturedFrame> {
+            self.below_calls.fetch_add(1, Ordering::SeqCst);
+            self.capture_region(bounds)
+        }
+    }
+
+    fn bounds() -> SelectionBox {
+        SelectionBox {
+            x: 0,
+            y: 0,
+            width: 2,
+            height: 2,
+        }
+    }
+
+    #[test]
+    fn default_capture_exclusion_rejects_handle_wider_than_u32() {
+        let capturer = CountingCapturer::new();
+        // 与 Windows HWND 保留测试相同的高位形态，不能被当成普通抓屏静默丢掉。
+        let handle: WindowHandleId = 0x0000_7FFE_1234_5678;
+        let error = capturer
+            .capture_region_excluding(bounds(), Some(handle))
+            .expect_err("oversized exclusion must fail")
+            .to_string();
+
+        assert!(
+            error.contains("无法用 32 位窗口号表示"),
+            "unexpected error: {error}"
+        );
+        assert!(
+            error.contains(&handle.to_string()),
+            "error must keep the full handle, got {error}"
+        );
+        assert_eq!(capturer.region_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(capturer.below_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn default_capture_exclusion_keeps_u32_window_ids() {
+        let capturer = CountingCapturer::new();
+        capturer
+            .capture_region_excluding(bounds(), Some(u32::MAX as WindowHandleId))
+            .expect("CGWindowID-sized handles still delegate");
+        assert_eq!(capturer.below_calls.load(Ordering::SeqCst), 1);
+
+        capturer
+            .capture_region_excluding(bounds(), Some(0))
+            .expect("zero means no exclusion");
+        capturer
+            .capture_region_excluding(bounds(), None)
+            .expect("missing exclusion uses a normal capture");
+        assert_eq!(capturer.below_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(capturer.region_calls.load(Ordering::SeqCst), 3);
     }
 }
