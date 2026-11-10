@@ -163,7 +163,7 @@ fn test_scroll_full_lifecycle_and_export_reusing_m1() {
 
     // 5. 复用 M1 导出：复制
     let outcome = module
-        .export_scroll(ctx, ExportAction::Copy)
+        .export_scroll(ctx, ExportAction::Copy, None)
         .expect("export_scroll copy");
     assert!(outcome.copied);
     assert!(*clipboard.has_image.lock());
@@ -227,7 +227,7 @@ fn test_gif_full_lifecycle_and_file_creation() {
     assert!(stop_status.saved_path.is_none());
     assert!(ctx.window_pool.get_active_window(OVERLAY_LABEL).is_some());
 
-    let confirmed = module.confirm_gif(ctx).expect("confirm_gif");
+    let confirmed = module.confirm_gif(ctx, None).expect("confirm_gif");
     assert!(confirmed.saved_path.is_some());
     assert!(ctx.window_pool.get_active_window(OVERLAY_LABEL).is_none());
 

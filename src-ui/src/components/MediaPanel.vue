@@ -1365,7 +1365,7 @@ select.media-input {
   margin: 5px 0 8px;
   overflow: hidden;
   color: var(--macos-text-tertiary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--app-font-mono);
   font-size: 9px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1478,7 +1478,7 @@ select.media-input {
   border-radius: 5px;
   background: var(--macos-bg-card-active);
   color: var(--macos-text-secondary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--app-font-mono);
   font-size: 9px;
   line-height: 1.5;
   user-select: text;

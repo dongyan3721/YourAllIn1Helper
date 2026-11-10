@@ -571,6 +571,11 @@
     }
   },
   "screenshot": {
+    "saveAs": "名前を付けて保存…",
+    "quickSave": "既定に保存",
+    "quickSaveHint": "既定のフォルダーに保存（⌘/Ctrl+Shift+S）",
+    "pngFilter": "PNG 画像",
+    "gifFilter": "GIF アニメーション",
     "overlay": {
       "loadFailed": "スクリーンショットを読み込めません",
       "cancel": "キャンセル",
@@ -729,6 +734,8 @@
       "autoStopped": "録画の上限に達しました。残すを選ぶまで保存しません。",
       "previewTitle": "GIF 録画完了",
       "savedSuccess": "GIF が正常に保存されました",
+      "preset": "解像度",
+      "fps": "フレームレート",
       "presetOriginal": "原寸",
       "preset1080p": "1080p",
       "preset720p": "720p",

@@ -374,7 +374,7 @@ onUnmounted(() => {
   border: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
   border-radius: 10px;
   overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--app-font-sans);
   color: var(--text-primary, #1c1c1e);
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.16);
   user-select: none;

@@ -25,9 +25,10 @@
       <button class="pin-btn" :title="t('screenshot.pin.copy') + ' (⌘/Ctrl+C)'" @click="copyPin">
         <Icons name="copy" :size="13" />
       </button>
-      <button class="pin-btn" :title="t('screenshot.pin.save') + ' (⌘/Ctrl+S)'" @click="savePin">
+      <button class="pin-btn" :disabled="saving" :title="t('screenshot.saveAs') + ' (⌘/Ctrl+S)'" @click="savePin()">
         <Icons name="download" :size="13" />
       </button>
+      <button class="pin-btn" :disabled="saving" :title="t('screenshot.quickSaveHint')" @click="savePin(true)">{{ t('screenshot.quickSave') }}</button>
       <button class="pin-btn danger" :title="t('screenshot.pin.close') + ' (Esc)'" @click="closePin">
         <Icons name="close" :size="13" />
       </button>
@@ -48,6 +49,7 @@ import { onMounted, onUnmounted, ref } from 'vue';
 import Icons from './Icons.vue';
 import { t } from '../utils/i18n';
 import { fetchPinImage, screenshotApi } from '../api/screenshot';
+import { runSaveFlow } from '../utils/screenshot/save';
 import { formatPercent, pinWindowSize, stepOpacity, stepZoom, wheelDelta } from '../utils/screenshot/pinView';
 
 const label = new URLSearchParams(window.location.search).get('window') || '';
@@ -55,6 +57,7 @@ const pinId = label.startsWith('pin-img-') ? label.slice('pin-img-'.length) : ''
 
 const src = ref('');
 const error = ref('');
+const saving = ref(false);
 const zoom = ref(1);
 const opacity = ref(1);
 const collapsed = ref(false);
@@ -134,12 +137,18 @@ async function copyPin() {
   }
 }
 
-async function savePin() {
+async function savePin(useDefault = false) {
+  if (saving.value) return;
+  saving.value = true;
   try {
-    const res = await screenshotApi.savePin(pinId);
-    flash(t('screenshot.pin.saved', { path: res.saved_path }));
+    const res = await runSaveFlow(useDefault,
+      () => screenshotApi.pickSavePath('png', t('screenshot.saveAs'), t('screenshot.pngFilter')),
+      path => screenshotApi.savePin(pinId, path));
+    if (res) flash(t('screenshot.pin.saved', { path: res.saved_path }));
   } catch (err: any) {
     flash(err?.message || String(err));
+  } finally {
+    saving.value = false;
   }
 }
 
@@ -162,7 +171,7 @@ function onKeyDown(e: KeyboardEvent) {
     void copyPin();
   } else if (mod && e.key.toLowerCase() === 's') {
     e.preventDefault();
-    void savePin();
+    void savePin(e.shiftKey);
   } else if (!mod && (e.key === '+' || e.key === '=' || e.key === '-' || e.key === '0') && !collapsed.value) {
     zoom.value = e.key === '0' ? 1 : stepZoom(zoom.value, e.key === '-' ? 1 : -1);
     flash(formatPercent(zoom.value));

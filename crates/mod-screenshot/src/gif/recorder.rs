@@ -9,7 +9,7 @@ use super::{
 };
 use crate::export::timestamped_stem;
 use app_core::SelectionBox;
-use os_hal::ScreenCapturer;
+use os_hal::{ScreenCapturer, WindowHandleId};
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -242,7 +242,9 @@ impl GifRecordingSession {
     ) {
         info!(session_id = %session_id, target_w, target_h, fps = ?config.framerate, "GIF recording worker started");
 
-        if let Err(e) = fs::create_dir_all(temp_file_path.parent().unwrap_or(std::path::Path::new("."))) {
+        if let Err(e) =
+            fs::create_dir_all(temp_file_path.parent().unwrap_or(std::path::Path::new(".")))
+        {
             let msg = format!("创建 GIF 保存目录失败：{}", e);
             warn!(%msg);
             let mut st = status.write();
@@ -286,7 +288,14 @@ impl GifRecordingSession {
         let start_time = Instant::now();
         let max_duration = Duration::from_secs(config.max_duration_secs);
         let overlay = decode_overlay(overlay_png.as_deref());
+        // macOS 传 CGWindowID；Windows 传 0，由遮罩显示时登记、平台实现持有的 64 位 HWND 补齐。
+        let exclusion = if exclude_window_id != 0 {
+            Some(exclude_window_id as WindowHandleId)
+        } else {
+            capturer.active_capture_exclusion()
+        };
         let mut auto_stopped = false;
+        let mut recording_error = None;
 
         while !stop_signal.load(Ordering::SeqCst) {
             let tick_start = Instant::now();
@@ -299,22 +308,27 @@ impl GifRecordingSession {
                 break;
             }
 
-            match capturer.capture_region_below(capture_bounds, exclude_window_id) {
+            match capturer.capture_region_excluding(capture_bounds, exclusion) {
                 Ok(frame) => {
                     let mut pixels = frame.rgba_bytes;
                     // 排除了遮罩时，抓到的是底下的动态画面，墨迹要再叠一次。
-                    // 没拿到窗口号时，抓屏已经包含遮罩上的墨迹，不能再叠。
-                    if exclude_window_id != 0 {
+                    // 没排除时，抓屏已经包含遮罩上的墨迹，不能再叠。
+                    if exclusion.is_some() {
                         if let Some(ink) = &overlay {
                             blend_overlay(&mut pixels, frame.width, frame.height, ink);
                         }
                     }
                     if let Err(e) = encoder.add_frame(&pixels, frame.width, frame.height) {
                         warn!(%e, "Failed to encode GIF frame");
+                        recording_error = Some(format!("GIF 帧编码失败：{e}"));
+                        break;
                     }
                 }
                 Err(e) => {
                     warn!(%e, "Failed to capture region frame for GIF");
+                    // 原生排除或抓屏失败时停止并删除半成品，不把部分帧伪装成成功录制。
+                    recording_error = Some(format!("GIF 实时抓取失败：{e}"));
+                    break;
                 }
             }
 
@@ -360,6 +374,11 @@ impl GifRecordingSession {
             let _ = fs::remove_file(&temp_file_path);
             let mut st = status.write();
             st.is_recording = false;
+        } else if let Some(error) = recording_error {
+            let _ = fs::remove_file(&temp_file_path);
+            let mut st = status.write();
+            st.is_recording = false;
+            st.error = Some(error);
         } else if encoded_count == 0 {
             info!(session_id = %session_id, "No frames captured, removing empty GIF file");
             let _ = fs::remove_file(&temp_file_path);

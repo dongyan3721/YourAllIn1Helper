@@ -3,6 +3,7 @@
  */
 import { invokeIpc, type IpcResponse } from './ipc';
 import type { Rect } from '../utils/screenshot/geometry';
+import { encodeExportMetadata } from '../utils/screenshot/save';
 
 export type CapabilityState =
   | { state: 'available' }
@@ -210,9 +211,10 @@ export async function exportSelection(
   sessionId: string,
   selection: Rect,
   action: ExportAction,
-  overlayPng: Uint8Array | null
+  overlayPng: Uint8Array | null,
+  savePath?: string
 ): Promise<ExportOutcome> {
-  const meta = JSON.stringify({ session_id: sessionId, selection, action });
+  const meta = encodeExportMetadata({ session_id: sessionId, selection, action, save_path: savePath });
   const res: IpcResponse<ExportOutcome> = await tauriCore().invoke(
     'screenshot_export',
     overlayPng ?? new Uint8Array(0),
@@ -223,6 +225,15 @@ export async function exportSelection(
 }
 
 export const screenshotApi = {
+  /** 使用当前原生窗口作为属主；取消只返回 null，不执行任何导出。 */
+  pickSavePath: async (kind: 'png' | 'gif', title: string, filterLabel: string): Promise<string | null> => {
+    const ownerLabel = (window as any).__TAURI__?.window?.getCurrentWindow?.()?.label
+      || new URLSearchParams(window.location.search).get('window') || 'dashboard';
+    const result = await invokeIpc<{ path: string | null }>('screenshot_pick_save_path', {
+      kind, title, filter_label: filterLabel, default_name: `screenshot.${kind}`, owner_label: ownerLabel,
+    });
+    return result.path;
+  },
   getSession: (sessionId?: string) =>
     invokeIpc<ScreenshotSessionInfo>('screenshot_get_session', sessionId ? { session_id: sessionId } : {}),
   overlayReady: (sessionId: string) => invokeIpc('screenshot_overlay_ready', { session_id: sessionId }),
@@ -251,7 +262,7 @@ export const screenshotApi = {
   closePin: (pinId: string) => invokeIpc('screenshot_close_pin', { pin_id: pinId }),
   closeAllPins: () => invokeIpc('screenshot_close_all_pins'),
   copyPin: (pinId: string) => invokeIpc('screenshot_pin_copy', { pin_id: pinId }),
-  savePin: (pinId: string) => invokeIpc<{ saved_path: string }>('screenshot_pin_save', { pin_id: pinId }),
+  savePin: (pinId: string, path?: string) => invokeIpc<{ saved_path: string }>('screenshot_pin_save', { pin_id: pinId, path }),
   getConfig: () => invokeIpc<{ settings: ScreenshotSettings; overlay: OverlayFlags }>('screenshot_get_config'),
   updateSettings: (settings: Partial<ScreenshotSettings>, overlay: Partial<OverlayFlags>) =>
     invokeIpc<{ settings: ScreenshotSettings; overlay: OverlayFlags }>('screenshot_update_settings', {
@@ -266,7 +277,7 @@ export const screenshotApi = {
   scrollStatus: () => invokeIpc<ScrollStatus | null>('screenshot_scroll_status'),
   scrollSetAuto: (enabled: boolean) => invokeIpc<{ ok: boolean }>('screenshot_scroll_set_auto', { enabled }),
   scrollInfo: () => invokeIpc<ScrollStatus>('screenshot_scroll_info'),
-  scrollExport: (action: ExportAction) => invokeIpc<ExportOutcome>('screenshot_scroll_export', { action }),
+  scrollExport: (action: ExportAction, path?: string) => invokeIpc<ExportOutcome>('screenshot_scroll_export', { action, path }),
 
   // ── M3: GIF 录制 ──
   gifStart: (
@@ -285,7 +296,8 @@ export const screenshotApi = {
       overlay_png_base64: options?.overlayPng?.length ? bytesToBase64(options.overlayPng) : undefined,
     }),
   gifStop: () => invokeIpc<GifStatus>('screenshot_gif_stop'),
-  gifConfirm: () => invokeIpc<GifStatus>('screenshot_gif_confirm'),
+  gifConfirm: (path?: string) => invokeIpc<GifStatus>('screenshot_gif_confirm', { path }),
+  gifSaveAs: (path: string) => invokeIpc<{ saved_path: string }>('screenshot_gif_save_as', { path }),
   gifCopy: () => invokeIpc<{ copied: boolean }>('screenshot_gif_copy'),
   gifCancel: () => invokeIpc<{ cancelled: boolean }>('screenshot_gif_cancel'),
   gifStatus: () => invokeIpc<GifStatus | null>('screenshot_gif_status'),

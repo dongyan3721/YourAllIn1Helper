@@ -8,7 +8,7 @@
     @pointermove="onPointerMove"
     @pointerup="onPointerUp"
     @pointercancel="onPointerUp"
-    @wheel.prevent="onWheel"
+    @wheel="onWheel"
     @contextmenu.prevent="onContextMenu"
     @dblclick="onDoubleClick"
   >
@@ -24,20 +24,20 @@
     </div>
 
     <!-- 尚未选区时的操作提示 -->
-    <div v-if="ready && !selection" class="capture-hint">{{ idleHint }}</div>
+    <div v-if="ready && !selection && !liveMode" class="capture-hint">{{ idleHint }}</div>
 
     <!-- 智能区域名称 -->
-    <div v-if="ready && !selection && hoverCss && hoverRegion?.label" class="region-label" :style="labelStyle(hoverCss)">
+    <div v-if="ready && !selection && !liveMode && hoverCss && hoverRegion?.label" class="region-label" :style="labelStyle(hoverCss)">
       {{ hoverRegion.label }}
     </div>
 
     <!-- 选区尺寸（帧像素，即导出图片的真实像素） -->
-    <div v-if="selectionCss" class="size-badge" :style="labelStyle(selectionCss)">
+    <div v-if="selectionCss && !liveMode" class="size-badge" :style="labelStyle(selectionCss)">
       {{ selection!.width }} × {{ selection!.height }}
     </div>
 
     <!-- 八个调整手柄 -->
-    <template v-if="selectionCss && !exporting">
+    <template v-if="selectionCss && !exporting && !liveMode">
       <div
         v-for="h in RESIZE_HANDLES"
         :key="h"
@@ -141,9 +141,10 @@
         <button class="tool-btn" :title="t('screenshot.overlay.pin') + ' (F3)'" :disabled="exporting" @click="doExport('pin')">
           <Icons name="pin" :size="16" />
         </button>
-        <button class="tool-btn" :title="t('screenshot.overlay.save') + ' (⌘/Ctrl+S)'" :disabled="exporting" @click="doExport('save')">
+        <button class="tool-btn" :title="t('screenshot.saveAs') + ' (⌘/Ctrl+S)'" :disabled="exporting" @click="doExport('save')">
           <Icons name="download" :size="16" />
         </button>
+        <button class="tool-btn text-btn" :title="t('screenshot.quickSaveHint')" :disabled="exporting" @click="doExport('save', true)">{{ t('screenshot.quickSave') }}</button>
         <button class="tool-btn" :title="t('screenshot.overlay.cancel') + ' (Esc)'" :disabled="exporting" @click="cancelCapture">
           <Icons name="close" :size="16" />
         </button>
@@ -223,7 +224,8 @@
       <strong>{{ gifAutoStopped ? t('screenshot.gif.autoStopped') : t('screenshot.gif.previewTitle') }}</strong>
       <img :src="gifPreviewUrl" alt="" />
       <div class="gif-preview-actions">
-        <button class="tool-btn text-btn" @click="confirmGif">{{ t('screenshot.gif.keep') }}</button>
+        <button class="tool-btn text-btn" :disabled="exporting" @click="confirmGif()">{{ t('screenshot.saveAs') }}</button>
+        <button class="tool-btn text-btn" :disabled="exporting" :title="t('screenshot.quickSaveHint')" @click="confirmGif(true)">{{ t('screenshot.quickSave') }}</button>
         <button class="tool-btn text-btn" @click="copyGifToClipboard">{{ t('screenshot.gif.copy') }}</button>
         <button class="tool-btn text-btn" @click="discardGif">{{ t('screenshot.gif.discard') }}</button>
       </div>
@@ -330,6 +332,8 @@ import {
   type AnnotationTool,
 } from '../utils/screenshot/annotations';
 import { readPixel, toHex, toRgbText } from '../utils/screenshot/color';
+import { outerBorderRect, shouldPassthroughWheel } from '../utils/screenshot/scroll';
+import { runSaveFlow } from '../utils/screenshot/save';
 import { renderAnnotations, TEXT_FONT_FAMILY, TEXT_LINE_HEIGHT, type FrameSource, type MosaicCache } from '../utils/screenshot/render';
 
 type DragState =
@@ -538,10 +542,18 @@ function renderUi() {
   ctx.fillRect(0, 0, width, height);
   const focus = sel ?? hoverRegion.value;
   if (focus) {
-    // 清除遮罩露出冻结帧原样像素。
+    // 边框严格绘制在选区外围（使用 outerBorderRect），确保描边位于暗色遮罩区，绝不向内侵占选区像素
+    ctx.save();
+    ctx.strokeStyle = sel ? '#0a84ff' : 'rgba(10, 132, 255, 0.95)';
+    ctx.lineWidth = sel ? lineWidth : lineWidth * 2;
+    const outer = outerBorderRect(focus, ctx.lineWidth);
+    ctx.strokeRect(outer.x, outer.y, outer.width, outer.height);
+    ctx.restore();
+
+    // 清除选区内部遮罩，并彻底擦除任何可能向内溢出的边框抗锯齿次像素，保证选区 100% 纯净透明
     ctx.clearRect(focus.x, focus.y, focus.width, focus.height);
   }
-  if (sel) {
+  if (sel && !liveMode.value) {
     ctx.save();
     ctx.beginPath();
     ctx.rect(sel.x, sel.y, sel.width, sel.height);
@@ -557,13 +569,6 @@ function renderUi() {
       }
     }
     if (draft.value) renderAnnotations(ctx, [draft.value], frame, new Map());
-    ctx.restore();
-  }
-  if (focus) {
-    ctx.save();
-    ctx.strokeStyle = sel ? '#0a84ff' : 'rgba(10, 132, 255, 0.95)';
-    ctx.lineWidth = sel ? lineWidth : lineWidth * 2;
-    ctx.strokeRect(focus.x + ctx.lineWidth / 2, focus.y + ctx.lineWidth / 2, focus.width - ctx.lineWidth, focus.height - ctx.lineWidth);
     ctx.restore();
   }
 }
@@ -725,7 +730,9 @@ function onPointerUp(e: PointerEvent) {
 }
 
 function onWheel(e: WheelEvent) {
+  if (shouldPassthroughWheel(liveMode.value)) return;
   if (selection.value || !session.value?.settings.wheel_expand || !session.value.settings.smart_regions) return;
+  e.preventDefault();
   levelSteps = Math.min(8, Math.max(0, levelSteps + (e.deltaY < 0 ? 1 : -1)));
   levelAnchorCss = { x: e.clientX, y: e.clientY };
   scheduleResolve(framePoint(e));
@@ -951,6 +958,9 @@ async function showGifPreview(autoStopped: boolean) {
     showToast(err?.message || String(err), 'error');
     liveMode.value = null;
     setLiveHole(false);
+  } finally {
+    // 这是一次加载的并发保护；放弃预览后再次录制仍应允许展示结果。
+    gifFinishing = false;
   }
 }
 
@@ -1017,6 +1027,7 @@ async function startScrollCapture() {
     liveMode.value = 'scroll';
     scrollHeight.value = sel.height;
     setLiveHole(true);
+    requestRender();
     beginLivePoll();
   } catch (err: any) {
     setLiveHole(false);
@@ -1029,20 +1040,28 @@ async function stopScrollCapture() {
   scrollStopping = true;
   stopLiveTimer();
   liveMode.value = null;
+  setLiveHole(false);
+  requestRender();
+  if (scrollThumbUrl.value) {
+    URL.revokeObjectURL(scrollThumbUrl.value);
+    scrollThumbUrl.value = null;
+  }
   try {
     await screenshotApi.scrollStop();
   } catch (err: any) {
-    setLiveHole(false);
     showToast(err?.message || String(err), 'error');
+  } finally {
+    scrollStopping = false;
   }
 }
 
 async function cancelScrollCapture() {
   stopLiveTimer();
   liveMode.value = null;
+  setLiveHole(false);
+  requestRender();
   if (scrollThumbUrl.value) URL.revokeObjectURL(scrollThumbUrl.value);
   scrollThumbUrl.value = null;
-  setLiveHole(false);
   try {
     await screenshotApi.scrollCancel();
   } catch (err: any) {
@@ -1106,12 +1125,18 @@ async function cancelGifRecording() {
   }
 }
 
-async function confirmGif() {
+async function confirmGif(useDefault = false) {
+  if (exporting.value) return;
+  exporting.value = true;
   try {
-    const status = await screenshotApi.gifConfirm();
-    showToast(t('screenshot.gif.kept', { path: status.saved_path || '' }), 'info');
+    const status = await runSaveFlow(useDefault,
+      () => screenshotApi.pickSavePath('gif', t('screenshot.saveAs'), t('screenshot.gifFilter')),
+      path => screenshotApi.gifConfirm(path));
+    if (status) showToast(t('screenshot.gif.kept', { path: status.saved_path || '' }), 'info');
   } catch (err: any) {
     showToast(err?.message || String(err), 'error');
+  } finally {
+    exporting.value = false;
   }
 }
 
@@ -1152,18 +1177,25 @@ async function renderOverlayPng(sel: Rect): Promise<Uint8Array | null> {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
-async function doExport(action: ExportAction) {
+async function doExport(action: ExportAction, useDefault = false) {
   const sel = selection.value;
   if (!sel || !session.value || exporting.value) return;
   if (textEditor.value) commitText();
   exporting.value = true;
   try {
     const png = await renderOverlayPng(sel);
-    await exportSelection(session.value.session_id, sel, action, png);
+    if (action === 'save') {
+      await runSaveFlow(useDefault,
+        () => screenshotApi.pickSavePath('png', t('screenshot.saveAs'), t('screenshot.pngFilter')),
+        path => exportSelection(session.value!.session_id, sel, action, png, path));
+    } else {
+      await exportSelection(session.value.session_id, sel, action, png);
+    }
     // 成功后后端销毁本窗口；以下状态仅在窗口尚未销毁时生效。
   } catch (err: any) {
-    exporting.value = false;
     showToast(err?.message || String(err), 'error');
+  } finally {
+    exporting.value = false;
   }
 }
 
@@ -1215,6 +1247,9 @@ function onKeyDown(e: KeyboardEvent) {
     } else if (e.key === 'Enter' && liveMode.value === 'gif') {
       e.preventDefault();
       void stopGifRecording();
+    } else if (gifPreviewUrl.value && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      void confirmGif(e.shiftKey);
     }
     return;
   }
@@ -1268,7 +1303,7 @@ function onKeyDown(e: KeyboardEvent) {
   }
   if (mod && (key === 's' || key === 'S')) {
     e.preventDefault();
-    void doExport('save');
+    void doExport('save', e.shiftKey);
     return;
   }
   if (key === 'Enter' && session.value?.intent === 'ocr') {
@@ -1409,7 +1444,7 @@ onUnmounted(() => {
   user-select: none;
   -webkit-user-select: none;
 }
-.capture-root.live-hole { background: transparent; }
+.capture-root.live-hole { background: transparent !important; }
 .cursor-cross { cursor: crosshair; }
 .cursor-move { cursor: move; }
 .cursor-grab { cursor: grab; }
@@ -1761,5 +1796,8 @@ body.capture-overlay-body.live-hole {
   background: #000;
 }
 .gif-preview-actions { display: flex; gap: 8px; }
-.live-bar { z-index: 22; }
+.live-bar {
+  z-index: 22;
+  pointer-events: auto !important;
+}
 </style>

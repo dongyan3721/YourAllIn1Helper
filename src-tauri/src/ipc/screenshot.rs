@@ -3,12 +3,14 @@
 //! JSON 路由只承载小数据；冻结帧、贴图 PNG 与标注层经 `screenshot_binary.rs` 的二进制命令传输，
 //! 这些入口同样经 `with_enabled` 进入，停用时拒绝。
 use super::*;
+use crate::native_save_dialog::SaveKind;
 use app_core::SelectionBox;
 use mod_screenshot::{
     config::{merge_settings, ScreenshotSettings},
     export::ExportAction,
     ExportOutcome, MODULE_ID,
 };
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 fn str_arg<'a>(args: &'a Value, key: &str) -> CoreResult<&'a str> {
@@ -18,10 +20,39 @@ fn str_arg<'a>(args: &'a Value, key: &str) -> CoreResult<&'a str> {
 }
 
 impl DesktopHost {
+    /// 解析并消费「另存为」完整路径参数：路径必须来自系统保存对话框（一次性授权），
+    /// 只有保存类动作允许携带；返回 `None` 表示走默认目录快捷保存。
+    fn take_save_path_arg(
+        &self,
+        args: &Value,
+        kind: SaveKind,
+        allow: bool,
+    ) -> CoreResult<Option<PathBuf>> {
+        let raw = args
+            .get("path")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let Some(raw) = raw else {
+            return Ok(None);
+        };
+        if !allow {
+            return Err(CoreError::Config("path 参数只允许用于保存操作".into()));
+        }
+        let path = PathBuf::from(raw);
+        self.save_paths().consume(&path, kind)?;
+        Ok(Some(path))
+    }
+}
+
+impl DesktopHost {
     pub(super) fn dispatch_screenshot(&self, cmd: &str, args: Value) -> CoreResult<Value> {
         let ctx = self.kernel.context();
         let shot = &self.screenshot;
         match cmd {
+            "screenshot_pick_save_path" => Err(CoreError::Config(
+                "native save dialog requires the asynchronous desktop IPC adapter".into(),
+            )),
             "screenshot_get_status" => {
                 let mut status = serde_json::to_value(shot.status(ctx))?;
                 // 系统级快捷键注册失败只有宿主知道，单独附加，避免界面误报 F1 可用。
@@ -98,9 +129,12 @@ impl DesktopHost {
                 shot.copy_pin(str_arg(&args, "pin_id")?)?;
                 Ok(json!({ "copied": true }))
             }
-            "screenshot_pin_save" => Ok(json!({
-                "saved_path": shot.save_pin(ctx, str_arg(&args, "pin_id")?)?
-            })),
+            "screenshot_pin_save" => {
+                let save_path = self.take_save_path_arg(&args, SaveKind::Png, true)?;
+                Ok(json!({
+                    "saved_path": shot.save_pin(ctx, str_arg(&args, "pin_id")?, save_path.as_deref())?
+                }))
+            }
             "screenshot_get_config" => Ok(json!({
                 "settings": shot.settings(ctx),
                 "overlay": ctx.config.read().screenshot.clone(),
@@ -138,7 +172,11 @@ impl DesktopHost {
                     "pin" => ExportAction::Pin,
                     other => return Err(CoreError::Config(format!("未知导出操作: {}", other))),
                 };
-                Ok(serde_json::to_value(shot.export_scroll(ctx, action)?)?)
+                let save_path =
+                    self.take_save_path_arg(&args, SaveKind::Png, action == ExportAction::Save)?;
+                Ok(serde_json::to_value(
+                    shot.export_scroll(ctx, action, save_path.as_deref())?,
+                )?)
             }
             // ── M3: GIF 录制 ──
             "screenshot_gif_start" => {
@@ -195,7 +233,16 @@ impl DesktopHost {
                 )?)?)
             }
             "screenshot_gif_stop" => Ok(serde_json::to_value(shot.stop_gif(ctx)?)?),
-            "screenshot_gif_confirm" => Ok(serde_json::to_value(shot.confirm_gif(ctx)?)?),
+            "screenshot_gif_confirm" => {
+                let save_path = self.take_save_path_arg(&args, SaveKind::Gif, true)?;
+                Ok(serde_json::to_value(shot.confirm_gif(ctx, save_path.as_deref())?)?)
+            }
+            "screenshot_gif_save_as" => {
+                let path = self
+                    .take_save_path_arg(&args, SaveKind::Gif, true)?
+                    .ok_or_else(|| CoreError::Config("缺少参数 path".into()))?;
+                Ok(json!({ "saved_path": shot.save_gif_copy(&path)? }))
+            }
             "screenshot_gif_copy" => {
                 shot.copy_gif()?;
                 Ok(json!({ "copied": true }))
@@ -265,13 +312,22 @@ impl DesktopHost {
     }
 
     /// 导出选区：标注层 PNG 作为原始请求体传入（可为空）。
+    ///
+    /// `save_path` 为「另存为」完整路径（一次性授权，覆盖写入）；缺省走默认目录快捷保存。
     pub fn screenshot_export(
         &self,
         session_id: &str,
         selection: SelectionBox,
         action: ExportAction,
         overlay_png: Option<&[u8]>,
+        save_path: Option<&Path>,
     ) -> CoreResult<ExportOutcome> {
+        if let Some(path) = save_path {
+            if action != ExportAction::Save {
+                return Err(CoreError::Config("path 参数只允许用于保存操作".into()));
+            }
+            self.save_paths().consume(path, SaveKind::Png)?;
+        }
         self.kernel.registry().with_enabled(MODULE_ID, || {
             self.screenshot.export(
                 self.kernel.context(),
@@ -279,6 +335,7 @@ impl DesktopHost {
                 selection,
                 overlay_png,
                 action,
+                save_path,
             )
         })
     }

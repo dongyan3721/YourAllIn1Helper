@@ -809,7 +809,7 @@ onUnmounted(() => {
 }
 
 .source-preview {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--app-font-mono);
   font-size: 10px;
   color: var(--macos-text-tertiary);
   max-width: 220px;
@@ -819,7 +819,7 @@ onUnmounted(() => {
 }
 
 .mono-cell {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--app-font-mono);
   font-size: 11px;
   max-width: 180px;
   overflow: hidden;
@@ -848,7 +848,7 @@ onUnmounted(() => {
 }
 
 .run-id {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--app-font-mono);
   font-size: 9px;
   color: var(--macos-text-tertiary);
 }
@@ -914,7 +914,7 @@ onUnmounted(() => {
   border: 1px solid var(--macos-border-subtle);
   border-radius: var(--macos-radius-sm);
   padding: 8px 10px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--app-font-mono);
   font-size: 11px;
   line-height: 1.45;
   color: var(--macos-text-secondary);
@@ -1002,13 +1002,13 @@ onUnmounted(() => {
 .script-textarea {
   min-height: 150px;
   resize: vertical;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--app-font-mono);
 }
 
 .args-textarea {
   min-height: 70px;
   resize: vertical;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--app-font-mono);
 }
 
 .form-hint {

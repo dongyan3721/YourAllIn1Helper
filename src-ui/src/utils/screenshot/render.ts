@@ -16,7 +16,7 @@ export interface FrameSource {
 export type MosaicCache = Map<string, HTMLCanvasElement>;
 
 export const TEXT_FONT_FAMILY =
-  '-apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans", "Microsoft YaHei", "Segoe UI", sans-serif';
+  '-apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Hiragino Sans", sans-serif';
 export const TEXT_LINE_HEIGHT = 1.25;
 
 export function renderAnnotations(

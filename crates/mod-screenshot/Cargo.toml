@@ -19,6 +19,5 @@ uuid.workspace = true
 image = { version = "0.25", default-features = false, features = ["png"] }
 gif = "0.14"
 color_quant = "1.1"
-
-[dev-dependencies]
+# 另存为先写同目录临时文件，再原子替换，失败时保留原文件。
 tempfile = "3.10"

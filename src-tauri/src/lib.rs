@@ -43,6 +43,7 @@ mod ipc;
 mod legacy_http;
 mod modules;
 mod native_dialog;
+mod native_save_dialog;
 mod screenshot_binary;
 mod screenshot_clipboard;
 mod screenshot_window;
@@ -54,6 +55,7 @@ mod sticky_flush;
 mod tauri_app;
 mod translator_mouse;
 pub use legacy_http::serve_desktop_ui;
+pub use native_save_dialog::{SaveKind, SavePathRegistry};
 pub use tauri_app::run;
 
 /// Request payload sent to `POST /api/ipc` or `DesktopHost::invoke_ipc`.
@@ -110,6 +112,8 @@ pub struct DesktopHost {
     mock_hal: Option<MockOsHal>,
     /// 系统全局快捷键注册失败记录（action_id → 错误），供界面如实显示未生效的快捷键。
     native_shortcut_failures: parking_lot::RwLock<HashMap<String, String>>,
+    /// 「另存为」一次性路径授权表：仅系统保存对话框确认过的路径允许覆盖写入。
+    save_paths: native_save_dialog::SavePathRegistry,
 }
 
 impl DesktopHost {
@@ -273,6 +277,7 @@ impl DesktopHost {
             os_hal,
             mock_hal,
             native_shortcut_failures: parking_lot::RwLock::new(HashMap::new()),
+            save_paths: native_save_dialog::SavePathRegistry::default(),
         })
     }
 
@@ -299,6 +304,11 @@ impl DesktopHost {
     /// 增强截图模块实例（与注册表中挂载的是同一个 Arc）。
     pub fn screenshot(&self) -> &Arc<ScreenshotModule> {
         &self.screenshot
+    }
+
+    /// 「另存为」一次性路径授权表（系统保存对话框确认结果的登记与消费）。
+    pub fn save_paths(&self) -> &native_save_dialog::SavePathRegistry {
+        &self.save_paths
     }
 
     /// 用本轮系统注册结果替换失败记录。

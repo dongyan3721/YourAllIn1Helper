@@ -70,6 +70,18 @@ fn paste_target_must_be_external_and_have_matching_foreground_identity() {
 }
 
 #[test]
+fn forgetting_target_clears_it_so_later_paste_is_refused() {
+    let mut stored = Some((0x5678, std::process::id().wrapping_add(1)));
+    forget_target(&mut stored);
+    assert_eq!(stored, None);
+    forget_target(&mut stored);
+    assert!(matches!(
+        take_remembered_target(stored),
+        Err(HalError::NotFound(_))
+    ));
+}
+
+#[test]
 fn remembering_own_window_clears_stale_target_and_failures_never_reuse_it() {
     let own = std::process::id();
     let own_window = PasteTarget {

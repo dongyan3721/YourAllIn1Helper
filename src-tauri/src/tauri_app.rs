@@ -147,7 +147,15 @@ impl WindowBackend for TauriWindowBackend {
                 window.unminimize().map_err(to_core_error)?;
             }
             window.show().map_err(to_core_error)?;
-            if spec.focus {
+            if spec.label == "clipboard-popup" {
+                if let Err(reason) = crate::clipboard_window::focus_popup(&window) {
+                    let _ = window.destroy();
+                    return Err(CoreError::WindowLifecycle {
+                        label: spec.label.clone(),
+                        reason,
+                    });
+                }
+            } else if spec.focus {
                 window.set_focus().map_err(to_core_error)?;
             }
             if spec.label == "screen-ink-toolbar" {
@@ -171,7 +179,8 @@ impl WindowBackend for TauriWindowBackend {
         .transparent(spec.transparent)
         .always_on_top(spec.always_on_top)
         .skip_taskbar(spec.skip_taskbar)
-        .focused(spec.focus);
+        // Windows 候选窗由显式前台策略激活，避免窗口创建阶段重复请求焦点。
+        .focused(spec.focus && !(cfg!(target_os = "windows") && spec.label == "clipboard-popup"));
 
         if let (Some(min_w), Some(min_h)) = (spec.min_width, spec.min_height) {
             builder = builder.min_inner_size(min_w, min_h);
@@ -236,6 +245,15 @@ impl WindowBackend for TauriWindowBackend {
             {
                 let _ = window.destroy();
                 return Err(error);
+            }
+        }
+        if spec.label == "clipboard-popup" {
+            if let Err(reason) = crate::clipboard_window::present_new_popup(&window) {
+                let _ = window.destroy();
+                return Err(CoreError::WindowLifecycle {
+                    label: spec.label.clone(),
+                    reason,
+                });
             }
         }
         Ok(())
@@ -451,6 +469,11 @@ async fn ipc(app: AppHandle, mut request: IpcRequest) -> IpcResponse {
         )
         .await;
     }
+    if request.cmd == "screenshot_pick_save_path" {
+        // 截图「另存为」系统保存对话框（异步，不阻塞 UI）；截图导出分派由本任务维护。
+        return crate::native_save_dialog::pick_screenshot_save_path(&app, &host, request.args)
+            .await;
+    }
     let module_id = request
         .args
         .get("module_id")
@@ -643,7 +666,11 @@ fn trigger_action(app: &AppHandle, action_id: &str) {
     // macOS 全局热键回调在 AppKit 主线程上：若在这里同步做完，遮罩页随后
     // `run_on_main_thread` 等主线程显示窗口。主窗口最小化时窗口服务会拖住这条回调，
     // 等待超时后界面留下 Internal kernel error，恢复窗口也不会清掉。
-    if action_id == ACTION_TRANSLATOR || action_id.starts_with("screenshot:") {
+    // Windows 候选窗会有界等待原生激活结果；必须让主线程继续派发窗口消息。
+    if action_id == ACTION_TRANSLATOR
+        || action_id.starts_with("screenshot:")
+        || (cfg!(target_os = "windows") && action_id == ACTION_CLIPBOARD)
+    {
         let app = app.clone();
         let action_id = action_id.to_string();
         tauri::async_runtime::spawn_blocking(move || {
@@ -1356,6 +1383,14 @@ pub fn run() {
                     }
                 }
                 WindowEvent::Focused(false) => {
+                    if window.label() == "clipboard-popup"
+                        && crate::clipboard_window::owns_foreground(window)
+                    {
+                        // WebView2 内部交焦不属于用户离开候选窗；原生前台仍由它持有。
+                        #[cfg(debug_assertions)]
+                        eprintln!("Clipboard popup internal focus transition; keeping foreground window");
+                        return;
+                    }
                     if pool.on_window_blur(window.label()).unwrap_or(false)
                         && window.label() == "translate-popover"
                     {

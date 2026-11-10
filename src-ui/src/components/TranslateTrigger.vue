@@ -20,7 +20,7 @@ async function open() {
 .translate-trigger {
   display: block; width: 20px; height: 20px; padding: 0; border: 0;
   border-radius: 5px; background: #2563eb; color: white; cursor: pointer;
-  font: 12px/20px -apple-system, sans-serif;
+  font: 12px/20px var(--app-font-sans);
 }
 .translate-trigger:hover { background: #1d4ed8; }
 </style>

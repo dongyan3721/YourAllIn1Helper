@@ -12,11 +12,15 @@ struct Probe {
     denied: AtomicBool,
     clipboard: Mutex<String>,
     pasted: Mutex<Option<String>>,
+    fail_open: AtomicBool,
 }
 impl InputSimulator for Probe {
     fn remember_paste_target(&self) -> HalResult<()> {
         self.events.lock().unwrap().push("remember");
         Ok(())
+    }
+    fn forget_paste_target(&self) {
+        self.events.lock().unwrap().push("forget");
     }
     fn check_input_permission(&self) -> HalResult<()> {
         self.events.lock().unwrap().push("check");
@@ -43,6 +47,12 @@ impl InputSimulator for Probe {
 struct Backend(Arc<Probe>);
 impl WindowBackend for Backend {
     fn create_or_focus_window(&self, _: &WindowSpec) -> CoreResult<()> {
+        if self.0.fail_open.load(Ordering::SeqCst) {
+            self.0.events.lock().unwrap().push("open-failed");
+            return Err(app_core::CoreError::Config(
+                "popup could not take foreground".into(),
+            ));
+        }
         self.0.events.lock().unwrap().push("open");
         Ok(())
     }
@@ -81,7 +91,40 @@ fn opening_remembers_destination_before_focus_changes_but_closing_does_not_repla
     kernel.trigger_action("clipboard:toggle_popup").unwrap();
     assert_eq!(
         *probe.events.lock().unwrap(),
-        vec!["close", "remember", "open"]
+        vec!["close", "forget", "remember", "open"]
+    );
+}
+#[test]
+fn failed_popup_open_discards_remembered_destination() {
+    let dir = tempfile::tempdir().unwrap();
+    let (kernel, _, probe) = fixture(dir.path());
+    kernel.trigger_action("clipboard:toggle_popup").unwrap();
+    probe.events.lock().unwrap().clear();
+    probe.fail_open.store(true, Ordering::SeqCst);
+    let error = kernel.trigger_action("clipboard:toggle_popup");
+    assert!(error.is_err());
+    assert_eq!(
+        *probe.events.lock().unwrap(),
+        vec!["remember", "open-failed", "forget"]
+    );
+    assert_eq!(kernel.context().window_pool.active_window_count(), 0);
+}
+#[test]
+fn paste_without_popup_session_discards_stale_destination_before_sending() {
+    let dir = tempfile::tempdir().unwrap();
+    let (kernel, module, probe) = fixture(dir.path());
+    let record = module
+        .capture_text(kernel.context(), "history-alpha", None)
+        .unwrap()
+        .unwrap();
+    kernel.trigger_action("clipboard:toggle_popup").unwrap();
+    probe.events.lock().unwrap().clear();
+    module
+        .paste_item_with_prepare(kernel.context(), record.id, false, |_| Ok(()))
+        .unwrap();
+    assert_eq!(
+        *probe.events.lock().unwrap(),
+        vec!["check", "forget", "close", "paste"]
     );
 }
 #[test]

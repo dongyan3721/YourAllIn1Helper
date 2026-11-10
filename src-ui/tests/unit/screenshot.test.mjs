@@ -28,6 +28,7 @@ import {
 } from '../../src/utils/screenshot/annotations.ts';
 import { pixelateBlocks } from '../../src/utils/screenshot/mosaic.ts';
 import { readPixel, toHex, toRgbText } from '../../src/utils/screenshot/color.ts';
+import { encodeExportMetadata, runSaveFlow } from '../../src/utils/screenshot/save.ts';
 import {
   COLLAPSED_SIZE,
   MAX_ZOOM,
@@ -40,6 +41,40 @@ import {
 } from '../../src/utils/screenshot/pinView.ts';
 
 const FRAME = { x: 0, y: 0, width: 200, height: 100 };
+
+test('binary export headers preserve Unicode paths without violating the Headers ByteString contract', () => {
+  const original = { session_id: 'qa', selection: FRAME, action: 'save', save_path: 'D:\\截图 保存\\中文 🖼️ 01.png' };
+  assert.throws(() => new Headers({ 'x-aio-screenshot-export': JSON.stringify(original) }), TypeError);
+  const encoded = encodeExportMetadata(original);
+  assert.match(encoded, /^[\x20-\x7e]+$/);
+  assert.equal(new Headers({ 'x-aio-screenshot-export': encoded }).get('x-aio-screenshot-export'), encoded);
+  assert.deepEqual(JSON.parse(encoded), original);
+});
+
+test('cancelling a save picker never writes or falls back to the default path', async () => {
+  let writes = 0;
+  assert.equal(await runSaveFlow(false, async () => null, async () => { writes++; }), null);
+  assert.equal(writes, 0);
+});
+
+test('quick save skips the picker and a chosen Unicode path is passed unchanged', async () => {
+  const paths = [];
+  const write = async path => { paths.push(path); return 'saved'; };
+  assert.equal(await runSaveFlow(true, async () => { throw Error('picker must not open'); }, write), 'saved');
+  const selected = 'D:\\截图 测试\\图像 01.png';
+  assert.equal(await runSaveFlow(false, async () => selected, write), 'saved');
+  assert.deepEqual(paths, [undefined, selected]);
+});
+
+test('picker or write errors remain errors and allow an explicit retry', async () => {
+  let writes = 0;
+  const write = async () => { writes++; throw Error('disk full'); };
+  await assert.rejects(runSaveFlow(false, async () => { throw Error('dialog failed'); }, write), /dialog failed/);
+  assert.equal(writes, 0);
+  await assert.rejects(runSaveFlow(false, async () => 'D:\\test.png', write), /disk full/);
+  assert.equal(writes, 1);
+  assert.equal(await runSaveFlow(false, async () => 'D:\\retry.png', async () => 'retried'), 'retried');
+});
 
 test('drag points normalize in any direction and selections serialize like SelectionBox', () => {
   const r = rectFromPoints({ x: 50.4, y: 80 }, { x: 10, y: 20.6 });
@@ -235,6 +270,33 @@ test('M3 scroll utils: format pixel height and confidence percentage', async () 
   assert.equal(formatConfidence(0.954), '95%');
   assert.equal(formatConfidence(0.8), '80%');
   assert.equal(formatConfidence(1.0), '100%');
+});
+
+test('M3 scroll utils: outerBorderRect keeps stroke strictly outside selection and wheel passthrough logic', async () => {
+  const { outerBorderRect, shouldPassthroughWheel } = await import('../../src/utils/screenshot/scroll.ts');
+  const sel = { x: 100, y: 150, width: 400, height: 300 };
+  const lineWidth = 2;
+  const outer = outerBorderRect(sel, lineWidth);
+
+  // 描边中心位于 outer 坐标，描边内外各 lineWidth/2
+  // outer 边界：[outer.x - 1, outer.x + outer.width + 1] -> [98, 502]
+  // 选区内部：[100, 500] 绝对不受侵占
+  assert.equal(outer.x, 99);
+  assert.equal(outer.y, 149);
+  assert.equal(outer.width, 402);
+  assert.equal(outer.height, 302);
+
+  // 检查高分屏/非整数缩放
+  const outerDpr = outerBorderRect(sel, 1.5);
+  assert.equal(outerDpr.x, 100 - 0.75);
+  assert.equal(outerDpr.y, 150 - 0.75);
+  assert.equal(outerDpr.width, 401.5);
+  assert.equal(outerDpr.height, 301.5);
+
+  // 滚轮透传判断：长截图录制期间透传，其他模式或空闲时不透传
+  assert.equal(shouldPassthroughWheel('scroll'), true);
+  assert.equal(shouldPassthroughWheel('gif'), false);
+  assert.equal(shouldPassthroughWheel(null), false);
 });
 
 test('M3 gif utils: format duration, file size and presets', async () => {

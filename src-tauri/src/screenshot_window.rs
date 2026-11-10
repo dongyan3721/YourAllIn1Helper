@@ -12,9 +12,33 @@ use tauri::{AppHandle, Manager, WebviewWindow};
 /// 焦点失败不阻断：主窗口最小化时系统可能拒绝把键焦点交给新窗口，但遮罩已经置于前台。
 pub(crate) fn present_capture_overlay(app: &AppHandle, overlay: &WebviewWindow) -> CoreResult<()> {
     overlay.show().map_err(to_core_error)?;
+    #[cfg(target_os = "windows")]
+    register_windows_capture_exclusion(app, overlay);
     elevate_overlay(app, overlay)?;
     let _ = overlay.set_focus();
     Ok(())
+}
+
+/// Windows：登记遮罩 HWND，实时采集开始时才启用 WDA_EXCLUDEFROMCAPTURE。
+/// 普通选区与结果预览保持正常可捕获；登记失败会由实时采集预检明确报错。
+#[cfg(target_os = "windows")]
+fn register_windows_capture_exclusion(app: &AppHandle, overlay: &WebviewWindow) {
+    if overlay.label() != mod_screenshot::OVERLAY_LABEL {
+        return;
+    }
+    let handle = match overlay.hwnd() {
+        Ok(hwnd) => hwnd.0 as usize as os_hal::WindowHandleId,
+        Err(error) => {
+            tracing::warn!(%error, "Cannot read screenshot overlay HWND for capture exclusion");
+            return;
+        }
+    };
+    if let Some(host) = app.try_state::<std::sync::Arc<crate::DesktopHost>>() {
+        if let Err(error) = host.screenshot().set_overlay_native_handle(handle) {
+            // 冻结截图仍可用；GIF/长截图的 prepare_live_capture 会拒绝缺少登记的录制。
+            tracing::warn!(%error, "Failed to exclude screenshot overlay from capture");
+        }
+    }
 }
 
 #[cfg(target_os = "macos")]

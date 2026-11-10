@@ -94,16 +94,80 @@ impl ScreenCapturer for NativeOsHal {
         bounds: SelectionBox,
         below_window_id: u32,
     ) -> HalResult<CapturedFrame> {
-        if below_window_id == 0 {
-            return self.capture_region(bounds);
+        // Windows 的遮罩句柄是 64 位 HWND，旧 u32 参数无法承载；此时复用已登记的
+        // 原生排除窗口，长截图无需另写平台分支即可获得同样的遮罩排除。
+        let exclusion = resolve_capture_exclusion(below_window_id, self.active_capture_exclusion());
+        self.capture_region_excluding(bounds, exclusion)
+    }
+
+    fn set_capture_exclusion(&self, handle: Option<WindowHandleId>) -> HalResult<()> {
+        let next = handle.filter(|window| *window != 0);
+        // 登记与恢复由同一把锁串行化，替换窗口时不会留下旧的捕获排除。
+        let mut registered = self.capture_exclusion.lock();
+        #[cfg(target_os = "windows")]
+        {
+            if let Some(window) = next {
+                // 登记本身不隐藏普通选区和结果预览；真正采集前由 prepare_live_capture 启用。
+                hwnd_from_window_handle(window)?;
+            }
+            if let Some(previous) = registered.filter(|previous| Some(*previous) != next) {
+                // 旧窗口可能已销毁；不让失效句柄妨碍会话收尾。
+                let _ = set_windows_capture_exclusion(previous, false);
+            }
         }
+        *registered = next;
+        Ok(())
+    }
+
+    fn active_capture_exclusion(&self) -> Option<WindowHandleId> {
+        *self.capture_exclusion.lock()
+    }
+
+    fn prepare_live_capture(&self) -> HalResult<()> {
+        #[cfg(target_os = "windows")]
+        {
+            let window = self.active_capture_exclusion().ok_or_else(|| {
+                HalError::NativeCallFailed(
+                    "Windows 实时捕获的遮罩排除未就绪，请取消截图后重试".to_string(),
+                )
+            })?;
+            set_windows_capture_exclusion(window, true)?;
+        }
+        Ok(())
+    }
+
+    fn finish_live_capture(&self) -> HalResult<()> {
+        #[cfg(target_os = "windows")]
+        if let Some(window) = self.active_capture_exclusion() {
+            set_windows_capture_exclusion(window, false)?;
+        }
+        Ok(())
+    }
+
+    fn capture_region_excluding(
+        &self,
+        bounds: SelectionBox,
+        exclusion: Option<WindowHandleId>,
+    ) -> HalResult<CapturedFrame> {
         #[cfg(target_os = "macos")]
         {
-            return capture_below_window(bounds, below_window_id);
+            if let Some(window) = exclusion {
+                // CGWindowID 是 32 位；超范围说明调用方传入了错误平台的 HWND。
+                let window_id = u32::try_from(window).map_err(|_| {
+                    HalError::NativeCallFailed(format!("CGWindowID 超出 32 位：{window}"))
+                })?;
+                return capture_below_window(bounds, window_id);
+            }
+            return self.capture_region(bounds);
         }
         #[cfg(not(target_os = "macos"))]
         {
-            let _ = below_window_id;
+            #[cfg(target_os = "windows")]
+            if let Some(window) = exclusion {
+                // 注册时已设置；每帧重申一次，避免遮罩被其他代码重置后仍录到黑帧。
+                set_windows_capture_exclusion(window, true)?;
+            }
+            let _ = exclusion;
             self.capture_region(bounds)
         }
     }
@@ -117,6 +181,47 @@ impl ScreenCapturer for NativeOsHal {
     fn request_capture_permission(&self) -> HalResult<()> {
         super::screen_permission::request()
     }
+}
+
+/// 旧 `u32` 遮罩号优先；为 0 时退回已登记的原生排除句柄（Windows 64 位 HWND）。
+fn resolve_capture_exclusion(
+    below_window_id: u32,
+    registered: Option<WindowHandleId>,
+) -> Option<WindowHandleId> {
+    if below_window_id == 0 {
+        registered
+    } else {
+        Some(below_window_id as WindowHandleId)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn hwnd_from_window_handle(handle: WindowHandleId) -> HalResult<windows::Win32::Foundation::HWND> {
+    if handle == 0 {
+        return Err(HalError::NativeCallFailed("遮罩窗口句柄为 0".to_string()));
+    }
+    let raw = usize::try_from(handle)
+        .map_err(|_| HalError::NativeCallFailed(format!("HWND 超出当前进程指针宽度：{handle}")))?;
+    Ok(windows::Win32::Foundation::HWND(
+        raw as *mut core::ffi::c_void,
+    ))
+}
+
+/// 让遮罩窗口从抓屏结果中彻底消失，露出底下真实画面。
+#[cfg(target_os = "windows")]
+fn set_windows_capture_exclusion(handle: WindowHandleId, exclude: bool) -> HalResult<()> {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WDA_NONE,
+    };
+
+    let hwnd = hwnd_from_window_handle(handle)?;
+    let affinity = if exclude {
+        WDA_EXCLUDEFROMCAPTURE
+    } else {
+        WDA_NONE
+    };
+    // SAFETY: 句柄由 Tauri 拥有且属于当前进程；WDA 只影响抓屏，不改变窗口可见性。
+    unsafe { SetWindowDisplayAffinity(hwnd, affinity) }.map_err(native_error)
 }
 
 impl NativeOsHal {
@@ -276,3 +381,7 @@ fn capture_below_window(bounds: SelectionBox, below_window_id: u32) -> HalResult
         rgba_bytes: buffer,
     })
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/capture_exclusion.rs"]
+mod tests;
