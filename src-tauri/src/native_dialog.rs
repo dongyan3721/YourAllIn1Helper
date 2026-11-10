@@ -2,7 +2,7 @@
 //!
 //! macOS presents an AppKit sheet on the Dashboard's real NSWindow. The sheet uses a
 //! completion handler, so neither the AppKit event loop nor the async IPC task is blocked.
-//! Windows keeps its existing WinForms implementation off the Tauri event thread.
+//! Windows uses an owned IFileOpenDialog on a dedicated COM STA thread.
 
 use crate::{DesktopHost, IpcResponse};
 use app_core::{CoreError, CoreResult};
@@ -177,89 +177,8 @@ mod platform {
 }
 
 #[cfg(target_os = "windows")]
-mod platform {
-    use super::*;
-    use app_core::ExternalToolKind;
-    use std::os::windows::process::CommandExt;
-    use std::process::Command;
-    use tauri::Manager;
-
-    pub(super) async fn pick(
-        app: &AppHandle,
-        host: &Arc<DesktopHost>,
-        directory: bool,
-    ) -> CoreResult<Vec<PathBuf>> {
-        let owner = dashboard_hwnd(app)?;
-        let host = host.clone();
-        tauri::async_runtime::spawn_blocking(move || {
-            let binary = host
-                .kernel()
-                .context()
-                .env_probe
-                .require_executable(ExternalToolKind::PowerShell)?;
-            let script = if directory {
-                format!(
-                    "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Add-Type -AssemblyName System.Windows.Forms; Add-Type 'using System; using System.Windows.Forms; public class DialogOwner : IWin32Window {{ public IntPtr Handle {{get;}} public DialogOwner(IntPtr h) {{Handle=h;}} }}'; $d=New-Object System.Windows.Forms.FolderBrowserDialog; $o=New-Object DialogOwner([IntPtr]{owner}); if($d.ShowDialog($o)-eq 'OK'){{$d.SelectedPath}}"
-                )
-            } else {
-                format!(
-                    "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Add-Type -AssemblyName System.Windows.Forms; Add-Type 'using System; using System.Windows.Forms; public class DialogOwner : IWin32Window {{ public IntPtr Handle {{get;}} public DialogOwner(IntPtr h) {{Handle=h;}} }}'; $d=New-Object System.Windows.Forms.OpenFileDialog; $d.Multiselect=$true; $d.Filter='Media files|*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.ico;*.mp3;*.wav;*.flac;*.aac;*.m4a;*.ogg;*.mp4;*.mkv;*.mov;*.webm|All files|*.*'; $o=New-Object DialogOwner([IntPtr]{owner}); if($d.ShowDialog($o)-eq 'OK'){{$d.FileNames}}"
-                )
-            };
-            let mut command = Command::new(binary);
-            command
-                .args(["-NoProfile", "-STA", "-Command", &script])
-                .creation_flags(0x08000000);
-            let output = command.output()?;
-            if !output.status.success() {
-                return Err(CoreError::Config(format!(
-                    "native file dialog failed: {}",
-                    String::from_utf8_lossy(&output.stderr).trim()
-                )));
-            }
-            Ok(parse_windows_paths(&String::from_utf8_lossy(&output.stdout)))
-        })
-        .await
-        .map_err(|error| CoreError::Internal(anyhow::anyhow!(error.to_string())))?
-    }
-
-    fn dashboard_hwnd(app: &AppHandle) -> CoreResult<isize> {
-        let window = app
-            .get_webview_window("dashboard")
-            .ok_or_else(|| CoreError::Config("Dashboard window is not available".into()))?;
-        // Tauri 返回 Win32 HWND 包装类型，必须取内部指针再转为句柄整数。
-        Ok(window
-            .hwnd()
-            .map_err(|error| CoreError::Internal(anyhow::anyhow!(error.to_string())))?
-            .0 as isize)
-    }
-
-    fn parse_windows_paths(output: &str) -> Vec<PathBuf> {
-        output
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty())
-            .map(PathBuf::from)
-            .collect()
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-
-        #[test]
-        fn windows_output_preserves_unicode_spaces_and_cancel_is_empty() {
-            assert_eq!(
-                parse_windows_paths("C:\\媒体 文件\\一 二.png\r\nD:\\第三个 文件.mp4\r\n"),
-                vec![
-                    PathBuf::from("C:\\媒体 文件\\一 二.png"),
-                    PathBuf::from("D:\\第三个 文件.mp4"),
-                ]
-            );
-            assert!(parse_windows_paths("\r\n").is_empty());
-        }
-    }
-}
+#[path = "native_media_windows.rs"]
+mod platform;
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 mod platform {

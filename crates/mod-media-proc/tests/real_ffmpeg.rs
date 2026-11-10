@@ -121,6 +121,23 @@ fn duration(metadata: &Value) -> f64 {
         .unwrap()
 }
 
+fn audio_rms(input: &Path) -> f64 {
+    let output = Command::new("ffmpeg")
+        .args(["-v", "error", "-nostdin", "-i"])
+        .arg(input)
+        .args(["-vn", "-ac", "1", "-ar", "16000", "-f", "f32le", "-"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "Cannot decode audio samples");
+    let samples: Vec<f64> = output
+        .stdout
+        .chunks_exact(4)
+        .map(|b| f32::from_le_bytes(b.try_into().unwrap()) as f64)
+        .collect();
+    assert!(!samples.is_empty(), "No decoded audio samples");
+    (samples.iter().map(|v| v * v).sum::<f64>() / samples.len() as f64).sqrt()
+}
+
 fn request(input: &Path, output_dir: &Path, operation: AvOperation, format: &str) -> AvJobRequest {
     AvJobRequest {
         input_path: input.to_path_buf(),
@@ -249,4 +266,82 @@ fn installed_ffmpeg_executes_all_media_operations_and_produces_probeable_outputs
             .count(),
         0
     );
+}
+
+#[test]
+#[ignore = "Requires explicitly selected ALL_IN_ONE_QA_MEDIA_INPUT and installed FFmpeg"]
+fn authorized_real_video_runs_through_the_media_queue_without_changing_source() {
+    assert!(tool_available("ffmpeg") && tool_available("ffprobe"));
+    let input =
+        PathBuf::from(std::env::var("ALL_IN_ONE_QA_MEDIA_INPUT").expect("Select a QA video"));
+    let output_dir = PathBuf::from(
+        std::env::var("ALL_IN_ONE_QA_MEDIA_OUTPUT").expect("Select a QA output directory"),
+    );
+    let original = fs::read(&input).unwrap();
+    let dir = test_dir();
+    let module = Arc::new(MediaProcModule::new());
+    let kernel = AppKernelBuilder::new(dir.path())
+        .with_in_memory_db(true)
+        .register_module_arc(module.clone())
+        .unwrap()
+        .bootstrap()
+        .unwrap();
+    let mut trim = request(&input, &output_dir, AvOperation::Trim, "mp4");
+    trim.start_seconds = Some(1.0);
+    trim.end_seconds = Some(4.0);
+    trim.precise = true;
+    let trim = module.submit_av_job(kernel.context(), trim).unwrap();
+    let trim = wait_for_job(&module, kernel.context(), &trim.id);
+    assert_eq!(trim.status, MediaJobStatus::Completed, "{:?}", trim.error);
+    let clip = trim.output_path.unwrap();
+    let metadata = probe(Path::new("ffprobe"), &clip);
+    assert!((duration(&metadata) - 3.0).abs() < 0.25);
+    assert!(stream_types(&metadata).contains(&"video"));
+    assert!(stream_types(&metadata).contains(&"audio"));
+    for (operation, format, audio_only) in [
+        (AvOperation::Convert, "mkv", false),
+        (AvOperation::ExtractAudio, "mp3", true),
+        (AvOperation::AdjustVolume, "m4a", true),
+    ] {
+        let mut req = request(&clip, &output_dir, operation, format);
+        if matches!(req.operation, AvOperation::AdjustVolume) {
+            req.volume = Some(0.25);
+        }
+        let job = module.submit_av_job(kernel.context(), req).unwrap();
+        let job = wait_for_job(&module, kernel.context(), &job.id);
+        assert_eq!(job.status, MediaJobStatus::Completed, "{:?}", job.error);
+        let path = job.output_path.unwrap();
+        if format == "m4a" {
+            let ratio = audio_rms(&path) / audio_rms(&clip);
+            assert!(
+                (0.15..0.35).contains(&ratio),
+                "Volume multiplier was not applied: {ratio}"
+            );
+            println!("Measured audio RMS ratio: {ratio:.3} (requested 0.25)");
+        }
+        let result = probe(Path::new("ffprobe"), &path);
+        assert!((duration(&result) - 3.0).abs() < 0.3);
+        if audio_only {
+            assert_eq!(stream_types(&result), vec!["audio"]);
+        } else {
+            assert!(stream_types(&result).contains(&"video"));
+        }
+        let decoded = Command::new("ffmpeg")
+            .args(["-v", "error", "-nostdin", "-i"])
+            .arg(&path)
+            .args(["-f", "null", "-"])
+            .output()
+            .unwrap();
+        assert!(decoded.status.success(), "Output cannot be decoded");
+        println!(
+            "Real video output: {} ({:.3}s)",
+            path.display(),
+            duration(&result)
+        );
+    }
+    assert!(
+        fs::read(&input).unwrap() == original,
+        "Source video was modified"
+    );
+    println!("Precise trim: {} (source unchanged)", clip.display());
 }
