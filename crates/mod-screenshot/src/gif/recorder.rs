@@ -288,9 +288,12 @@ impl GifRecordingSession {
         let start_time = Instant::now();
         let max_duration = Duration::from_secs(config.max_duration_secs);
         let overlay = decode_overlay(overlay_png.as_deref());
-        // macOS 传 CGWindowID；Windows 传 0，由遮罩显示时登记、平台实现持有的 64 位 HWND 补齐。
-        let exclusion = if exclude_window_id != 0 {
-            Some(exclude_window_id as WindowHandleId)
+        // macOS 传非 0 的 CGWindowID，整段录制固定使用它，不读 Windows 登记槽。
+        // Windows 传 0。登记句柄只在循环里复核：变更或丢失都停止，不能沿用启动快照继续抓。
+        let explicit_exclusion =
+            (exclude_window_id != 0).then_some(exclude_window_id as WindowHandleId);
+        let initial_registered = if explicit_exclusion.is_some() {
+            None
         } else {
             capturer.active_capture_exclusion()
         };
@@ -298,6 +301,26 @@ impl GifRecordingSession {
         let mut recording_error = None;
 
         while !stop_signal.load(Ordering::SeqCst) {
+            if explicit_exclusion.is_none() {
+                if let Some(initial) = initial_registered {
+                    match capturer.active_capture_exclusion() {
+                        Some(current) if current == initial => {}
+                        Some(_) => {
+                            let message = "遮罩捕获排除句柄已更换，GIF 录制已停止".to_string();
+                            warn!(session_id = %session_id, %message);
+                            recording_error = Some(message);
+                            break;
+                        }
+                        None => {
+                            let message = "遮罩捕获排除已失效，GIF 录制已停止".to_string();
+                            warn!(session_id = %session_id, %message);
+                            recording_error = Some(message);
+                            break;
+                        }
+                    }
+                }
+            }
+            let exclusion = explicit_exclusion.or(initial_registered);
             let tick_start = Instant::now();
             let elapsed = start_time.elapsed();
 

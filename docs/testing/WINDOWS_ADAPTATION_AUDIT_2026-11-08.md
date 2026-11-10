@@ -25,6 +25,8 @@
 
 `src-tauri/src/translator_mouse.rs::popover_position` 目前只有 macOS 在翻译气泡尺寸改变后重新约束显示器边界。Windows 初次鼠标触发按钮已约束，气泡展开后的屏幕边缘行为仍需修正和多屏验证。此项与已实现的划词提取分开记录，不能笼统称 Windows 划词未实现。
 
+2026-11-10 更新：Antigravity `350765e` 已补齐 Windows 工作区和 DPI 换算约束，Codex 再通过真实窗口烟测修正系统尺寸边框导致的额外越界；本机 100% DPI 的原生右下角检查通过。真实多屏/混合 DPI 与全局逻辑坐标重叠的显示器选择歧义仍未覆盖，详见 [后续分工与结果](../WINDOWS_FOLLOWUP_COORDINATION_2026-11-10.md)。
+
 ## 磁盘与工作区
 
 四个旧 Windows worktree 已先检查分支提交全部属于 master、无未提交文件，再清理其目录；分支引用保留。旧 secure-services 的运行数据已备份至 `D:\YourAllIn1Helper-archive\windows-secure-services-2026-11-08\.runtime_data`。C 盘释放约 11.8 GiB；本轮四个独立 worktree 与构建 target 位于 D 盘，各 Cargo jobs=1，完整桌面构建由集成目录执行。

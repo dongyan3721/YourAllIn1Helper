@@ -147,6 +147,14 @@ impl WindowBackend for TauriWindowBackend {
                 window.unminimize().map_err(to_core_error)?;
             }
             window.show().map_err(to_core_error)?;
+            if spec.label == "translate-popover" {
+                crate::translator_mouse::constrain_native_popover(&window).map_err(|reason| {
+                    CoreError::WindowLifecycle {
+                        label: spec.label.clone(),
+                        reason,
+                    }
+                })?;
+            }
             if spec.label == "clipboard-popup" {
                 if let Err(reason) = crate::clipboard_window::focus_popup(&window) {
                     let _ = window.destroy();
@@ -233,6 +241,15 @@ impl WindowBackend for TauriWindowBackend {
         }
 
         let window = builder.build().map_err(to_core_error)?;
+        if spec.label == "translate-popover" {
+            if let Err(reason) = crate::translator_mouse::constrain_native_popover(&window) {
+                let _ = window.destroy();
+                return Err(CoreError::WindowLifecycle {
+                    label: spec.label.clone(),
+                    reason,
+                });
+            }
+        }
         if spec.label == "screen-ink-toolbar" {
             if let Err(error) = crate::ink_window::elevate_toolbar(&self.app, &window) {
                 let _ = window.destroy();
