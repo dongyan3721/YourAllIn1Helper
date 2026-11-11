@@ -779,30 +779,40 @@ struct NativeShortcutFailure {
     error: String,
 }
 
-/// 按核心注册表重新注册全部系统快捷键。
-///
-/// 单个按键被其他程序占用时继续注册其余按键，失败项写入宿主供界面如实显示，
-/// 由调用方决定是否回滚触发本次同步的模块开关；不再因一个按键失败导致整个应用启动失败。
-pub(crate) fn shortcut_recorder_is_focused(app: &AppHandle) -> bool {
+/// The OS consumes registered accelerators before WebView keydown. Forward them
+/// only to the focused recorder's own window instead of executing their actions.
+pub(crate) fn record_shortcut_if_focused(app: &AppHandle, accelerator: &str) -> bool {
     let Some(host) = app.try_state::<Arc<DesktopHost>>() else {
         return false;
     };
     let owner = host.shortcut_recording_owner.read().clone();
-    owner
-        .and_then(|label| app.get_webview_window(&label))
-        .is_some_and(|window| window.is_focused().unwrap_or(false))
+    let Some(window) = owner.and_then(|label| app.get_webview_window(&label)) else {
+        return false;
+    };
+    if !window.is_focused().unwrap_or(false) {
+        return false;
+    }
+    if let Err(error) = window.emit("shortcut://recorded", json!({"hotkey": accelerator})) {
+        tracing::warn!(%error, "Failed to deliver a registered key to its shortcut recorder");
+    }
+    // Even a failed delivery must not execute an action while recording.
+    true
 }
 
+/// Re-register physical bindings, recording per-action OS errors for preferences.
 fn register_global_shortcuts(app: &AppHandle) -> anyhow::Result<Vec<NativeShortcutFailure>> {
     app.global_shortcut().unregister_all()?;
     let host = app.state::<Arc<DesktopHost>>();
     let mut failures = Vec::new();
     for shortcut in host.kernel().context().shortcut_registry.list_all() {
         let action_id = shortcut.spec.action_id.clone();
+        let recorded_accelerator = shortcut.physical_accelerator.clone();
         let registered = app.global_shortcut().on_shortcut(
             shortcut.physical_accelerator.as_str(),
             move |app, _, event| {
-                if event.state == ShortcutState::Pressed && !shortcut_recorder_is_focused(app) {
+                if event.state == ShortcutState::Pressed
+                    && !record_shortcut_if_focused(app, &recorded_accelerator)
+                {
                     trigger_action(app, &action_id);
                 }
             },

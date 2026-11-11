@@ -19,10 +19,11 @@ impl TauriScriptHotkeySync {
 
     fn register(&self, action_id: &str, accelerator: &str) -> Result<(), String> {
         let action = action_id.to_string();
+        let recorded_accelerator = accelerator.to_string();
         self.app
             .global_shortcut()
             .on_shortcut(accelerator, move |app, _shortcut, event| {
-                if event.state == ShortcutState::Pressed && !crate::tauri_app::is_exiting(app) && !crate::tauri_app::shortcut_recorder_is_focused(app) {
+                if event.state == ShortcutState::Pressed && !crate::tauri_app::is_exiting(app) && !crate::tauri_app::record_shortcut_if_focused(app, &recorded_accelerator) {
                     if let Some(host) = app.try_state::<Arc<DesktopHost>>() {
                         if let Err(error) = host.kernel().trigger_action(&action) {
                             tracing::error!(action = %action, %error, "Script hotkey action failed");
