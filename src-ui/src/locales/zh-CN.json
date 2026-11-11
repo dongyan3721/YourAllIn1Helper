@@ -970,6 +970,19 @@
     "shortcutConflict": "此快捷键已被其他功能使用，请更换组合键。",
     "shortcutUnavailable": "此快捷键未能注册，可能被其他程序占用。请更换后保存。",
     "notAssigned": "未设置",
-    "clear": "清除"
+    "clear": "清除",
+    "checkShortcuts": "检测冲突",
+    "checkingShortcuts": "正在检测…",
+    "checkSummary": "已检测 {count} 个组合键，{issues} 项需要调整",
+    "checkIssueCount": "{count} 项需调整",
+    "checkInternal": "与 {names} 的快捷键重复",
+    "checkStatus": {
+      "available": "当前可用，未发现冲突",
+      "unassigned": "未设置",
+      "os_unavailable": "系统无法注册：可能被其他程序占用或由系统保留",
+      "invalid": "组合键格式不受支持",
+      "probe_error": "检测未完成，请重试",
+      "not_checked": "尚未检测系统占用"
+    }
   }
 }

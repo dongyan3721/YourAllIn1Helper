@@ -970,6 +970,19 @@
     "shortcutConflict": "Another tool uses this shortcut. Choose another combination.",
     "shortcutUnavailable": "This shortcut could not be registered. Another app may be using it.",
     "notAssigned": "Not assigned",
-    "clear": "Clear"
+    "clear": "Clear",
+    "checkShortcuts": "Check conflicts",
+    "checkingShortcuts": "Checking…",
+    "checkSummary": "Checked {count} combinations; {issues} need attention",
+    "checkIssueCount": "{count} issues",
+    "checkInternal": "Already assigned to {names}",
+    "checkStatus": {
+      "available": "Available now; no conflict found",
+      "unassigned": "Not assigned",
+      "os_unavailable": "The system cannot register this key; another app or the OS may reserve it",
+      "invalid": "Unsupported key combination",
+      "probe_error": "Could not complete the check; retry",
+      "not_checked": "System availability has not been checked"
+    }
   }
 }

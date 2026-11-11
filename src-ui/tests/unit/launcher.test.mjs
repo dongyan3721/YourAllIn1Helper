@@ -39,6 +39,7 @@ test('shortcut save failure preserves old binding and recorded draft; reset uses
   let reject = true;
   const harness = await preferencesHarness(async (cmd, args) => {
     calls.push({ cmd, args });
+    if (cmd === 'kernel_check_shortcut') return { action_id: args.action_id, hotkey: args.hotkey, status: 'available' };
     if (cmd === 'kernel_update_shortcut' && reject) throw new Error('conflict with another action');
     return { shortcuts: [{ ...row, display_label: 'Ctrl + Shift + F8' }] };
   });
@@ -84,4 +85,48 @@ test('registered native shortcut events affect only the actively recording row',
   run("acceptRecordedShortcut('Ctrl+Shift+P')");
   assert.equal(run("draft.value['clipboard:toggle_popup']"), 'F1');
   await run('recordingQueue');
+});
+test('conflict preflight blocks persistence and preserves the draft and active binding', async () => {
+  const calls = [];
+  const { run } = await preferencesHarness(async (cmd, args) => {
+    calls.push({ cmd, args });
+    return { action_id: args.action_id, status: 'internal_conflict', conflicts: [row] };
+  });
+  run(`shortcuts.value = [${JSON.stringify(row)}]; draft.value['clipboard:toggle_popup'] = 'F1'`);
+  await run("saveShortcut(shortcuts.value[0], 'F1')");
+  assert.equal(calls.some(call => call.cmd === 'kernel_update_shortcut'), false);
+  assert.equal(run("draft.value['clipboard:toggle_popup']"), 'F1');
+  assert.equal(run('shortcuts.value[0].display_label'), row.display_label);
+  assert.equal(run('failed.value'), true);
+  assert.equal(run('saving.value'), null);
+});
+test('late validation never overwrites the result for a newer recorded shortcut', async () => {
+  const pending = [];
+  const { run } = await preferencesHarness((cmd) => cmd === 'kernel_check_shortcut'
+    ? new Promise(resolve => pending.push(resolve)) : Promise.resolve({}));
+  run("setRecording('clipboard:toggle_popup'); acceptRecordedShortcut('F1'); setRecording('clipboard:toggle_popup'); acceptRecordedShortcut('Ctrl+Shift+F8')");
+  pending[1]({ action_id: 'clipboard:toggle_popup', status: 'available' });
+  await new Promise(resolve => setImmediate(resolve));
+  pending[0]({ action_id: 'clipboard:toggle_popup', status: 'internal_conflict' });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(run("checks.value['clipboard:toggle_popup'].status"), 'available');
+  assert.equal(run("draft.value['clipboard:toggle_popup']"), 'Ctrl+Shift+F8');
+  assert.equal(run("checking.value['clipboard:toggle_popup']"), false);
+});
+test('a bulk scan includes unsaved drafts and drops stale scans when the user edits', async () => {
+  const pending = [];
+  const { run } = await preferencesHarness((cmd, args) => cmd === 'kernel_check_shortcuts'
+    ? new Promise(resolve => pending.push(resolve))
+    : Promise.resolve({ action_id: args.action_id, status: 'available' }));
+  const scan = run('checkAllShortcuts()');
+  run("setRecording('clipboard:toggle_popup'); acceptRecordedShortcut('Ctrl+Shift+F8')");
+  pending.shift()({ checks: [{ action_id: 'clipboard:toggle_popup', status: 'os_unavailable' }] });
+  await scan;
+  assert.equal(run('scanSummary.value'), null);
+  assert.equal(run("checks.value['clipboard:toggle_popup'].status"), 'available');
+  const second = run('checkAllShortcuts()');
+  pending.shift()({ checks: [{ action_id: 'clipboard:toggle_popup', status: 'os_unavailable' }] });
+  await second;
+  assert.equal(run('scanSummary.value.issues'), 0);
+  assert.equal(run('scanSummary.value.count'), 1);
 });

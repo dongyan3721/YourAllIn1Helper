@@ -970,6 +970,19 @@
     "shortcutConflict": "このキーは別の機能で使用中です。別の組み合わせを選択してください。",
     "shortcutUnavailable": "このキーを登録できません。他のアプリで使用されている可能性があります。",
     "notAssigned": "未設定",
-    "clear": "解除"
+    "clear": "解除",
+    "checkShortcuts": "競合を確認",
+    "checkingShortcuts": "確認中…",
+    "checkSummary": "{count} 件を確認、{issues} 件の調整が必要",
+    "checkIssueCount": "{count} 件要確認",
+    "checkInternal": "{names} と重複しています",
+    "checkStatus": {
+      "available": "現在利用可能・競合なし",
+      "unassigned": "未設定",
+      "os_unavailable": "システムが登録できません。他のアプリや OS が使用している可能性があります",
+      "invalid": "未対応のキーの組み合わせです",
+      "probe_error": "確認を完了できませんでした。再試行してください",
+      "not_checked": "システムでの使用状況は未確認"
+    }
   }
 }

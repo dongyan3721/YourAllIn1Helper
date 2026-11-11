@@ -44,6 +44,23 @@ impl DesktopHost {
                 Ok(json!({"recording":recording,"native":false}))
             }
             "kernel_get_shortcut_preferences" => self.shortcut_preferences(),
+            "kernel_check_shortcuts" => {
+                self.check_all_shortcuts(|_| crate::shortcut_conflicts::NativeCheck::NotChecked)
+            }
+            "kernel_check_shortcut" => {
+                let action = args
+                    .get("action_id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| CoreError::Config("Missing action_id".into()))?;
+                let hotkey = match args.get("hotkey") {
+                    Some(Value::Null) => None,
+                    Some(Value::String(value)) => Some(value.as_str()),
+                    _ => return Err(CoreError::Config("hotkey must be a string or null".into())),
+                };
+                self.check_shortcut(action, hotkey, |_| {
+                    crate::shortcut_conflicts::NativeCheck::NotChecked
+                })
+            }
             "kernel_update_shortcut" => {
                 let action = args
                     .get("action_id")

@@ -209,6 +209,15 @@ export interface ShortcutPreference {
   native_error?: string | null;
 }
 
+export interface ShortcutCheck {
+  action_id: string;
+  hotkey: string;
+  display_label?: string;
+  status: 'available' | 'unassigned' | 'internal_conflict' | 'os_unavailable' | 'invalid' | 'probe_error' | 'not_checked';
+  conflicts?: ShortcutPreference[];
+  detail?: string | null;
+}
+
 /** 微内核运行状态概览 */
 export interface KernelStatus {
   target_os: string;

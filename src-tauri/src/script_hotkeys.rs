@@ -50,6 +50,7 @@ impl ScriptHotkeySync for TauriScriptHotkeySync {
         previous: Option<&RegisteredShortcut>,
         desired: Option<&RegisteredShortcut>,
     ) -> Result<(), String> {
+        let _native_guard = crate::shortcut_conflicts::NATIVE_SHORTCUT_GATE.lock();
         if let (Some(previous), Some(desired)) = (previous, desired) {
             if previous.physical_accelerator == desired.physical_accelerator {
                 return Ok(());

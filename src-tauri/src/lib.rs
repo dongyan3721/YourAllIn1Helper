@@ -45,6 +45,7 @@ mod modules;
 mod native_dialog;
 mod native_save_dialog;
 mod preferences;
+mod shortcut_conflicts;
 mod screenshot_binary;
 mod screenshot_clipboard;
 mod screenshot_window;

@@ -471,6 +471,27 @@ async fn ipc(app: AppHandle, window: tauri::WebviewWindow, mut request: IpcReque
             Err(error) => IpcResponse::err(error.to_string()),
         };
     }
+    if request.cmd == "kernel_check_shortcuts" || request.cmd == "kernel_check_shortcut" {
+        let result = if request.cmd == "kernel_check_shortcuts" {
+            host.check_all_shortcuts(|key| crate::shortcut_conflicts::probe_native(&app, key))
+        } else {
+            let Some(action) = request.args.get("action_id").and_then(Value::as_str) else {
+                return IpcResponse::err("Missing action_id");
+            };
+            let hotkey = match request.args.get("hotkey") {
+                Some(Value::Null) => None,
+                Some(Value::String(value)) => Some(value.as_str()),
+                _ => return IpcResponse::err("hotkey must be a string or null"),
+            };
+            host.check_shortcut(action, hotkey, |key| {
+                crate::shortcut_conflicts::probe_native(&app, key)
+            })
+        };
+        return match result {
+            Ok(value) => IpcResponse::success(value),
+            Err(error) => IpcResponse::err(error.to_string()),
+        };
+    }
     if request.cmd == "kernel_update_shortcut" {
         let action = match request.args.get("action_id").and_then(Value::as_str) {
             Some(action) => action,
@@ -803,6 +824,7 @@ pub(crate) fn record_shortcut_if_focused(app: &AppHandle, accelerator: &str) -> 
 
 /// Re-register physical bindings, recording per-action OS errors for preferences.
 fn register_global_shortcuts(app: &AppHandle) -> anyhow::Result<Vec<NativeShortcutFailure>> {
+    let _native_guard = crate::shortcut_conflicts::NATIVE_SHORTCUT_GATE.lock();
     app.global_shortcut().unregister_all()?;
     let host = app.state::<Arc<DesktopHost>>();
     let mut failures = Vec::new();

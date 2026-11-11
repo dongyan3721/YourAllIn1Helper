@@ -3,6 +3,8 @@ use super::*;
 #[cfg(target_os = "windows")]
 #[path = "translator_bounds_smoke.rs"]
 mod translator_bounds_smoke;
+#[cfg(target_os = "windows")]
+mod shortcut_conflicts_smoke;
 // Tauri 的 destroy 会异步提交到主线程，必须观察实际窗口移除后再断言。
 fn wait_until(mut condition: impl FnMut() -> bool) -> bool {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
@@ -214,6 +216,8 @@ pub(super) fn run_ui_smoke_checks(app: AppHandle, keep_open: bool) {
                 "ten mounted feature modules"
             );
             check_screenshot_lifecycle(&app, &host)?;
+            #[cfg(target_os = "windows")]
+            shortcut_conflicts_smoke::check(&app, &host)?;
             #[cfg(target_os = "windows")]
             translator_bounds_smoke::check(&app, &host)?;
             host.kernel().trigger_action(ACTION_CLIPBOARD)?;
