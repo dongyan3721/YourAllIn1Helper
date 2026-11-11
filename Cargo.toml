@@ -17,11 +17,11 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.0-beta"
 edition = "2021"
 license = "MIT"
 authors = ["All-in-One Desktop Team"]
-repository = "https://example.com/your_all_in_one"
+repository = "https://github.com/dongyan3721/YourAllIn1Helper"
 
 [workspace.dependencies]
 anyhow = "1.0"

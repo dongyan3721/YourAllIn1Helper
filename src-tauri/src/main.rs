@@ -3,6 +3,8 @@
 //! Default mode starts the real Tauri 2.x desktop app. `--smoke-test` runs the same
 //! microkernel IPC workflow headlessly for CI and development verification.
 
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use std::{env, path::PathBuf, sync::Arc};
 
 use all_in_one_host::DesktopHost;

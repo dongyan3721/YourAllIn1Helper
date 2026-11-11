@@ -1424,7 +1424,11 @@ mod ui_smoke;
 pub fn run() {
     let ui_smoke_test = std::env::args().any(|arg| arg == "--ui-smoke-test");
     let keep_open = std::env::args().any(|arg| arg == "--keep-open");
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "windows")]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(Arc::new(crate::updates::UpdateState::default()));
+    let app = builder
         .manage(Arc::new(ExitCoordinator::default()))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
@@ -1526,6 +1530,8 @@ pub fn run() {
                     );
                 }));
             app.manage(host);
+            #[cfg(target_os = "windows")]
+            crate::updates::start(app.handle());
             sync_vault_native_observer(app.handle());
 
             // 个别按键被其他程序占用时继续启动，失败项已记录并在对应功能页显示。
@@ -1754,6 +1760,8 @@ pub fn run() {
                             Err(error) => tracing::error!(%error, "Kernel shutdown worker failed during exit"),
                         }
                         exit.finish_shutdown();
+                        #[cfg(target_os = "windows")]
+                        crate::updates::install_after_shutdown(&app);
                         app.exit(code.unwrap_or(0));
                     });
                 }

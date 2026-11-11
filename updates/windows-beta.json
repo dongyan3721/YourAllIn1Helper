@@ -1,0 +1,11 @@
+{
+  "version": "0.1.0-beta",
+  "notes": "# All-in-One Toolbox 0.1.0.beta\n\n首个 Windows x64 beta 安装版本。\n\n## 本版功能\n\n- 截图、GIF 录制、OCR、滚动长截图，支持选择保存位置或保存在默认路径。\n- 剪贴板历史、屏幕注释、便笺、窗口置顶、媒体处理、脚本运行、应用使用统计、划词翻译和密码本。\n- Windows Hello 密码本解锁、原生置顶标记、快捷键冲突检测、浅色/深色界面。\n- 两页式主界面：功能入口与偏好设置；操作手册可从应用打开为本地 Markdown 文件。\n- 修复 GIF 黑屏、长截图包含蓝色边框、Windows 字体、翻译暗色模式和保存位置反馈等问题。\n\n## 安装与自动更新\n\n下载 `All-in-One-Toolbox_0.1.0-beta_windows_x64.msi`。安装器按当前用户安装到 `%LOCALAPPDATA%\\Programs\\All-in-One Toolbox`，不要求管理员权限。首次安装会按需安装 Microsoft WebView2 Runtime，需要网络连接。\n\n安装版启动约 15 秒后检查 beta 更新，此后每 6 小时检查一次。发现新版本后在后台下载并校验签名；用户正常退出软件时，等待便笺保存与各模块停止后静默安装，下次打开使用新版本。网络或下载失败不会影响当前版本。关闭主窗口可能只是隐藏到托盘，请使用应用的“退出”完成升级。\n\n升级保留现有设置、便笺、历史记录和密码本数据；数据仍位于原应用数据目录（`%APPDATA%\\com.allinone.desktop`）。开发版和直接复制运行的便携 EXE 不自动升级。\n\n安装包具有独立的自动更新签名；本版没有 Windows Authenticode 发布者证书。可使用随附的 `SHA256SUMS.txt` 校验下载文件。\n\n## 默认快捷键（Windows）\n\n| 操作 | 快捷键 |\n| --- | --- |\n| 增强截图 | Ctrl + Alt + A |\n| 剪贴板候选窗口 | Ctrl + Alt + D |\n| 密码本面板 | Ctrl + Alt + E |\n| 屏幕注释开始/结束 | Ctrl + Alt + Shift + B |\n| 屏幕注释鼠标穿透 | Ctrl + Alt + Shift + S |\n| 翻译选中文字 | Ctrl + Alt + Shift + T |\n| 准星选择置顶窗口 | Ctrl + Alt + Shift + W |\n| 置顶当前窗口 | Ctrl + Alt + Shift + C |\n\n其他功能面板、GIF、OCR、长截图默认不绑定全局快捷键，可在偏好设置中自定义。升级保留用户已设置的快捷键。\n\n## 使用说明\n\n媒体转换需要另外安装 FFmpeg/FFprobe；应用内的环境检测可检查依赖是否可用。自定义 LLM 翻译需要自行配置服务地址、模型与 API key。\n\n部分基于 VS Code 的 IDE 可能抢占剪贴板候选窗口的键盘焦点，导致上下键无法切换候选；可用鼠标选择。\n",
+  "pub_date": "2026-11-11T16:56:35.609572Z",
+  "platforms": {
+    "windows-x86_64": {
+      "url": "https://github.com/dongyan3721/YourAllIn1Helper/releases/download/v0.1.0-beta/All-in-One-Toolbox_0.1.0-beta_windows_x64.msi",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTc0xaN0VobThid3llYXhCN3Y1QW4vbXFua1MvZzZoM211dkdKS0xjclJzWEY5OEJQV1JOSjFHWEdRRFdnM3VFdmZ6ZXBhbE9pT1MrY2ZjV3ZaeGJ3Y3hpUnR3ekVHYVFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NDE1MjEwCWZpbGU6QWxsLWluLU9uZSBUb29sYm94XzAuMS4wLWJldGFfeDY0X3poLUNOLm1zaQl2ZXJzaW9uOjAuMS4wLWJldGEKWndDZ2FqSXhYSnpFYmdjSE43aVZIUG5JVDBNTVBjL3REdUJqWi9QZHl1bVNjOEUrN0RnOHVsUkhQTXY2T01ZQWZWYjFTSjlUY25Ha0M5R1FxWnZmQ3c9PQo="
+    }
+  }
+}

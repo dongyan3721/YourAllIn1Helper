@@ -18,6 +18,10 @@
 # Packaged Application Bundles & Releases
 /dist/
 
+# Python Cache
+__pycache__/
+**/__pycache__/
+
 # Runtime Data, Local Databases & Backups
 /.runtime_data/
 *.db

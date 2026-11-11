@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "targets": [
+      "msi"
+    ],
+    "createUpdaterArtifacts": true,
+    "windows": {
+      "allowDowngrades": false,
+      "webviewInstallMode": {
+        "type": "embedBootstrapper",
+        "silent": true
+      },
+      "wix": {
+        "version": "0.1.0",
+        "upgradeCode": "a3a2c967-c2d8-50a2-9db5-8a8a436126bb",
+        "language": [
+          "zh-CN"
+        ],
+        "template": "windows/main.wxs",
+        "enableElevatedUpdateTask": false
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMzMUI2Rjg2QzQ5RTJEQUMKUldTc0xaN0VobThid3pJMFJOb1dRWWxzazcvRGkyN3Fsd1BwME5UZmxCQzArbzMzOG9nbWxob0cK",
+      "endpoints": [
+        "https://raw.githubusercontent.com/dongyan3721/YourAllIn1Helper/master/updates/windows-beta.json"
+      ],
+      "windows": {
+        "installMode": "quiet",
+        "installerArgs": [
+          "/norestart",
+          "REBOOT=ReallySuppress"
+        ]
+      }
+    }
+  }
+}

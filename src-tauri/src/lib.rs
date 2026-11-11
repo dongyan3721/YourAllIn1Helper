@@ -58,6 +58,8 @@ mod sticky_flush;
 mod tauri_app;
 mod translator_mouse;
 mod user_manual;
+#[cfg(target_os = "windows")]
+mod updates;
 pub use legacy_http::serve_desktop_ui;
 pub use native_save_dialog::{SaveKind, SavePathRegistry};
 pub use tauri_app::run;

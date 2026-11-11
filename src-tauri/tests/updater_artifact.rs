@@ -1,0 +1,90 @@
+//! Explicit release QA: exercise the real updater against the finished signed MSI.
+//! ALL_IN_ONE_RELEASE_MSI=<absolute MSI path> cargo test -p all-in-one-host --test updater_artifact -- --ignored
+#![cfg(windows)]
+
+use std::{
+    io::{Read, Write},
+    net::TcpListener,
+    path::PathBuf,
+    time::Duration,
+};
+use tauri_plugin_updater::UpdaterExt;
+
+#[test]
+#[ignore = "requires a freshly built MSI and .sig via ALL_IN_ONE_RELEASE_MSI"]
+fn signed_msi_download_accepts_original_and_rejects_tampering() {
+    let path = PathBuf::from(
+        std::env::var_os("ALL_IN_ONE_RELEASE_MSI").expect("set ALL_IN_ONE_RELEASE_MSI"),
+    );
+    let artifact = std::fs::read(&path).unwrap();
+    let signature = std::fs::read_to_string(format!("{}.sig", path.display())).unwrap();
+    let config: serde_json::Value =
+        serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+    let windows: serde_json::Value =
+        serde_json::from_str(include_str!("../tauri.windows.conf.json")).unwrap();
+    let public_key = windows["plugins"]["updater"]["pubkey"].as_str().unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let manifest = serde_json::json!({
+        "version": config["version"],
+        "platforms": { "windows-x86_64": {
+            "url": format!("http://{address}/installer.msi"),
+            "signature": signature.trim()
+        }}
+    })
+    .to_string();
+    let served_artifact = artifact.clone();
+    let server = std::thread::spawn(move || {
+        for _ in 0..2 {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(15)))
+                .unwrap();
+            let mut request = [0u8; 8192];
+            let count = stream.read(&mut request).unwrap();
+            let request = String::from_utf8_lossy(&request[..count]);
+            let body = if request.starts_with("GET /installer.msi ") {
+                served_artifact.as_slice()
+            } else {
+                assert!(request.starts_with("GET /feed "));
+                manifest.as_bytes()
+            };
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            )
+            .unwrap();
+            stream.write_all(body).unwrap();
+        }
+    });
+    let app = tauri::test::mock_builder()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .build(tauri::test::mock_context(tauri::test::noop_assets()))
+        .unwrap();
+    let updater = app
+        .updater_builder()
+        .pubkey(public_key)
+        .endpoints(vec![format!("http://{address}/feed").parse().unwrap()])
+        .unwrap()
+        .target("windows-x86_64")
+        .no_proxy()
+        .timeout(Duration::from_secs(30))
+        .version_comparator(|_, _| true)
+        .restart_after_install(false)
+        .build()
+        .unwrap();
+    tauri::async_runtime::block_on(async {
+        let update = updater.check().await.unwrap().expect("fixture update");
+        let downloaded = update.download(|_, _| {}, || {}).await.unwrap();
+        assert_eq!(downloaded, artifact);
+        update.verify(&downloaded).unwrap();
+        let mut tampered = downloaded;
+        tampered[1024] ^= 1;
+        assert!(
+            update.verify(&tampered).is_err(),
+            "modified MSI must be rejected"
+        );
+    });
+    server.join().unwrap();
+}
