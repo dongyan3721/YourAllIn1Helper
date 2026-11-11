@@ -263,7 +263,7 @@ impl DesktopHost {
             script_events,
             script_hotkeys,
         )?;
-        Ok(Self {
+        let host = Self {
             kernel: builder.bootstrap()?,
             vault_clipboard: parking_lot::RwLock::new(None),
             last_vault_copy: parking_lot::Mutex::new(None),
@@ -284,7 +284,9 @@ impl DesktopHost {
             save_paths: native_save_dialog::SavePathRegistry::default(),
             shortcut_preference_gate: parking_lot::Mutex::new(()),
             shortcut_recording_owner: parking_lot::RwLock::new(None),
-        })
+        };
+        host.sync_panel_shortcuts()?;
+        Ok(host)
     }
 
     /// Returns a reference to the underlying `AppKernel`.

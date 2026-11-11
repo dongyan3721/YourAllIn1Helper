@@ -596,6 +596,7 @@ async fn ipc(app: AppHandle, window: tauri::WebviewWindow, mut request: IpcReque
         if let Some(reason) = rollback_reason {
             if let (Some(id), Some(enabled)) = (module_id.as_deref(), previous) {
                 let _ = host.kernel().set_module_enabled(id, enabled);
+                let _ = host.sync_panel_shortcuts();
             }
             let _ = register_global_shortcuts(&app);
             let _ = update_tray_menu(&app);
@@ -735,6 +736,7 @@ fn trigger_action(app: &AppHandle, action_id: &str) {
     // 等待超时后界面留下 Internal kernel error，恢复窗口也不会清掉。
     // Windows 候选窗会有界等待原生激活结果；必须让主线程继续派发窗口消息。
     if action_id == ACTION_TRANSLATOR
+        || action_id.ends_with(":open_panel")
         || action_id.starts_with("screenshot:")
         || (cfg!(target_os = "windows") && action_id == ACTION_CLIPBOARD)
     {
@@ -745,7 +747,7 @@ fn trigger_action(app: &AppHandle, action_id: &str) {
                 return;
             }
             if let Some(host) = app.try_state::<Arc<DesktopHost>>() {
-                if let Err(error) = host.kernel().trigger_action(&action_id) {
+                if let Err(error) = host.trigger_desktop_action(&action_id) {
                     tracing::error!(action_id, %error, "Global shortcut action failed");
                 }
             }
@@ -754,7 +756,7 @@ fn trigger_action(app: &AppHandle, action_id: &str) {
         return;
     }
     if let Some(host) = app.try_state::<Arc<DesktopHost>>() {
-        if let Err(error) = host.kernel().trigger_action(action_id) {
+        if let Err(error) = host.trigger_desktop_action(action_id) {
             tracing::error!(action_id, %error, "Global shortcut action failed");
         }
         if action_id.starts_with("screen_ink:") {

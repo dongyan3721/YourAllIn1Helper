@@ -66,9 +66,13 @@ impl DesktopHost {
 
             "kernel_trigger_shortcut" => {
                 if let Some(action_id) = args.get("action_id").and_then(Value::as_str) {
-                    self.kernel.trigger_action(action_id)?;
+                    self.trigger_desktop_action(action_id)?;
                 } else if let Some(accel) = args.get("accelerator").and_then(Value::as_str) {
-                    self.kernel.trigger_accelerator(accel)?;
+                    if let Some((_, action)) = ctx.shortcut_registry.resolve_accelerator(accel) {
+                        self.trigger_desktop_action(&action)?;
+                    } else {
+                        self.kernel.trigger_accelerator(accel)?;
+                    }
                 } else {
                     return Err(app_core::CoreError::Config(
                         "Missing 'action_id' or 'accelerator'".to_string(),
@@ -182,7 +186,13 @@ impl DesktopHost {
                     .get("enabled")
                     .and_then(Value::as_bool)
                     .ok_or_else(|| CoreError::Config("Missing enabled boolean".into()))?;
+                let previous = self.kernel.registry().is_enabled(id);
                 self.kernel.set_module_enabled(id, enabled)?;
+                if let Err(error) = self.sync_panel_shortcuts() {
+                    let _ = self.kernel.set_module_enabled(id, previous);
+                    let _ = self.sync_panel_shortcuts();
+                    return Err(error);
+                }
                 if !enabled {
                     ctx.window_pool.destroy_window(&format!("feature-{id}"))?;
                     if id == "password_vault" {

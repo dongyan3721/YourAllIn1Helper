@@ -1,8 +1,55 @@
 //! Durable, rollback-aware shortcut preferences for mounted features.
 use crate::*;
-use app_core::ShortcutRegistry;
+use app_core::{ShortcutRegistry, ShortcutSpec};
 
 impl DesktopHost {
+    fn preference_shortcut_specs(&self) -> Vec<ShortcutSpec> {
+        let mut specs = self.kernel.registry().collect_shortcut_preferences();
+        specs.extend(
+            app_core::MODULE_CATALOG
+                .iter()
+                .filter(|module| self.kernel.registry().contains(module.id))
+                .map(|module| {
+                    ShortcutSpec::new(
+                        module.id,
+                        format!("{}:open_panel", module.id),
+                        "",
+                        format!("打开{}面板", module.name),
+                    )
+                }),
+        );
+        specs
+    }
+
+    pub(crate) fn sync_panel_shortcuts(&self) -> CoreResult<()> {
+        let ctx = self.kernel.context();
+        let config = ctx.config.read().clone();
+        for spec in self
+            .preference_shortcut_specs()
+            .into_iter()
+            .filter(is_panel_shortcut)
+        {
+            let hotkey = config
+                .shortcut_overrides
+                .get(&spec.action_id)
+                .filter(|value| !value.trim().is_empty());
+            if self.kernel.registry().is_enabled(&spec.module_id) && hotkey.is_some() {
+                ctx.shortcut_registry
+                    .register(spec, hotkey.map(String::as_str))?;
+            } else {
+                ctx.shortcut_registry.unregister(&spec.action_id);
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn trigger_desktop_action(&self, action_id: &str) -> CoreResult<()> {
+        if let Some(module_id) = action_id.strip_suffix(":open_panel") {
+            self.open_feature_panel(module_id)?;
+            return Ok(());
+        }
+        self.kernel.trigger_action(action_id)
+    }
     pub(crate) fn set_shortcut_recorder(&self, owner: &str, recording: bool) {
         let mut active = self.shortcut_recording_owner.write();
         if recording {
@@ -15,18 +62,22 @@ impl DesktopHost {
     pub(crate) fn shortcut_preferences(&self) -> CoreResult<Value> {
         let ctx = self.kernel.context();
         let config = ctx.config.read().clone();
-        let defaults = self.kernel.registry().collect_shortcut_preferences();
+        let defaults = self.preference_shortcut_specs();
         let mut rows = Vec::new();
         for spec in defaults {
             let preview = ShortcutRegistry::new(ctx.shortcut_registry.target_os());
-            let binding = preview.register(
-                spec.clone(),
-                config
-                    .shortcut_overrides
-                    .get(&spec.action_id)
-                    .map(String::as_str),
-            )?;
-            let mut row = serde_json::to_value(&binding)?;
+            let optional = is_panel_shortcut(&spec);
+            let override_hotkey = config
+                .shortcut_overrides
+                .get(&spec.action_id)
+                .map(String::as_str);
+            let mut row = if optional && override_hotkey.is_none_or(|value| value.trim().is_empty())
+            {
+                json!({"spec":spec,"active_logical_hotkey":"","physical_accelerator":"","display_label":""})
+            } else {
+                serde_json::to_value(preview.register(spec.clone(), override_hotkey)?)?
+            };
+            row["optional"] = json!(optional);
             row["enabled"] = json!(self.kernel.registry().is_enabled(&spec.module_id));
             row["editable"] = json!(true);
             row["native_error"] = json!(self.native_shortcut_error(&spec.action_id));
@@ -64,7 +115,7 @@ impl DesktopHost {
     {
         let _gate = self.shortcut_preference_gate.lock();
         let ctx = self.kernel.context();
-        let specs = self.kernel.registry().collect_shortcut_preferences();
+        let specs = self.preference_shortcut_specs();
         let spec = specs
             .iter()
             .find(|s| s.action_id == action_id)
@@ -87,10 +138,11 @@ impl DesktopHost {
         // Reserve disabled feature bindings too; re-enabling must not silently change a preference.
         let preview = ShortcutRegistry::new(ctx.shortcut_registry.target_os());
         for candidate in &specs {
-            preview.register(
-                candidate.clone(),
-                updated.get(&candidate.action_id).map(String::as_str),
-            )?;
+            let hotkey = updated.get(&candidate.action_id).map(String::as_str);
+            if is_panel_shortcut(candidate) && hotkey.is_none() {
+                continue;
+            }
+            preview.register(candidate.clone(), hotkey)?;
         }
         for dynamic in ctx.shortcut_registry.list_all() {
             if !specs.iter().any(|s| s.action_id == dynamic.spec.action_id) {
@@ -102,7 +154,9 @@ impl DesktopHost {
         self.kernel
             .update_config(|config| config.shortcut_overrides = updated.clone())?;
         let apply = (|| {
-            if self.kernel.registry().is_enabled(&spec.module_id) {
+            if is_panel_shortcut(&spec) && !updated.contains_key(action_id) {
+                ctx.shortcut_registry.unregister(action_id);
+            } else if self.kernel.registry().is_enabled(&spec.module_id) {
                 ctx.shortcut_registry
                     .register(spec.clone(), updated.get(action_id).map(String::as_str))?;
             }
@@ -143,6 +197,11 @@ impl DesktopHost {
     }
 }
 
+fn is_panel_shortcut(spec: &ShortcutSpec) -> bool {
+    spec.action_id == format!("{}:open_panel", spec.module_id)
+        && spec.default_logical_hotkey.is_empty()
+}
+
 pub(crate) fn feature_for_legacy_route(route: &str) -> Option<&'static str> {
     match route
         .trim_start_matches('/')
@@ -165,6 +224,148 @@ pub(crate) fn feature_for_legacy_route(route: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn every_feature_has_an_unassigned_panel_shortcut_without_reserving_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let host = DesktopHost::bootstrap(dir.path(), true).unwrap();
+        let before = host.kernel.context().shortcut_registry.list_all();
+        let preferences = host.shortcut_preferences().unwrap();
+        let optional: Vec<_> = preferences["shortcuts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|row| row["optional"] == true)
+            .collect();
+        assert_eq!(optional.len(), 10);
+        for row in optional {
+            assert_eq!(row["active_logical_hotkey"], "");
+            assert_eq!(row["physical_accelerator"], "");
+            assert_eq!(row["display_label"], "");
+            assert_eq!(row["enabled"], true);
+        }
+        assert_eq!(host.kernel.context().shortcut_registry.list_all(), before);
+    }
+
+    #[test]
+    fn optional_panel_binding_survives_restart_module_cycle_and_can_be_cleared() {
+        let dir = tempfile::tempdir().unwrap();
+        let action = "media_proc:open_panel";
+        {
+            let host = DesktopHost::bootstrap(dir.path(), true).unwrap();
+            host.update_shortcut_preference(action, Some("Ctrl+Alt+F10"), || Ok(()))
+                .unwrap();
+        }
+        let host = DesktopHost::bootstrap(dir.path(), true).unwrap();
+        let binding = host
+            .kernel
+            .context()
+            .shortcut_registry
+            .get_by_action(action)
+            .unwrap();
+        assert_eq!(binding.active_logical_hotkey, "Ctrl+Alt+F10");
+        let dispatched = host.invoke_ipc(
+            "kernel_trigger_shortcut",
+            json!({"accelerator":"Ctrl+Alt+F10"}),
+        );
+        assert!(dispatched.ok, "{:?}", dispatched.error);
+        assert!(host
+            .kernel
+            .context()
+            .window_pool
+            .get_active_window("feature-media_proc")
+            .is_some());
+        let disabled = host.invoke_ipc(
+            "kernel_set_module_enabled",
+            json!({"module_id":"media_proc","enabled":false}),
+        );
+        assert!(disabled.ok, "{:?}", disabled.error);
+        assert!(host
+            .kernel
+            .context()
+            .shortcut_registry
+            .get_by_action(action)
+            .is_none());
+        assert!(
+            !host
+                .invoke_ipc("kernel_trigger_shortcut", json!({"action_id":action}))
+                .ok
+        );
+        let enabled = host.invoke_ipc(
+            "kernel_set_module_enabled",
+            json!({"module_id":"media_proc","enabled":true}),
+        );
+        assert!(enabled.ok, "{:?}", enabled.error);
+        assert_eq!(
+            host.kernel
+                .context()
+                .shortcut_registry
+                .get_by_action(action)
+                .unwrap(),
+            binding
+        );
+        assert!(
+            host.invoke_ipc("kernel_trigger_shortcut", json!({"action_id":action}))
+                .ok
+        );
+        host.update_shortcut_preference(action, None, || Ok(()))
+            .unwrap();
+        assert!(host
+            .kernel
+            .context()
+            .shortcut_registry
+            .get_by_action(action)
+            .is_none());
+        let reopened = DesktopHost::bootstrap(dir.path(), true).unwrap();
+        assert!(reopened
+            .kernel
+            .context()
+            .shortcut_registry
+            .get_by_action(action)
+            .is_none());
+    }
+
+    #[test]
+    fn optional_bindings_conflict_with_defaults_and_other_configured_panels() {
+        let dir = tempfile::tempdir().unwrap();
+        let host = DesktopHost::bootstrap(dir.path(), true).unwrap();
+        assert!(host
+            .update_shortcut_preference("media_proc:open_panel", Some("F1"), || Ok(()))
+            .is_err());
+        host.update_shortcut_preference("media_proc:open_panel", Some("Ctrl+Alt+F10"), || Ok(()))
+            .unwrap();
+        host.invoke_ipc(
+            "kernel_set_module_enabled",
+            json!({"module_id":"media_proc","enabled":false}),
+        );
+        assert!(host
+            .update_shortcut_preference("app_usage:open_panel", Some("Ctrl+Alt+F10"), || Ok(()))
+            .is_err());
+        let mut calls = 0;
+        assert!(host
+            .update_shortcut_preference("app_usage:open_panel", Some("Ctrl+Alt+F11"), || {
+                calls += 1;
+                if calls == 1 {
+                    Err(CoreError::Config("OS conflict".into()))
+                } else {
+                    Ok(())
+                }
+            })
+            .is_err());
+        assert!(host
+            .kernel
+            .context()
+            .shortcut_registry
+            .get_by_action("app_usage:open_panel")
+            .is_none());
+        assert!(!host
+            .kernel
+            .context()
+            .config
+            .read()
+            .shortcut_overrides
+            .contains_key("app_usage:open_panel"));
+    }
+
     #[test]
     fn recorder_cleanup_is_bound_to_its_native_owner() {
         let dir = tempfile::tempdir().unwrap();
