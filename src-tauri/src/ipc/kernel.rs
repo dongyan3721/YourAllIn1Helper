@@ -35,6 +35,35 @@ impl DesktopHost {
                 }))
             }
 
+            "kernel_set_shortcut_recording" => {
+                let recording = args
+                    .get("recording")
+                    .and_then(Value::as_bool)
+                    .ok_or_else(|| CoreError::Config("Missing recording boolean".into()))?;
+                // Headless transport has no native callbacks to suppress.
+                Ok(json!({"recording":recording,"native":false}))
+            }
+            "kernel_get_shortcut_preferences" => self.shortcut_preferences(),
+            "kernel_update_shortcut" => {
+                let action = args
+                    .get("action_id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| CoreError::Config("Missing action_id".into()))?;
+                let hotkey = match args.get("hotkey") {
+                    Some(Value::Null) => None,
+                    Some(Value::String(value)) => Some(value.as_str()),
+                    _ => return Err(CoreError::Config("hotkey must be a string or null".into())),
+                };
+                self.update_shortcut_preference(action, hotkey, || Ok(()))
+            }
+            "kernel_open_feature" => {
+                let module_id = args
+                    .get("module_id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| CoreError::Config("Missing module_id".into()))?;
+                self.open_feature_panel(module_id)
+            }
+
             "kernel_trigger_shortcut" => {
                 if let Some(action_id) = args.get("action_id").and_then(Value::as_str) {
                     self.kernel.trigger_action(action_id)?;
@@ -56,6 +85,9 @@ impl DesktopHost {
                     .get("route")
                     .and_then(Value::as_str)
                     .unwrap_or("/overview");
+                if let Some(module_id) = crate::preferences::feature_for_legacy_route(route) {
+                    return self.open_feature_panel(module_id);
+                }
                 ctx.window_pool.open_window(WindowSpec::dashboard(route))?;
                 Ok(json!({
                     "active_window_count": ctx.window_pool.active_window_count(),
@@ -65,6 +97,9 @@ impl DesktopHost {
 
             "kernel_destroy_window" => {
                 let label = args.get("label").and_then(Value::as_str).unwrap_or("");
+                if label == "feature-password_vault" {
+                    self.password_vault.notify_page_close();
+                }
                 let destroyed = ctx.window_pool.destroy_window(label)?;
                 Ok(json!({
                     "destroyed": destroyed,
@@ -148,6 +183,12 @@ impl DesktopHost {
                     .and_then(Value::as_bool)
                     .ok_or_else(|| CoreError::Config("Missing enabled boolean".into()))?;
                 self.kernel.set_module_enabled(id, enabled)?;
+                if !enabled {
+                    ctx.window_pool.destroy_window(&format!("feature-{id}"))?;
+                    if id == "password_vault" {
+                        self.password_vault.notify_page_close();
+                    }
+                }
                 Ok(self.module_catalog())
             }
 

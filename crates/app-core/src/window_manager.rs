@@ -275,6 +275,19 @@ impl WindowSpec {
         }
     }
 
+    /// A reusable single-feature management panel, destroyed on close, kept on blur.
+    pub fn feature(module_id: &str, title: &str) -> Self {
+        let mut spec = Self::dashboard("/overview");
+        spec.label = format!("feature-{module_id}");
+        spec.route = format!("/feature/{module_id}");
+        spec.title = title.to_string();
+        spec.width = 1000.0;
+        spec.height = 730.0;
+        spec.min_width = Some(680.0);
+        spec.min_height = Some(480.0);
+        spec
+    }
+
     /// Preset for unified Dashboard window (Settings, App Usage, Scripts, Media Proc, Password Vault).
     pub fn dashboard(sub_route: &str) -> Self {
         let normalized_route = if sub_route.starts_with('/') {
@@ -288,10 +301,10 @@ impl WindowSpec {
             route: normalized_route,
             x: None,
             y: None,
-            width: 1040.0,
-            height: 700.0,
-            min_width: Some(860.0),
-            min_height: Some(560.0),
+            width: 760.0,
+            height: 640.0,
+            min_width: Some(620.0),
+            min_height: Some(480.0),
             resizable: true,
             decorations: true,
             transparent: false,

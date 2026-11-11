@@ -20,10 +20,11 @@ pub(super) async fn pick(
     app: &AppHandle,
     _host: &Arc<DesktopHost>,
     directory: bool,
+    owner_label: &str,
 ) -> CoreResult<Vec<PathBuf>> {
     let window = app
-        .get_webview_window("dashboard")
-        .ok_or_else(|| CoreError::Config("Dashboard window is not available".into()))?;
+        .get_webview_window(owner_label)
+        .ok_or_else(|| CoreError::Config("Owner window is not available".into()))?;
     let owner = window.hwnd().map_err(internal)?.0 as isize;
     let (sender, receiver) = oneshot::channel();
     // 新建专用 STA，避免复用已被其他服务初始化成 MTA 的阻塞线程。
@@ -126,7 +127,7 @@ fn item_path(item: &IShellItem) -> CoreResult<PathBuf> {
 fn run_picker(owner: isize, directory: bool) -> CoreResult<Vec<PathBuf>> {
     if owner == 0 {
         return Err(CoreError::Config(
-            "Dashboard native window is not available".into(),
+            "Owner native window is not available".into(),
         ));
     }
     let _com = ComApartment::init()?;

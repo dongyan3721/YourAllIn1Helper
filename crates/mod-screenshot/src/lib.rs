@@ -394,12 +394,13 @@ impl ScreenshotModule {
         // 3. 冻结帧先于遮罩：此时遮罩尚未创建，帧中只有用户真实桌面。
         let frame = {
             let _hidden = if hide_dashboard {
-                Some(
-                    HiddenWindowGuard::hide_if_open(&ctx.window_pool, DASHBOARD_LABEL)
-                        .map_err(|e| ScreenshotFailure::internal(e.to_string()))?,
-                )
+                [DASHBOARD_LABEL, "feature-screenshot"]
+                    .into_iter()
+                    .map(|label| HiddenWindowGuard::hide_if_open(&ctx.window_pool, label))
+                    .collect::<CoreResult<Vec<_>>>()
+                    .map_err(|e| ScreenshotFailure::internal(e.to_string()))?
             } else {
-                None
+                Vec::new()
             };
             self.capturer
                 .capture_monitor(Some(info.id))
@@ -1551,7 +1552,7 @@ impl AppModule for ScreenshotModule {
                 if permission_denied {
                     if let Err(open_error) = ctx
                         .window_pool
-                        .open_window(WindowSpec::dashboard("/screenshot"))
+                        .open_window(WindowSpec::feature("screenshot", "截图"))
                     {
                         warn!(%open_error, "Failed to open dashboard for screenshot permission guidance");
                     }

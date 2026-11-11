@@ -1,6 +1,6 @@
 //! Host-owned native media pickers. Feature modules never depend on UI frameworks.
 //!
-//! macOS presents an AppKit sheet on the Dashboard's real NSWindow. The sheet uses a
+//! macOS presents an AppKit sheet on the calling panel's real NSWindow. The sheet uses a
 //! completion handler, so neither the AppKit event loop nor the async IPC task is blocked.
 //! Windows uses an owned IFileOpenDialog on a dedicated COM STA thread.
 
@@ -15,8 +15,9 @@ pub(crate) async fn pick_media(
     app: &AppHandle,
     host: &Arc<DesktopHost>,
     directory: bool,
+    owner_label: &str,
 ) -> IpcResponse {
-    let result = pick_media_result(app, host, directory).await;
+    let result = pick_media_result(app, host, directory, owner_label).await;
     match result {
         Ok(paths) => IpcResponse::success(selection_payload(directory, &paths)),
         Err(error) => IpcResponse::err(error.to_string()),
@@ -27,9 +28,10 @@ async fn pick_media_result(
     app: &AppHandle,
     host: &Arc<DesktopHost>,
     directory: bool,
+    owner_label: &str,
 ) -> CoreResult<Vec<PathBuf>> {
     ensure_media_enabled(host)?;
-    let paths = platform::pick(app, host, directory).await?;
+    let paths = platform::pick(app, host, directory, owner_label).await?;
     // A module can be disabled while a non-modal picker is open. Never return
     // selection results to a feature that was disabled in the meantime.
     ensure_media_enabled(host)?;
@@ -65,12 +67,14 @@ mod platform {
         app: &AppHandle,
         _host: &Arc<DesktopHost>,
         directory: bool,
+        owner_label: &str,
     ) -> CoreResult<Vec<PathBuf>> {
         let (sender, receiver) = oneshot::channel();
         let app = app.clone();
+        let owner_label = owner_label.to_owned();
         app.clone()
             .run_on_main_thread(move || {
-                if let Err(error) = present_dashboard_sheet(&app, directory, sender) {
+                if let Err(error) = present_dashboard_sheet(&app, directory, &owner_label, sender) {
                     tracing::error!(%error, "Failed to present native media picker");
                 }
             })
@@ -83,20 +87,21 @@ mod platform {
     fn present_dashboard_sheet(
         app: &AppHandle,
         directory: bool,
+        owner_label: &str,
         sender: oneshot::Sender<CoreResult<Vec<PathBuf>>>,
     ) -> CoreResult<()> {
         let mtm = MainThreadMarker::new().ok_or_else(|| {
             CoreError::Config("native media picker must run on the AppKit main thread".into())
         })?;
         let window = app
-            .get_webview_window("dashboard")
-            .ok_or_else(|| CoreError::Config("Dashboard window is not available".into()))?;
+            .get_webview_window(owner_label)
+            .ok_or_else(|| CoreError::Config("Owner window is not available".into()))?;
         window.show().map_err(internal)?;
         window.set_focus().map_err(internal)?;
         let raw_parent = window.ns_window().map_err(internal)?;
         if raw_parent.is_null() {
             return Err(CoreError::Config(
-                "Dashboard native window is not available".into(),
+                "Owner native window is not available".into(),
             ));
         }
         // SAFETY: Tauri returns its live NSWindow pointer. The window is owned by
@@ -188,6 +193,7 @@ mod platform {
         _app: &AppHandle,
         _host: &Arc<DesktopHost>,
         _directory: bool,
+        _owner_label: &str,
     ) -> CoreResult<Vec<PathBuf>> {
         Err(CoreError::Config(
             "native file selection is not supported on this platform; use drag and drop".into(),

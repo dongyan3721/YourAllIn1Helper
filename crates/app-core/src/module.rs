@@ -165,6 +165,14 @@ impl ModuleRegistry {
         all
     }
 
+    /// All mounted module bindings, including disabled features, for preferences.
+    pub fn collect_shortcut_preferences(&self) -> Vec<ShortcutSpec> {
+        self.modules_ordered
+            .iter()
+            .flat_map(|module| module.default_shortcuts())
+            .collect()
+    }
+
     /// Executes `on_init` on each registered module in registration order.
     pub fn init_all(&self, ctx: &ModuleContext) -> CoreResult<()> {
         let mut initialized: Vec<&Arc<dyn AppModule>> = Vec::new();

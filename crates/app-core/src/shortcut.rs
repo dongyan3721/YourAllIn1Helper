@@ -269,6 +269,10 @@ impl ShortcutRegistry {
         }
     }
 
+    pub fn target_os(&self) -> TargetOs {
+        self.target_os
+    }
+
     /// Registers a shortcut specification with an optional user override hotkey.
     /// Fails with `CoreError::ShortcutConflict` if another action already claims the same physical accelerator.
     pub fn register(

@@ -44,6 +44,7 @@ mod legacy_http;
 mod modules;
 mod native_dialog;
 mod native_save_dialog;
+mod preferences;
 mod screenshot_binary;
 mod screenshot_clipboard;
 mod screenshot_window;
@@ -54,6 +55,7 @@ mod secure_credentials;
 mod sticky_flush;
 mod tauri_app;
 mod translator_mouse;
+mod user_manual;
 pub use legacy_http::serve_desktop_ui;
 pub use native_save_dialog::{SaveKind, SavePathRegistry};
 pub use tauri_app::run;
@@ -114,6 +116,8 @@ pub struct DesktopHost {
     native_shortcut_failures: parking_lot::RwLock<HashMap<String, String>>,
     /// 「另存为」一次性路径授权表：仅系统保存对话框确认过的路径允许覆盖写入。
     save_paths: native_save_dialog::SavePathRegistry,
+    shortcut_preference_gate: parking_lot::Mutex<()>,
+    shortcut_recording_owner: parking_lot::RwLock<Option<String>>,
 }
 
 impl DesktopHost {
@@ -278,6 +282,8 @@ impl DesktopHost {
             mock_hal,
             native_shortcut_failures: parking_lot::RwLock::new(HashMap::new()),
             save_paths: native_save_dialog::SavePathRegistry::default(),
+            shortcut_preference_gate: parking_lot::Mutex::new(()),
+            shortcut_recording_owner: parking_lot::RwLock::new(None),
         })
     }
 
@@ -289,12 +295,17 @@ impl DesktopHost {
     /// 仅真实桌面启动装配原生实现；无桌面测试必须显式注入测试适配器。
     pub(crate) fn set_vault_clipboard(&self, clipboard: Arc<dyn os_hal::ClipboardOwnership>) {
         *self.vault_clipboard.write() = Some(clipboard);
-        self.password_vault.service().set_secret_copy_available(true);
+        self.password_vault
+            .service()
+            .set_secret_copy_available(true);
     }
 
     /// 正常退出不等待 30 秒计时器，只清理由本应用仍拥有的最后一次敏感复制。
     pub(crate) fn clear_vault_clipboard(&self) {
-        if let (Some(token), Some(board)) = (self.last_vault_copy.lock().take(), self.vault_clipboard.read().clone()) {
+        if let (Some(token), Some(board)) = (
+            self.last_vault_copy.lock().take(),
+            self.vault_clipboard.read().clone(),
+        ) {
             if let Err(error) = board.clear_if_unchanged(&token) {
                 tracing::warn!(%error, "Failed to clear vault clipboard during exit");
             }

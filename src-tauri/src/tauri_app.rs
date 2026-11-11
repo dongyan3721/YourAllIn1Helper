@@ -119,7 +119,7 @@ impl TauriWindowBackend {
             url.push_str("&id=");
             url.push_str(note_id);
         }
-        if spec.label == "dashboard" && spec.route != "/overview" {
+        if spec.label == "dashboard" || spec.label.starts_with("feature-") {
             url.push_str("&route=");
             url.push_str(spec.route.trim_start_matches('/'));
         }
@@ -143,7 +143,7 @@ impl WindowBackend for TauriWindowBackend {
                     .emit("dashboard://navigate", spec.route.clone())
                     .map_err(to_core_error)?;
             }
-            if spec.label == "dashboard" {
+            if spec.label == "dashboard" || spec.label.starts_with("feature-") {
                 window.unminimize().map_err(to_core_error)?;
             }
             window.show().map_err(to_core_error)?;
@@ -393,7 +393,7 @@ impl WindowBackend for TauriWindowBackend {
 
 /// Single typed IPC entry point used by every WebView.
 #[tauri::command]
-async fn ipc(app: AppHandle, mut request: IpcRequest) -> IpcResponse {
+async fn ipc(app: AppHandle, window: tauri::WebviewWindow, mut request: IpcRequest) -> IpcResponse {
     if request.cmd == "sticky_request_close" {
         let id = request
             .args
@@ -455,6 +455,48 @@ async fn ipc(app: AppHandle, mut request: IpcRequest) -> IpcResponse {
         return IpcResponse::success(json!({ "exit_requested": true }));
     }
     let host = app.state::<Arc<DesktopHost>>().inner().clone();
+    if request.cmd == "kernel_set_shortcut_recording" {
+        let Some(recording) = request.args.get("recording").and_then(Value::as_bool) else {
+            return IpcResponse::err("Missing recording boolean");
+        };
+        if recording && !window.is_focused().unwrap_or(false) {
+            return IpcResponse::err("The shortcut recorder window is not focused");
+        }
+        host.set_shortcut_recorder(window.label(), recording);
+        return IpcResponse::success(json!({"recording":recording,"native":true}));
+    }
+    if request.cmd == "kernel_open_manual" {
+        return match crate::user_manual::open(&app) {
+            Ok(path) => IpcResponse::success(json!({"path":path})),
+            Err(error) => IpcResponse::err(error.to_string()),
+        };
+    }
+    if request.cmd == "kernel_update_shortcut" {
+        let action = match request.args.get("action_id").and_then(Value::as_str) {
+            Some(action) => action,
+            None => return IpcResponse::err("Missing action_id"),
+        };
+        let hotkey = match request.args.get("hotkey") {
+            Some(Value::Null) => None,
+            Some(Value::String(value)) => Some(value.as_str()),
+            _ => return IpcResponse::err("hotkey must be a string or null"),
+        };
+        let result = host.update_shortcut_preference(action, hotkey, || {
+            let failures = register_global_shortcuts(&app).map_err(to_core_error)?;
+            if let Some(failure) = failures.iter().find(|failure| failure.action_id == action) {
+                return Err(CoreError::Config(format!(
+                    "{}: {}",
+                    failure.accelerator, failure.error
+                )));
+            }
+            Ok(())
+        });
+        emit_update(&app);
+        return match result {
+            Ok(value) => IpcResponse::success(value),
+            Err(error) => IpcResponse::err(error.to_string()),
+        };
+    }
     if request.cmd.starts_with("vault_") {
         #[cfg(target_os = "windows")]
         if matches!(
@@ -463,7 +505,7 @@ async fn ipc(app: AppHandle, mut request: IpcRequest) -> IpcResponse {
         ) {
             // 将真实主窗口交给 Passport KSP；不再靠额外的临时窗口抢前台。
             let owner = app
-                .get_webview_window("dashboard")
+                .get_webview_window(window.label())
                 .and_then(|window| window.hwnd().ok())
                 .ok_or(mod_password_vault::VaultError::BiometricUnavailable)
                 .and_then(|hwnd| {
@@ -483,6 +525,7 @@ async fn ipc(app: AppHandle, mut request: IpcRequest) -> IpcResponse {
             &app,
             &host,
             request.cmd == "media_pick_directory",
+            window.label(),
         )
         .await;
     }
@@ -644,6 +687,13 @@ async fn ipc(app: AppHandle, mut request: IpcRequest) -> IpcResponse {
     response
 }
 
+pub(crate) fn manual_data_dir(app: &AppHandle) -> CoreResult<std::path::PathBuf> {
+    if let Some(directory) = gui_test::data_dir() {
+        return Ok(directory);
+    }
+    app.path().app_data_dir().map_err(to_core_error)
+}
+
 fn emit_update(app: &AppHandle) {
     let _ = app.emit("kernel://updated", Value::Null);
 }
@@ -733,6 +783,16 @@ struct NativeShortcutFailure {
 ///
 /// 单个按键被其他程序占用时继续注册其余按键，失败项写入宿主供界面如实显示，
 /// 由调用方决定是否回滚触发本次同步的模块开关；不再因一个按键失败导致整个应用启动失败。
+pub(crate) fn shortcut_recorder_is_focused(app: &AppHandle) -> bool {
+    let Some(host) = app.try_state::<Arc<DesktopHost>>() else {
+        return false;
+    };
+    let owner = host.shortcut_recording_owner.read().clone();
+    owner
+        .and_then(|label| app.get_webview_window(&label))
+        .is_some_and(|window| window.is_focused().unwrap_or(false))
+}
+
 fn register_global_shortcuts(app: &AppHandle) -> anyhow::Result<Vec<NativeShortcutFailure>> {
     app.global_shortcut().unregister_all()?;
     let host = app.state::<Arc<DesktopHost>>();
@@ -742,7 +802,7 @@ fn register_global_shortcuts(app: &AppHandle) -> anyhow::Result<Vec<NativeShortc
         let registered = app.global_shortcut().on_shortcut(
             shortcut.physical_accelerator.as_str(),
             move |app, _, event| {
-                if event.state == ShortcutState::Pressed {
+                if event.state == ShortcutState::Pressed && !shortcut_recorder_is_focused(app) {
                     trigger_action(app, &action_id);
                 }
             },
@@ -1312,10 +1372,11 @@ pub fn run() {
                 let host = app.state::<Arc<DesktopHost>>();
                 let initial_route = std::env::var("ALL_IN_ONE_DASHBOARD_ROUTE")
                     .unwrap_or_else(|_| "/overview".to_string());
-                host.kernel()
-                    .context()
-                    .window_pool
-                    .open_window(WindowSpec::dashboard(&initial_route))?;
+                if let Some(module) = crate::preferences::feature_for_legacy_route(&initial_route) {
+                    host.open_feature_panel(module)?;
+                } else {
+                    host.kernel().context().window_pool.open_window(WindowSpec::dashboard(&initial_route))?;
+                }
             }
             if ui_smoke_test {
                 ui_smoke::run_ui_smoke_checks(app.handle().clone(), keep_open);
@@ -1334,6 +1395,7 @@ pub fn run() {
             match event {
                 WindowEvent::CloseRequested { api, .. } => {
                     let label = window.label();
+                    host.set_shortcut_recorder(label,false);
                     if label == "dashboard" {
                         // 红点关闭主界面只隐藏；守护进程、快捷键和菜单栏保持运行。
                         api.prevent_close();
@@ -1342,6 +1404,9 @@ pub fn run() {
                             tracing::warn!(%error, "Failed to hide dashboard");
                         }
                         return;
+                    }
+                    if label == "feature-password_vault" {
+                        host.password_vault.notify_page_close();
                     }
                     if label == "translate-popover" {
                         host.translator.cancel_current_translation();
@@ -1399,7 +1464,11 @@ pub fn run() {
                         let _ = pool.destroy_window(label);
                     }
                 }
+                WindowEvent::Destroyed => {
+                    host.set_shortcut_recorder(window.label(),false);
+                }
                 WindowEvent::Focused(false) => {
+                    host.set_shortcut_recorder(window.label(),false);
                     if window.label() == "clipboard-popup"
                         && crate::clipboard_window::owns_foreground(window)
                     {
@@ -1448,6 +1517,9 @@ pub fn run() {
                 ExitDecision::Allow => {}
                 ExitDecision::Wait => api.prevent_exit(),
                 ExitDecision::StartShutdown => {
+                    if let Some(host)=app.try_state::<Arc<DesktopHost>>() {
+                        *host.shortcut_recording_owner.write()=None;
+                    }
                     api.prevent_exit();
                     stop_vault_native_observer();
                     if let Some(host) = app.try_state::<Arc<DesktopHost>>() {
@@ -1510,4 +1582,29 @@ pub fn run() {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod compact_panel_tests {
+    use super::*;
+    #[test]
+    fn feature_url_preserves_its_own_route_and_dashboard_routes_stay_separate() {
+        let spec = WindowSpec::feature("media_proc", "Media");
+        assert_eq!(
+            TauriWindowBackend::frontend_url(&spec),
+            "index.html?mode=native&window=feature-media_proc&route=feature/media_proc"
+        );
+        let home = WindowSpec::dashboard("/overview");
+        assert_eq!(
+            TauriWindowBackend::frontend_url(&home),
+            "index.html?mode=native&window=dashboard&route=dashboard/overview"
+        );
+        assert!(home.width < spec.width);
+        assert_eq!(
+            spec.policy,
+            app_core::WindowLifecyclePolicy::Transient {
+                destroy_on_blur: false
+            }
+        );
+    }
 }

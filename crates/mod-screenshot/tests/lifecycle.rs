@@ -616,7 +616,7 @@ fn pin_window_failure_rolls_back_record_and_keeps_session() {
 }
 
 #[test]
-fn permission_denied_reports_guidance_without_overlay_and_shortcut_opens_dashboard() {
+fn permission_denied_reports_guidance_without_overlay_and_shortcut_opens_feature_panel() {
     let h = harness();
     h.screen.deny_permission.store(true, Ordering::SeqCst);
     let err = h
@@ -645,9 +645,9 @@ fn permission_denied_reports_guidance_without_overlay_and_shortcut_opens_dashboa
         .kernel
         .context()
         .window_pool
-        .get_active_window("dashboard")
+        .get_active_window("feature-screenshot")
         .unwrap();
-    assert_eq!(dashboard.spec.route, "/dashboard/screenshot");
+    assert_eq!(dashboard.spec.route, "/feature/screenshot");
 }
 
 #[test]
@@ -1031,4 +1031,35 @@ fn permission_polling_is_passive_and_revocation_blocks_next_capture() {
     assert_eq!(h.screen.captures.load(Ordering::SeqCst), 1);
     assert_eq!(h.screen.permission_requests.load(Ordering::SeqCst), 2);
     assert!(!h.module.has_active_session());
+}
+
+#[test]
+fn capture_from_feature_panel_hides_both_management_windows_before_grabbing() {
+    let h = harness();
+    h.kernel
+        .context()
+        .window_pool
+        .open_window(WindowSpec::dashboard("/overview"))
+        .unwrap();
+    h.kernel
+        .context()
+        .window_pool
+        .open_window(WindowSpec::feature("screenshot", "截图"))
+        .unwrap();
+    h.module
+        .start_capture(h.kernel.context(), None, true)
+        .unwrap();
+    let events = h.log.lock();
+    let capture = events.iter().position(|s| s == "capture").unwrap();
+    for label in ["dashboard", "feature-screenshot"] {
+        let hidden = events
+            .iter()
+            .position(|s| s == &format!("visible:{label}=false"))
+            .unwrap();
+        let restored = events
+            .iter()
+            .position(|s| s == &format!("visible:{label}=true"))
+            .unwrap();
+        assert!(hidden < capture && capture < restored);
+    }
 }

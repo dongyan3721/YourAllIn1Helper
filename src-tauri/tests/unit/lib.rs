@@ -438,7 +438,7 @@ fn translator_ipc_without_runtime_reports_error_instead_of_panicking() {
 }
 
 #[test]
-fn test_kernel_open_dashboard_translator_route_and_rejects_kernel_open_window() {
+fn test_legacy_dashboard_route_opens_feature_panel_and_rejects_arbitrary_window() {
     let temp_dir = tempfile::tempdir().unwrap();
     let host = DesktopHost::bootstrap(temp_dir.path(), true).unwrap();
 
@@ -450,9 +450,9 @@ fn test_kernel_open_dashboard_translator_route_and_rejects_kernel_open_window() 
     let active_windows = data["active_windows"].as_array().unwrap();
     let dashboard_win = active_windows
         .iter()
-        .find(|w| w["spec"]["label"] == "dashboard")
-        .expect("dashboard window should be active");
-    assert_eq!(dashboard_win["spec"]["route"], "/dashboard/translator");
+        .find(|w| w["spec"]["label"] == "feature-translator")
+        .expect("translator feature window should be active");
+    assert_eq!(dashboard_win["spec"]["route"], "/feature/translator");
 
     // 验证历史错误调用的 kernel_open_window 不存在并被明确报错拒绝
     let bogus_resp = host.invoke_ipc(
