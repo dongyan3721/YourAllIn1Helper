@@ -151,67 +151,34 @@ test('TranslatePopover: detects missing API Key and coexists with permissionDeni
   assert.equal(run('missingApiKey.value'), false);
 });
 
-test('Dashboard: applyDashboardRoute navigates to /translator tab and queues pending route', async () => {
+test('Dashboard: legacy translator routes open a feature window while preferences stay in the launcher', async () => {
   const source = await readFile(new URL('../../src/components/Dashboard.vue', import.meta.url), 'utf8');
   const script = source.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
-    .replace(/import\s+[\s\S]*?from\s+['"][^'"]+['"];?/g, '')
-    .replace(/^import\s+[^;]+?;\s*/gm, '');
-
-  let currentStatus = {
-    active_window_count: 1,
-    module_catalog: [
-      { id: 'translator', enabled: true, supported: true },
-      { id: 'media_proc', enabled: true, supported: true },
-      { id: 'password_vault', enabled: true, supported: true },
-      { id: 'screenshot', enabled: true, supported: true },
-    ],
-    config: { general: { language: 'zh-CN' } },
-  };
-
+    .replace(/import\s+[\s\S]*?from\s+['"][^'"]+['"];?/g, '');
+  const calls = [];
+  const featureSource = await readFile(new URL('../../src/utils/features.ts', import.meta.url), 'utf8');
   const context = vm.createContext({
-    ref: (value) => ({ value }),
-    computed: (get) => ({ get value() { return get(); } }),
-    onMounted: () => {}, onUnmounted: () => {},
-    t: (key) => key,
-    invokeIpc: async (cmd) => {
-      if (cmd === 'kernel_get_status') return currentStatus;
-      return [];
-    },
-    syncLocaleFromBackendConfig: () => {},
-    LOCALE_OPTIONS: [],
-    ACCENT_PALETTE: [],
-    currentLocale: { value: 'zh-CN' },
-    currentAccent: { value: 'blue' },
-    currentThemeMode: { value: 'light' },
-    isDarkActive: { value: false },
-    console,
+    ref: value => ({ value }), onMounted: () => {}, onUnmounted: () => {}, console,
+    t: key => key, syncLocaleFromBackendConfig: () => {},
+    invokeIpc: async (cmd, args) => { calls.push({cmd, args}); return {}; },
   });
-
+  vm.runInContext(ts.transpileModule(featureSource.replace(/export /g, ''), { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText, context);
   vm.runInContext(ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText, context);
-  const run = (expression) => vm.runInContext(expression, context);
-
-  // 1. 刷新状态前请求 /translator 路由：暂存至 pendingRoute
-  run("applyDashboardRoute('/translator')");
-  assert.equal(run('currentTab.value'), 'overview');
-  assert.equal(run('pendingRoute'), 'translator');
-
-  // 2. 刷新后模块就绪，自动消费 pendingRoute 切换至 translator
-  await run('refreshDashboard()');
-  assert.equal(run('currentTab.value'), 'translator');
-  assert.equal(run('pendingRoute'), null);
-
-  // 3. 直接通过各种契约格式切换
-  run("applyDashboardRoute('dashboard/translator')");
-  assert.equal(run('currentTab.value'), 'translator');
-
-  run("applyDashboardRoute('translator')");
-  assert.equal(run('currentTab.value'), 'translator');
-
-  run("applyDashboardRoute('/overview')");
-  assert.equal(run('currentTab.value'), 'overview');
-
-  run("applyDashboardRoute('/translator')");
-  assert.equal(run('currentTab.value'), 'translator');
+  const run = expression => vm.runInContext(expression, context);
+  for (const route of ['/translator', 'dashboard/translator', 'translator']) {
+    await run(`applyDashboardRoute(${JSON.stringify(route)})`);
+    assert.equal(calls.at(-1).cmd, 'kernel_open_feature');
+    assert.equal(calls.at(-1).args.module_id, 'translator');
+    assert.equal(run('page.value'), 'features');
+  }
+  await run("applyDashboardRoute('/preferences')");
+  assert.equal(run('page.value'), 'preferences');
+  const count = calls.length;
+  await run("applyDashboardRoute('/overview')");
+  assert.equal(run('page.value'), 'features');
+  assert.equal(calls.length, count);
+  await run("applyDashboardRoute('/unknown')");
+  assert.equal(calls.length, count);
 });
 
 test('TranslateTrigger: never sends selection text and ignores repeated clicks while opening', async () => {

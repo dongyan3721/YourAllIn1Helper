@@ -8,7 +8,6 @@
       </div>
       <div class="header-badges">
         <span class="badge active">{{ activeProviderTitle }}</span>
-        <span class="badge">{{ config.hotkey }}</span>
       </div>
     </header>
 

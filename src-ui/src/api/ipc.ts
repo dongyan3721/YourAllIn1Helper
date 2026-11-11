@@ -198,6 +198,17 @@ export interface ScriptLogEntry {
   at: number;
 }
 
+export interface ShortcutPreference {
+  spec: { module_id: string; action_id: string; default_logical_hotkey: string; description: string };
+  active_logical_hotkey: string;
+  physical_accelerator: string;
+  display_label: string;
+  enabled: boolean;
+  editable: boolean;
+  optional?: boolean;
+  native_error?: string | null;
+}
+
 /** 微内核运行状态概览 */
 export interface KernelStatus {
   target_os: string;

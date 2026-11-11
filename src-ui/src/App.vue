@@ -30,37 +30,36 @@
     <TranslateTrigger v-else-if="nativeWindowType === 'translate-trigger'" />
     <TranslatePopover v-else-if="nativeWindowType === 'translate-popover'" />
 
-    <!-- 默认主控台视图 -->
+    <FeaturePanel v-else-if="nativeWindowType.startsWith('feature-')" />
+
+    <!-- 主窗口只包含功能与偏好设置 -->
     <Dashboard v-else />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, defineAsyncComponent } from 'vue';
 import Dashboard from './components/Dashboard.vue';
-import ClipboardPopup from './components/ClipboardPopup.vue';
-import StickyNote from './components/StickyNote.vue';
-import WindowPinPicker from './components/WindowPinPicker.vue';
-import PinMirror from './components/PinMirror.vue';
-import PinBadge from './components/PinBadge.vue';
-import ScreenInkCanvas from './components/ScreenInkCanvas.vue';
-import ScreenInkToolbar from './components/ScreenInkToolbar.vue';
-import CaptureOverlay from './components/CaptureOverlay.vue';
-import PinImage from './components/PinImage.vue';
-import ScreenshotControl from './components/ScreenshotControl.vue';
-import ScreenshotPreview from './components/ScreenshotPreview.vue';
-import TranslatePopover from './components/TranslatePopover.vue';
-import TranslateTrigger from './components/TranslateTrigger.vue';
+const FeaturePanel = defineAsyncComponent(() => import('./components/FeaturePanel.vue'));
+const ClipboardPopup = defineAsyncComponent(() => import('./components/ClipboardPopup.vue'));
+const StickyNote = defineAsyncComponent(() => import('./components/StickyNote.vue'));
+const WindowPinPicker = defineAsyncComponent(() => import('./components/WindowPinPicker.vue'));
+const PinMirror = defineAsyncComponent(() => import('./components/PinMirror.vue'));
+const PinBadge = defineAsyncComponent(() => import('./components/PinBadge.vue'));
+const ScreenInkCanvas = defineAsyncComponent(() => import('./components/ScreenInkCanvas.vue'));
+const ScreenInkToolbar = defineAsyncComponent(() => import('./components/ScreenInkToolbar.vue'));
+const CaptureOverlay = defineAsyncComponent(() => import('./components/CaptureOverlay.vue'));
+const PinImage = defineAsyncComponent(() => import('./components/PinImage.vue'));
+const ScreenshotControl = defineAsyncComponent(() => import('./components/ScreenshotControl.vue'));
+const ScreenshotPreview = defineAsyncComponent(() => import('./components/ScreenshotPreview.vue'));
+const TranslatePopover = defineAsyncComponent(() => import('./components/TranslatePopover.vue'));
+const TranslateTrigger = defineAsyncComponent(() => import('./components/TranslateTrigger.vue'));
 import { initTheme } from './utils/theme';
 import { initI18n } from './utils/i18n';
 
 // 全局初始化 macOS 主题（白蓝色调、主题色与明暗跟随）与多语言国际化监听器
 initTheme();
 initI18n();
-onMounted(() => {
-  initTheme();
-  initI18n();
-});
 
 // 解析原生 Tauri 多窗口参数
 const urlParams = new URLSearchParams(window.location.search);

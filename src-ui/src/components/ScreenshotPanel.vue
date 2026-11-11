@@ -154,23 +154,6 @@
       </div>
     </section>
 
-    <!-- 能力边界与操作说明 -->
-    <section class="shot-card">
-      <h3>{{ t('screenshot.panel.capabilityTitle') }}</h3>
-      <table class="macos-table">
-        <tbody>
-          <tr v-for="row in capabilityRows" :key="row.key">
-            <td><strong>{{ t(`screenshot.panel.cap.${row.key}`) }}</strong></td>
-            <td><span class="type-pill" :class="row.ready ? 'image' : 'text'">{{ row.ready ? t('screenshot.panel.capReady') : t('screenshot.panel.capPending') }}</span></td>
-            <td>{{ t(`screenshot.panel.cap.${row.key}Desc`) }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <h3 class="guide-title">{{ t('screenshot.panel.guideTitle') }}</h3>
-      <ul class="guide-list">
-        <li v-for="key in guideKeys" :key="key">{{ t(`screenshot.panel.guide.${key}`) }}</li>
-      </ul>
-    </section>
   </div>
 </template>
 
@@ -207,19 +190,7 @@ const notice = ref<{ text: string; kind: 'ok' | 'error' } | null>(null);
 
 const shortcutOk = computed(() => !!status.value?.shortcut.registered && !status.value?.native_shortcut_error);
 
-const capabilityRows = [
-  { key: 'capture', ready: true },
-  { key: 'manual', ready: true },
-  { key: 'windowRegions', ready: true },
-  { key: 'annotate', ready: true },
-  { key: 'pin', ready: true },
-  { key: 'uiElements', ready: true },
-  { key: 'ocr', ready: true },
-  { key: 'scroll', ready: true },
-  { key: 'gif', ready: true },
-  { key: 'onnx', ready: false },
-];
-const guideKeys = ['select', 'smart', 'adjust', 'tools', 'export', 'color', 'ocr', 'pin'];
+
 
 function formatTime(ms: number) {
   const d = new Date(ms);
