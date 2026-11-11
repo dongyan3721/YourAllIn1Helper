@@ -4,15 +4,18 @@ $taskRepository = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Pat
 $taskMsi = (Resolve-Path -LiteralPath $Msi).Path
 $taskOutput = Join-Path $taskRepository '.runtime_data/msi-qa'
 New-Item -ItemType Directory -Force -Path $taskOutput | Out-Null
-$taskExisting = @(Get-ItemProperty 'HKCU:/Software/Microsoft/Windows/CurrentVersion/Uninstall/*' -ErrorAction SilentlyContinue | Where-Object DisplayName -eq 'All-in-One Toolbox')
+$taskExisting = @(Get-ItemProperty @('HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*') -ErrorAction SilentlyContinue | Where-Object DisplayName -eq 'All-in-One Toolbox')
 if ($taskExisting.Count) { throw 'This fixture test requires no existing MSI installation of this app. It will not replace an existing installation with the old test fixture.' }
 $taskInstaller = New-Object -ComObject WindowsInstaller.Installer
 function Read-MsiProperty($Database, [string]$Name) {
     $taskView = $Database.OpenView("SELECT ``Value`` FROM ``Property`` WHERE ``Property`` = '$Name'")
-    $taskView.Execute()
+    [void]$taskView.Execute()
     $taskRecord = $taskView.Fetch()
-    if ($taskRecord) { return $taskRecord.StringData(1) }
-    return $null
+    $taskVal = if ($taskRecord) { $taskRecord.StringData(1) } else { $null }
+    [void]$taskView.Close()
+    if ($taskRecord) { [System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($taskRecord) | Out-Null }
+    [System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($taskView) | Out-Null
+    return ,$taskVal
 }
 function Install-Quietly([string]$Package, [string]$Log) {
     $taskProcess = Start-Process -FilePath "$env:SystemRoot/System32/msiexec.exe" -ArgumentList @('/i', "`"$Package`"", '/qn', '/norestart', 'REBOOT=ReallySuppress', '/L*v', "`"$Log`"") -WindowStyle Hidden -Wait -PassThru
@@ -24,6 +27,7 @@ $taskUpgradeCode = Read-MsiProperty $taskDatabase 'UpgradeCode'
 $taskVersion = Read-MsiProperty $taskDatabase 'ProductVersion'
 if ($taskUpgradeCode -ne '{A3A2C967-C2D8-50A2-9DB5-8A8A436126BB}') { throw 'Unexpected upgrade identity' }
 if (Read-MsiProperty $taskDatabase 'ALLUSERS') { throw 'Expected a per-user MSI' }
+[System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($taskDatabase) | Out-Null
 $taskDatabase = $null
 
 $taskFixture = Join-Path $taskOutput 'old-version-fixture.msi'
@@ -32,13 +36,16 @@ $taskDatabase = $taskInstaller.OpenDatabase($taskFixture, 1)
 $taskOldProduct = '{' + ([guid]::NewGuid().ToString().ToUpperInvariant()) + '}'
 foreach ($taskQuery in @("UPDATE ``Property`` SET ``Value`` = '0.0.9' WHERE ``Property`` = 'ProductVersion'", "UPDATE ``Property`` SET ``Value`` = '$taskOldProduct' WHERE ``Property`` = 'ProductCode'")) {
     $taskView = $taskDatabase.OpenView($taskQuery)
-    $taskView.Execute()
-    $taskView.Close()
+    [void]$taskView.Execute()
+    [void]$taskView.Close()
+    [System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($taskView) | Out-Null
 }
 $taskSummary = $taskDatabase.SummaryInformation(1)
 $taskSummary.Property(9) = '{' + ([guid]::NewGuid().ToString().ToUpperInvariant()) + '}'
 $taskSummary.Persist()
 $taskDatabase.Commit()
+[System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($taskSummary) | Out-Null
+[System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($taskDatabase) | Out-Null
 $taskSummary = $null
 $taskDatabase = $null
 [GC]::Collect()
@@ -64,7 +71,7 @@ try {
     if ((Get-Content -LiteralPath $taskSentinel -Raw).Trim() -ne $taskSentinelContents) { throw 'User data sentinel changed' }
     $taskAfterConfig = if (Test-Path -LiteralPath $taskConfig) { (Get-FileHash -LiteralPath $taskConfig).Hash } else { $null }
     if ($taskBeforeConfig -ne $taskAfterConfig) { throw 'Existing user configuration changed during installation' }
-    $taskEntries = @(Get-ItemProperty 'HKCU:/Software/Microsoft/Windows/CurrentVersion/Uninstall/*' -ErrorAction SilentlyContinue | Where-Object DisplayName -eq 'All-in-One Toolbox')
+    $taskEntries = @(Get-ItemProperty @('HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*') -ErrorAction SilentlyContinue | Where-Object DisplayName -eq 'All-in-One Toolbox')
     if ($taskEntries.Count -ne 1) { throw 'Expected exactly one installed product entry' }
     $taskReport = [ordered]@{ version = $taskVersion; upgradeCode = $taskUpgradeCode; perUser = $true; oldProductRemoved = $true; newProductInstalled = $true; quietExitCodes = @(0, 0); sameDirectory = $true; existingConfigurationPreserved = $true; dataSentinelPreserved = $true; installationDirectory = $taskNewDirectory }
     $taskReport | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskOutput 'result.json') -Encoding UTF8
