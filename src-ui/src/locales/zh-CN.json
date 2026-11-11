@@ -199,7 +199,7 @@
   "clipboard": {
     "searchPlaceholder": "搜索剪贴板记录或来源应用...",
     "clearUnpinned": "清空未固定条目",
-    "openPopupBtn": "呼出剪贴板弹窗 (⇧⌘V)",
+    "openPopupBtn": "呼出剪贴板弹窗",
     "colType": "类型",
     "colPreview": "内容预览",
     "colSource": "来源应用",
@@ -232,7 +232,7 @@
   },
   "sticky": {
     "toolbarDesc": "每个打开的便笺对应一个独立的置顶原生窗口；关闭便笺后标记为 is_open = 0 并立即销毁释放内存。",
-    "newNoteBtn": "新建置顶便笺 (⇧⌘N)",
+    "newNoteBtn": "新建置顶便笺",
     "defaultNewTitle": "新建便笺",
     "defaultNewContent": "支持 **Markdown** 与 LaTeX 公式：$E=mc^2$\n\n$$\\int_a^b f(x)dx$$",
     "colTitle": "标题",
@@ -280,8 +280,8 @@
     "refreshBtn": "刷新窗口",
     "refreshTooltip": "重新扫描系统真实窗口",
     "restoreAllBtn": "一键还原全部置顶",
-    "pinForegroundBtn": "置顶当前活动窗口 (⇧⌘P)",
-    "pickerBtn": "准星拾取 (⌥⌘P)",
+    "pinForegroundBtn": "置顶当前活动窗口",
+    "pickerBtn": "准星拾取",
     "colId": "窗口 ID",
     "colApp": "应用程序",
     "colTitle": "窗口标题",
@@ -318,7 +318,7 @@
     "passthroughActiveTooltip": "操作桌面中 (鼠标穿透，点击切回绘制)",
     "passthroughInactiveTooltip": "切换到操作桌面模式 (保留墨迹并允许操作底层)",
     "saveTooltip": "合成屏幕底图并保存/复制",
-    "exitTooltip": "退出屏幕注释 (⇧⌘D)",
+    "exitTooltip": "退出屏幕注释",
     "toastSaveSuccess": "快照已成功合成并保存，已复制到剪贴板",
     "toastSaveFailed": "快照合成失败",
     "toastSaveFileOnly": "快照已保存到文件，但写入剪贴板失败",
@@ -351,12 +351,12 @@
       "sessionStateLabel": "会话运行状态",
       "activeState": "运行中 (已就绪)",
       "inactiveState": "未启动 (0 内存驻留)",
-      "sessionStateSub": "快捷键 ⇧⌘D 随时调起或退出",
+      "sessionStateSub": "随时开始或结束",
       "canvasModeLabel": "画布交互模式",
       "drawingMode": "墨迹绘制中",
       "passthroughMode": "操作桌面穿透中",
       "idleMode": "未开始注释",
-      "canvasModeSub": "快捷键 ⇧⌘E 快速切换",
+      "canvasModeSub": "切换绘图与鼠标穿透",
       "dualWindowLabel": "双窗口架构",
       "dualWindowVal": "全屏画布 + 独立工具栏",
       "dualWindowSub": "解决全屏穿透与工具栏点击冲突",
@@ -572,7 +572,7 @@
   },
   "screenshot": {
     "saveAs": "另存为…",
-    "quickSave": "默认保存",
+    "quickSave": "保存在默认路径",
     "quickSaveHint": "保存到默认目录（⌘/Ctrl+Shift+S）",
     "pngFilter": "PNG 图像",
     "gifFilter": "GIF 动画",
@@ -678,14 +678,14 @@
       },
       "guideTitle": "操作说明",
       "guide": {
-        "select": "F1 或托盘「区域截图」开始；拖拽框选，单击采用高亮区域，右键清除选区，再次右键退出",
+        "select": "托盘「区域截图」开始；拖拽框选，单击采用高亮区域，右键清除选区，再次右键退出",
         "smart": "未选区时滚轮或 Tab / Shift+Tab 在「窗口 ↔ 整屏」之间切换",
         "adjust": "方向键平移 1 像素，Shift+方向键调整宽高，按住 Space 拖动整个选区，八个手柄调整边界",
         "tools": "数字键 1–5 切换矩形/箭头/马赛克/序号/文字；⌘/Ctrl+Z 撤销，⌘/Ctrl+Shift+Z 重做",
         "export": "Enter、⌘/Ctrl+C 或双击选区复制；⌘/Ctrl+S 保存（不覆盖已有文件）；F3 贴到屏幕；Esc 取消",
         "color": "放大镜跟随光标，WASD 或方向键逐像素移动；C 复制 HEX，Shift+C 复制 RGB",
         "pin": "贴图：拖动移动，滚轮缩放，Shift+滚轮调透明度，双击折叠，右键固定工具条，Esc 关闭",
-        "ocr": "⌘/Ctrl+Shift+O 或「截图识字」进入识字模式，选区后按 Enter；工具栏 OCR 按钮随时识别，Esc 先关闭结果面板"
+        "ocr": "「截图识字」进入识字模式，选区后按 Enter；工具栏 OCR 按钮随时识别，Esc 先关闭结果面板"
       },
       "resultPin": "已贴到屏幕（{size}）",
       "resultCopy": "已复制为图片（{size}）",
@@ -984,5 +984,10 @@
       "probe_error": "检测未完成，请重试",
       "not_checked": "尚未检测系统占用"
     }
+  },
+  "feedback": {
+    "saved": "已保存到",
+    "settingsSaved": "设置已保存",
+    "saveSuccess": "已保存"
   }
 }

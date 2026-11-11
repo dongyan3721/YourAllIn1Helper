@@ -199,7 +199,7 @@
   "clipboard": {
     "searchPlaceholder": "履歴またはコピー元アプリを検索...",
     "clearUnpinned": "未固定項目をクリア",
-    "openPopupBtn": "ポップアップを開く (⇧⌘V)",
+    "openPopupBtn": "ポップアップを開く",
     "colType": "種類",
     "colPreview": "内容プレビュー",
     "colSource": "コピー元アプリ",
@@ -232,7 +232,7 @@
   },
   "sticky": {
     "toolbarDesc": "開いている各付箋は独立した最前面ネイティブウィンドウとして動作し、閉じると is_open = 0 となり WebView メモリを即座に解放します。",
-    "newNoteBtn": "新規付箋ノート (⇧⌘N)",
+    "newNoteBtn": "新規付箋ノート",
     "defaultNewTitle": "新規付箋",
     "defaultNewContent": "**Markdown** と LaTeX 数式に対応：$E=mc^2$\n\n$$\\int_a^b f(x)dx$$",
     "colTitle": "タイトル",
@@ -280,8 +280,8 @@
     "refreshBtn": "更新",
     "refreshTooltip": "システムのウィンドウを再スキャン",
     "restoreAllBtn": "すべて固定解除",
-    "pinForegroundBtn": "アクティブウィンドウを固定 (⇧⌘P)",
-    "pickerBtn": "照準ピッカー (⌥⌘P)",
+    "pinForegroundBtn": "アクティブウィンドウを固定",
+    "pickerBtn": "照準ピッカー",
     "colId": "ウィンドウ ID",
     "colApp": "アプリケーション",
     "colTitle": "ウィンドウタイトル",
@@ -318,7 +318,7 @@
     "passthroughActiveTooltip": "デスクトップ操作中 (マウスクリック透過、描画に戻るにはクリック)",
     "passthroughInactiveTooltip": "デスクトップ操作モードへ (描画を保持したまま下のアプリを操作)",
     "saveTooltip": "画面背景と合成して保存/コピー",
-    "exitTooltip": "画面注釈を終了 (⇧⌘D)",
+    "exitTooltip": "画面注釈を終了",
     "toastSaveSuccess": "スナップショットを合成保存しクリップボードにコピーしました",
     "toastSaveFailed": "スナップショットの合成に失敗しました",
     "toastSaveFileOnly": "ファイル保存に成功しましたが、クリップボードへの書き込みに失敗しました",
@@ -351,12 +351,12 @@
       "sessionStateLabel": "セッション状態",
       "activeState": "実行中 (準備完了)",
       "inactiveState": "未起動 (メモリ消費 0)",
-      "sessionStateSub": "ショートカット ⇧⌘D でいつでも起動・終了",
+      "sessionStateSub": "いつでも開始・終了",
       "canvasModeLabel": "操作モード",
       "drawingMode": "描画モード",
       "passthroughMode": "デスクトップ透過モード",
       "idleMode": "未開始",
-      "canvasModeSub": "ショートカット ⇧⌘E で即座に切り替え",
+      "canvasModeSub": "描画とマウス透過を切り替え",
       "dualWindowLabel": "2ウィンドウ設計",
       "dualWindowVal": "全画面キャンバス + 独立ツールバー",
       "dualWindowSub": "全画面透過とツールバー操作の競合を解消",
@@ -572,7 +572,7 @@
   },
   "screenshot": {
     "saveAs": "名前を付けて保存…",
-    "quickSave": "既定に保存",
+    "quickSave": "既定の場所に保存",
     "quickSaveHint": "既定のフォルダーに保存（⌘/Ctrl+Shift+S）",
     "pngFilter": "PNG 画像",
     "gifFilter": "GIF アニメーション",
@@ -678,14 +678,14 @@
       },
       "guideTitle": "操作方法",
       "guide": {
-        "select": "F1 またはトレイの「範囲スクリーンショット」で開始。ドラッグで選択、クリックで強調範囲を採用、右クリックで選択解除、もう一度右クリックで終了",
+        "select": "トレイの「範囲スクリーンショット」で開始。ドラッグで選択、クリックで強調範囲を採用、右クリックで選択解除、もう一度右クリックで終了",
         "smart": "選択前はホイールまたは Tab / Shift+Tab で「ウィンドウ ↔ 全画面」を切替",
         "adjust": "矢印キーで 1 ピクセル移動、Shift+矢印でサイズ調整、Space を押しながら選択範囲を移動、8 つのハンドルで境界を調整",
         "tools": "数字キー 1–5 で矩形/矢印/モザイク/番号/テキスト。⌘/Ctrl+Z で元に戻す、⌘/Ctrl+Shift+Z でやり直す",
         "export": "Enter、⌘/Ctrl+C または選択範囲のダブルクリックでコピー。⌘/Ctrl+S で保存（上書きしない）。F3 で貼り付け。Esc でキャンセル",
         "color": "拡大鏡はカーソルに追従し、WASD または矢印キーで 1 ピクセルずつ移動。C で HEX、Shift+C で RGB をコピー",
         "pin": "貼り付け：ドラッグで移動、ホイールで拡縮、Shift+ホイールで不透明度、ダブルクリックで折りたたみ、右クリックでツールバー固定、Esc で閉じる",
-        "ocr": "⌘/Ctrl+Shift+O または「撮影して文字認識」で文字認識モード、選択後に Enter。ツールバーの OCR ボタンはいつでも使用可、Esc はまず結果パネルを閉じる"
+        "ocr": "「撮影して文字認識」で文字認識モード、選択後に Enter。ツールバーの OCR ボタンはいつでも使用可、Esc はまず結果パネルを閉じる"
       },
       "resultPin": "画面に貼り付けました（{size}）",
       "resultCopy": "画像としてコピーしました（{size}）",
@@ -984,5 +984,10 @@
       "probe_error": "確認を完了できませんでした。再試行してください",
       "not_checked": "システムでの使用状況は未確認"
     }
+  },
+  "feedback": {
+    "saved": "保存先",
+    "settingsSaved": "設定を保存しました",
+    "saveSuccess": "保存しました"
   }
 }

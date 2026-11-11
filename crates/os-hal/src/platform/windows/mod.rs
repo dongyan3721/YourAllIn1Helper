@@ -49,7 +49,7 @@ impl NativeOsHal {
                     y: window.y().unwrap_or(0),
                     width,
                     height,
-                    is_topmost: false,
+                    is_topmost: native_topmost(window.id().unwrap_or(0) as u64),
                 });
             }
             Ok(result)
@@ -75,6 +75,76 @@ impl NativeOsHal {
         }
         #[allow(unreachable_code)]
         Err(HalError::Unsupported("external_window_activation"))
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn native_topmost(handle: WindowHandleId) -> bool {
+    use windows::Win32::{
+        Foundation::HWND,
+        UI::WindowsAndMessaging::{GetWindowLongPtrW, GWL_EXSTYLE, WS_EX_TOPMOST},
+    };
+    // Read the OS style, including windows pinned by other programs.
+    unsafe {
+        GetWindowLongPtrW(HWND(handle as *mut std::ffi::c_void), GWL_EXSTYLE) as u32
+            & WS_EX_TOPMOST.0
+            != 0
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn native_topmost(_handle: WindowHandleId) -> bool {
+    false
+}
+
+#[cfg(all(test, target_os = "windows"))]
+mod topmost_tests {
+    use super::*;
+    use windows::{
+        core::w,
+        Win32::UI::WindowsAndMessaging::{
+            CreateWindowExW, DestroyWindow, WS_EX_NOACTIVATE, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
+        },
+    };
+
+    #[test]
+    fn actual_win32_topmost_style_round_trip() {
+        // A visible test-owned window is required: Windows defers topmost styles for hidden windows.
+        // WS_EX_NOACTIVATE keeps focus in the user application.
+        let hwnd = unsafe {
+            CreateWindowExW(
+                WS_EX_NOACTIVATE,
+                w!("STATIC"),
+                w!("Toolbox topmost regression"),
+                WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+                0,
+                0,
+                320,
+                180,
+                None,
+                None,
+                None,
+                None,
+            )
+        }
+        .unwrap();
+        struct Owned(windows::Win32::Foundation::HWND);
+        impl Drop for Owned {
+            fn drop(&mut self) {
+                let _ = unsafe { DestroyWindow(self.0) };
+            }
+        }
+        let _owned = Owned(hwnd);
+        let handle = hwnd.0 as u64;
+        let hal = NativeOsHal::new();
+        assert!(!native_topmost(handle));
+        hal.set_win32_topmost(handle, true).unwrap();
+        assert!(
+            native_topmost(handle),
+            "the list must read the actual WS_EX_TOPMOST flag"
+        );
+        hal.set_win32_topmost(handle, false).unwrap();
+        assert!(!native_topmost(handle));
     }
 }
 

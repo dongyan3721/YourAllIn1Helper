@@ -27,7 +27,7 @@
             </button>
             <button class="macos-button primary" @click="openClipPopup">
               <Icons name="clipboard" size="12" />
-              <span>{{ t('clipboard.openPopupBtn') }}</span>
+              <span>{{ caption(t('clipboard.openPopupBtn'), 'clipboard:toggle_popup') }}</span>
             </button>
           </div>
         </div>
@@ -136,14 +136,14 @@
               <span class="metric-val" :style="{ color: inkSessionStatus?.is_active ? '#10b981' : '#6b7280' }">
                 {{ inkSessionStatus?.is_active ? t('screen_ink.dashboard.activeState') : t('screen_ink.dashboard.inactiveState') }}
               </span>
-              <span class="metric-sub">{{ t('screen_ink.dashboard.sessionStateSub') }}</span>
+              <span class="metric-sub">{{ caption(t('screen_ink.dashboard.sessionStateSub'), 'screen_ink:toggle_session') }}</span>
             </div>
             <div class="metric-card">
               <span class="metric-label">{{ t('screen_ink.dashboard.canvasModeLabel') }}</span>
               <span class="metric-val" :style="{ color: canvasModeColor }">
                 {{ canvasModeText }}
               </span>
-              <span class="metric-sub">{{ t('screen_ink.dashboard.canvasModeSub') }}</span>
+              <span class="metric-sub">{{ caption(t('screen_ink.dashboard.canvasModeSub'), 'screen_ink:toggle_passthrough') }}</span>
             </div>
 
           </div>
@@ -159,7 +159,7 @@
           </div>
           <button class="macos-button primary" @click="createNewNote">
             <Icons name="sticky" size="12" />
-            <span>{{ t('sticky.newNoteBtn') }}</span>
+            <span>{{ caption(t('sticky.newNoteBtn'), 'sticky_note:create') }}</span>
           </button>
         </div>
 
@@ -258,11 +258,11 @@
             </button>
             <button class="macos-button primary" @click="toggleForegroundPin" :disabled="!windowPinSupported">
               <Icons name="pin" size="12" />
-              <span>{{ t('desktop.pinForeground') }}</span>
+              <span>{{ caption(t('desktop.pinForeground'), 'window_pin:toggle_foreground') }}</span>
             </button>
             <button class="macos-button" @click="openPinPicker" :disabled="!windowPinSupported">
               <Icons name="crosshair" size="12" />
-              <span>{{ t('desktop.pinPicker') }}</span>
+              <span>{{ caption(t('desktop.pinPicker'), 'window_pin:pick_cursor') }}</span>
             </button>
           </div>
         </div>
@@ -364,6 +364,9 @@ const TranslatorPanel = defineAsyncComponent(() => import('./TranslatorPanel.vue
 const VaultPanel = defineAsyncComponent(() => import('./VaultPanel.vue'));
 import { t, syncLocaleFromBackendConfig } from '../utils/i18n';
 import { featureForModule } from '../utils/features';
+import { useActionShortcuts } from '../utils/actionShortcuts';
+import { notify } from '../utils/toast';
+const { caption } = useActionShortcuts();
 
 const params = new URLSearchParams(window.location.search);
 const feature = featureForModule((params.get('window') || '').replace(/^feature-/, ''));
@@ -456,7 +459,9 @@ async function refreshDashboard() {
     ]);
     clipItems.value = c;
     notes.value = n;
-    externalWindows.value = w.candidates || [];
+    // Keep the managed pin visible even while another app temporarily changes Z-order.
+    const managed = new Set((w.pinned || []).map(entry => entry.info.handle));
+    externalWindows.value = (w.candidates || []).map(win => ({ ...win, is_topmost: win.is_topmost || managed.has(win.handle) }));
     pinnedWindows.value = w.pinned || [];
     inkSessionStatus.value = i;
   } catch (err) {
@@ -575,16 +580,13 @@ async function deleteNote(id: string) {
 /** 导出便笺 */
 async function exportNote(id: string) {
   try {
-    const res = await invokeIpc<{ id: string; markdown: string }>('sticky_export_markdown', { id });
-    const blob = new Blob([res.markdown], { type: 'text/markdown;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${t('sticky.exportFilePrefix')}_${id.slice(0, 8)}.md`;
-    link.click();
-    URL.revokeObjectURL(url);
+    const chosen = await invokeIpc<{ path: string | null }>('sticky_pick_save_path', {
+      default_name: `${t('sticky.exportFilePrefix')}_${id.slice(0, 8)}.md`,
+      title: t('sticky.exportTooltip'), filter_label: 'Markdown (*.md)',
+    });
+    if (chosen.path) await invokeIpc('sticky_save_markdown', { id, path: chosen.path });
   } catch (err) {
-    console.error('导出失败:', err);
+    notify(String(err), true);
   }
 }
 

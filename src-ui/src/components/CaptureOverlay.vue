@@ -107,7 +107,7 @@
         <button
           class="tool-btn"
           :class="{ active: showGifOptions }"
-          :title="`${t('screenshot.gif.start')} (⌥/Ctrl+F1)`"
+          :title="t('screenshot.gif.start')"
           :disabled="exporting"
           @click="toggleGifOptions"
         >
@@ -118,7 +118,7 @@
         </button>
         <button
           class="tool-btn"
-          :title="`${t('screenshot.scroll.start')} (Shift+F1)`"
+          :title="t('screenshot.scroll.start')"
           :disabled="exporting"
           @click="startScrollCapture"
         >
@@ -141,7 +141,7 @@
         <button class="tool-btn" :title="t('screenshot.overlay.pin') + ' (F3)'" :disabled="exporting" @click="doExport('pin')">
           <Icons name="pin" :size="16" />
         </button>
-        <button class="tool-btn" :title="t('screenshot.saveAs') + ' (⌘/Ctrl+S)'" :disabled="exporting" @click="doExport('save')">
+        <button class="tool-btn" :title="t('screenshot.saveAs') + ' (' + localShortcut('PrimaryMod+S') + ')'" :disabled="exporting" @click="doExport('save')">
           <Icons name="download" :size="16" />
         </button>
         <button class="tool-btn text-btn" :title="t('screenshot.quickSaveHint')" :disabled="exporting" @click="doExport('save', true)">{{ t('screenshot.quickSave') }}</button>
@@ -333,6 +333,7 @@ import {
 } from '../utils/screenshot/annotations';
 import { readPixel, toHex, toRgbText } from '../utils/screenshot/color';
 import { outerBorderRect, shouldPassthroughWheel } from '../utils/screenshot/scroll';
+import { localShortcut } from '../utils/actionShortcuts';
 import { runSaveFlow } from '../utils/screenshot/save';
 import { renderAnnotations, TEXT_FONT_FAMILY, TEXT_LINE_HEIGHT, type FrameSource, type MosaicCache } from '../utils/screenshot/render';
 
@@ -1271,18 +1272,6 @@ function onKeyDown(e: KeyboardEvent) {
     if (ocrResult.value) closeOcr();
     else void cancelCapture();
     return;
-  }
-  if (key === 'F1') {
-    if (e.shiftKey) {
-      e.preventDefault();
-      void startScrollCapture();
-      return;
-    }
-    if (e.altKey || e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      toggleGifOptions();
-      return;
-    }
   }
   if (exporting.value) return;
   if (e.code === 'Space') {

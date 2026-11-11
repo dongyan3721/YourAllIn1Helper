@@ -27,7 +27,7 @@ async function preferencesHarness(invoke) {
   const context = vm.createContext({
     ref: value => ({ value }), computed: fn => ({ get value() { return fn(); } }),
     defineProps: () => ({}), defineEmits: () => () => {}, onMounted: () => {}, onUnmounted: fn => callbacks.push(fn),
-    invokeIpc: invoke, t: key => key,
+    invokeIpc: invoke, t: key => key, notify: () => {},
   });
   compile(source.replace(/export /g, ''), context);
   compile(script, context);
@@ -129,4 +129,62 @@ test('a bulk scan includes unsaved drafts and drops stale scans when the user ed
   await second;
   assert.equal(run('scanSummary.value.issues'), 0);
   assert.equal(run('scanSummary.value.count'), 1);
+});
+
+
+test('feature captions follow configured platform labels and drop hints for unassigned keys', async () => {
+  const source = await readFile(new URL('../../src/utils/actionShortcuts.ts', import.meta.url), 'utf8');
+  const mounted = [], unmounted = [], pending = [];
+  let update;
+  const context = vm.createContext({
+    ref: value => ({ value }), onMounted: fn => mounted.push(fn), onUnmounted: fn => unmounted.push(fn),
+    navigator: { platform: 'Win32' },
+    window: { addEventListener() {}, removeEventListener() {}, __TAURI__: { event: { listen: async (_, fn) => { update = fn; return () => {}; } } } },
+    invokeIpc: () => new Promise(resolve => pending.push(resolve)),
+  });
+  compile(source.replace(/^import .*;$/gm, '').replace(/export /g, ''), context);
+  vm.runInContext('var hints = useActionShortcuts()', context);
+  await mounted[0]();
+  assert.equal(vm.runInContext("hints.caption('Open', 'clipboard:toggle_popup')", context), 'Open');
+  pending.shift()({ shortcuts: [{ spec: { action_id: 'clipboard:toggle_popup' }, display_label: 'Ctrl + Alt + D' }] });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(vm.runInContext("hints.caption('Open', 'clipboard:toggle_popup')", context), 'Open (Ctrl + Alt + D)');
+  const refresh = update();
+  pending.shift()({ shortcuts: [{ spec: { action_id: 'clipboard:toggle_popup' }, display_label: '' }] });
+  await refresh;
+  assert.equal(vm.runInContext("hints.caption('Open', 'clipboard:toggle_popup')", context), 'Open');
+  assert.equal(vm.runInContext("localShortcut('PrimaryMod+S')", context), 'Ctrl+S');
+  vm.runInContext("navigator.platform = 'MacIntel'", context);
+  assert.equal(vm.runInContext("localShortcut('PrimaryMod+S')", context), '⌘+S');
+  const late = update();
+  unmounted[0]();
+  pending.shift()({ shortcuts: [{ spec: { action_id: 'clipboard:toggle_popup' }, display_label: 'stale' }] });
+  await late;
+  assert.equal(vm.runInContext("hints.caption('Open', 'clipboard:toggle_popup')", context), 'Open');
+});
+
+
+test('window pin list combines live OS style and managed pins, then clears managed state after unpin', async () => {
+  const component = await readFile(new URL('../../src/components/FeaturePanel.vue', import.meta.url), 'utf8');
+  const script = component.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1].replace(/import\s+[\s\S]*?from\s+['"][^'"]+['"];?/g, '');
+  let pinned = [{ info: { handle: 7 } }];
+  const context = vm.createContext({
+    ref: value => ({ value }), computed: fn => ({ get value() { return fn(); } }),
+    defineAsyncComponent: fn => fn, onMounted() {}, onUnmounted() {}, URLSearchParams,
+    window: { location: { search: '?window=feature-window_pin' } },
+    useActionShortcuts: () => ({ caption: text => text }),
+    t: key => key,
+    invokeIpc: async cmd => {
+      if (cmd === 'kernel_get_status') return { module_catalog: [{ id: 'window_pin', enabled: true, supported: true }] };
+      if (cmd === 'winpin_list_candidates') return { candidates: [{ handle: 7, is_topmost: false }, { handle: 8, is_topmost: true }, { handle: 9, is_topmost: false }], pinned };
+      throw Error(cmd);
+    },
+  });
+  compile(source.replace(/export /g, ''), context);
+  compile(script, context);
+  await vm.runInContext('refreshDashboard()', context);
+  assert.deepEqual(JSON.parse(vm.runInContext('JSON.stringify(externalWindows.value.map(w => w.is_topmost))', context)), [true, true, false]);
+  pinned = [];
+  await vm.runInContext('refreshDashboard()', context);
+  assert.deepEqual(JSON.parse(vm.runInContext('JSON.stringify(externalWindows.value.map(w => w.is_topmost))', context)), [false, true, false]);
 });

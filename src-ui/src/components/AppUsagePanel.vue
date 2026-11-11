@@ -324,6 +324,7 @@ import {
   type UsageSessionPage,
 } from '../api/ipc';
 import { t } from '../utils/i18n';
+import { notify } from '../utils/toast';
 import { lastDaysRange } from '../utils/appUsage';
 import Icons from './Icons.vue';
 
@@ -542,6 +543,7 @@ async function saveSettings() {
       keep_window_titles: settingsForm.keep_window_titles,
       audio_afk_exception: settingsForm.audio_afk_exception,
     });
+    notify(t('feedback.settingsSaved'));
     Object.assign(settingsForm, config);
     await loadStatus();
     // 关闭标题保存后立即按最新隐私设置重新拉取会话，隐藏已加载的历史标题。

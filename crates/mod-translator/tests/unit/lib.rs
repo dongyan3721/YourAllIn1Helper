@@ -53,7 +53,7 @@ fn test_config_sanitization() {
     assert_eq!(cfg.default_provider_id, "google");
     assert_eq!(cfg.target_lang, "zh-CN");
     assert_eq!(cfg.source_lang, "auto");
-    assert_eq!(cfg.hotkey, "PrimaryMod+Shift+T");
+    assert_eq!(cfg.hotkey, "PrimaryMod+SecondaryMod+Shift+T");
     assert_eq!(cfg.popover_width, 420.0);
     assert_eq!(cfg.popover_height, 340.0);
     assert_eq!(cfg.custom_providers.len(), 1);

@@ -133,6 +133,7 @@ import 'katex/dist/katex.min.css';
 import { invokeIpc, type StickyNoteRecord } from '../api/ipc';
 import Icons from './Icons.vue';
 import { t } from '../utils/i18n';
+import { notify } from '../utils/toast';
 
 const props = defineProps<{
   noteId?: string;
@@ -524,18 +525,14 @@ function setTheme(colorKey: string) {
 /** 导出便笺为 .md 文件 */
 async function exportMarkdownFile() {
   try {
-    const res = await invokeIpc<{ id: string; markdown: string }>('sticky_export_markdown', {
-      id: note.value.id,
+    await flushDirtyState();
+    const chosen = await invokeIpc<{ path: string | null }>('sticky_pick_save_path', {
+      default_name: `${note.value.title || t('sticky.exportFilePrefix')}_${note.value.id.slice(0, 8)}.md`,
+      title: t('sticky.exportTooltip'), filter_label: 'Markdown (*.md)',
     });
-    const blob = new Blob([res.markdown], { type: 'text/markdown;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${note.value.title || t('sticky.exportFilePrefix')}_${note.value.id.slice(0, 8)}.md`;
-    link.click();
-    URL.revokeObjectURL(url);
+    if (chosen.path) await invokeIpc('sticky_save_markdown', { id: note.value.id, path: chosen.path });
   } catch (err) {
-    console.error('导出便笺失败:', err);
+    notify(String(err), true);
   }
 }
 

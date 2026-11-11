@@ -327,6 +327,14 @@ impl ModuleRegistry {
             let config = ctx.config.read().clone();
             let mut registered: Vec<String> = Vec::new();
             for spec in &specs {
+                if spec.is_unassigned(
+                    config
+                        .shortcut_overrides
+                        .get(&spec.action_id)
+                        .map(String::as_str),
+                ) {
+                    continue;
+                }
                 if let Err(error) = ctx.shortcut_registry.register(
                     spec.clone(),
                     config

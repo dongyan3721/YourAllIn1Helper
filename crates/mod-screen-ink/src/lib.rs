@@ -498,13 +498,13 @@ impl AppModule for ScreenInkModule {
             ShortcutSpec::new(
                 self.id(),
                 "screen_ink:toggle_session",
-                "PrimaryMod+Shift+D",
+                "PrimaryMod+SecondaryMod+Shift+B",
                 "进入/退出屏幕注释",
             ),
             ShortcutSpec::new(
                 self.id(),
                 "screen_ink:toggle_passthrough",
-                "PrimaryMod+Shift+E",
+                "PrimaryMod+SecondaryMod+Shift+S",
                 "切换画笔/鼠标穿透",
             ),
         ]

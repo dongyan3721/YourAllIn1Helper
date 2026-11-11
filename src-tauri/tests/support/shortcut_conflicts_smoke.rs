@@ -21,16 +21,23 @@ pub(super) fn check(app: &AppHandle, host: &DesktopHost) -> anyhow::Result<()> {
     let before = host.kernel().context().shortcut_registry.list_all();
     let config_path = host.kernel().context().app_data_dir.join("config.json");
     let config_before = std::fs::read(&config_path)?;
+    let owned_key = host
+        .kernel()
+        .context()
+        .shortcut_registry
+        .get_by_action(mod_screenshot::ACTION_CAPTURE)
+        .unwrap()
+        .physical_accelerator;
     anyhow::ensure!(
-        app.global_shortcut().is_registered("F1"),
+        app.global_shortcut().is_registered(owned_key.as_str()),
         "owned QA shortcut must exist"
     );
     anyhow::ensure!(
-        probe_native(app, "F1") == NativeCheck::Available,
+        probe_native(app, &owned_key) == NativeCheck::Available,
         "owned shortcut was classified as a conflict"
     );
     anyhow::ensure!(
-        app.global_shortcut().is_registered("F1"),
+        app.global_shortcut().is_registered(owned_key.as_str()),
         "probe removed existing shortcut"
     );
     let (ready_tx, ready_rx) = std::sync::mpsc::channel();

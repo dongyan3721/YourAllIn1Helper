@@ -1,10 +1,10 @@
 //! 原生桌面烟测：使用临时数据与本程序窗口，不修改系统剪贴板或外部窗口。
 use super::*;
 #[cfg(target_os = "windows")]
+mod shortcut_conflicts_smoke;
+#[cfg(target_os = "windows")]
 #[path = "translator_bounds_smoke.rs"]
 mod translator_bounds_smoke;
-#[cfg(target_os = "windows")]
-mod shortcut_conflicts_smoke;
 // Tauri 的 destroy 会异步提交到主线程，必须观察实际窗口移除后再断言。
 fn wait_until(mut condition: impl FnMut() -> bool) -> bool {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
@@ -219,6 +219,8 @@ pub(super) fn run_ui_smoke_checks(app: AppHandle, keep_open: bool) {
             #[cfg(target_os = "windows")]
             shortcut_conflicts_smoke::check(&app, &host)?;
             #[cfg(target_os = "windows")]
+            check_pin_badge_geometry(&app)?;
+            #[cfg(target_os = "windows")]
             translator_bounds_smoke::check(&app, &host)?;
             host.kernel().trigger_action(ACTION_CLIPBOARD)?;
             anyhow::ensure!(
@@ -354,4 +356,47 @@ pub(super) fn run_ui_smoke_checks(app: AppHandle, keep_open: bool) {
             app.exit(if result.is_ok() { 0 } else { 1 });
         }
     });
+}
+
+#[cfg(target_os = "windows")]
+fn check_pin_badge_geometry(app: &AppHandle) -> anyhow::Result<()> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let handle = app.clone();
+    app.run_on_main_thread(move || {
+        let result = (|| -> anyhow::Result<()> {
+            let info = ExternalWindowInfo {
+                handle: 999999999,
+                title: "Badge QA".into(),
+                process_name: "Badge QA".into(),
+                process_id: std::process::id(),
+                x: 100,
+                y: 100,
+                width: 400,
+                height: 200,
+                is_topmost: true,
+            };
+            reconcile_pin_badges(&handle, vec![info]);
+            let badge = handle
+                .get_webview_window("pin-badge-999999999")
+                .ok_or_else(|| anyhow::anyhow!("badge missing"))?;
+            let size = badge.outer_size()?;
+            let scale = badge.scale_factor()?;
+            let side = (28.0 * scale).round() as u32;
+            anyhow::ensure!(
+                size.width == side && size.height == side,
+                "badge must be 28 logical pixels, got {size:?}"
+            );
+            let badge_hwnd = badge.hwnd()?;
+            anyhow::ensure!(
+                unsafe { windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow().0 }
+                    != badge_hwnd.0,
+                "badge took keyboard focus"
+            );
+            reconcile_pin_badges(&handle, vec![]);
+            println!("UI_SMOKE_PIN_BADGE: PASS size={size:?}, scale={scale}");
+            Ok(())
+        })();
+        let _ = sender.send(result);
+    })?;
+    receiver.recv_timeout(std::time::Duration::from_secs(8))?
 }

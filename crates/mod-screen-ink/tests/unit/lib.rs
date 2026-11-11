@@ -27,9 +27,15 @@ fn test_screen_ink_initial_state_and_shortcuts() {
     let shortcuts = module.default_shortcuts();
     assert_eq!(shortcuts.len(), 2);
     assert_eq!(shortcuts[0].action_id, "screen_ink:toggle_session");
-    assert_eq!(shortcuts[0].default_logical_hotkey, "PrimaryMod+Shift+D");
+    assert_eq!(
+        shortcuts[0].default_logical_hotkey,
+        "PrimaryMod+SecondaryMod+Shift+B"
+    );
     assert_eq!(shortcuts[1].action_id, "screen_ink:toggle_passthrough");
-    assert_eq!(shortcuts[1].default_logical_hotkey, "PrimaryMod+Shift+E");
+    assert_eq!(
+        shortcuts[1].default_logical_hotkey,
+        "PrimaryMod+SecondaryMod+Shift+S"
+    );
 
     let status = module.get_status();
     assert!(!status.is_active);

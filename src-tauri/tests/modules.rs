@@ -22,6 +22,62 @@ fn toggle(host: &DesktopHost, id: &str, enabled: bool) {
 }
 
 #[test]
+fn markdown_export_saves_exact_current_content_only_after_path_selection() {
+    let dir = tempfile::tempdir().unwrap();
+    let host = DesktopHost::bootstrap(dir.path(), true).unwrap();
+    let created = call(
+        &host,
+        "sticky_create_note",
+        json!({"title":"QA", "content_md":"# 中文便笺\n正文"}),
+    );
+    let id = created["note"]["id"]
+        .as_str()
+        .or_else(|| created["id"].as_str())
+        .unwrap();
+    let path = dir.path().join("便笺 导出.md");
+    let args = json!({"id":id,"path":path});
+    assert!(!host.invoke_ipc("sticky_save_markdown", args.clone()).ok);
+    assert!(!path.exists());
+    host.save_paths()
+        .register(path.clone(), all_in_one_host::SaveKind::Markdown);
+    let saved = call(&host, "sticky_save_markdown", args.clone());
+    assert_eq!(saved["saved_path"], path.to_string_lossy().as_ref());
+    let expected = call(&host, "sticky_export_markdown", json!({"id":id}));
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        expected["markdown"].as_str().unwrap()
+    );
+    assert!(!host.invoke_ipc("sticky_save_markdown", args).ok);
+}
+
+#[test]
+fn shortcut_migration_preserves_overrides_and_custom_translator_bindings() {
+    for (old, expected) in [
+        ("PrimaryMod+Shift+T", "PrimaryMod+SecondaryMod+Shift+T"),
+        ("Alt+F9", "Alt+F9"),
+    ] {
+        let upgraded = app_core::ConfigMigrationPipeline::migrate_value(json!({
+            "config_version":3, "modules":{"settings":{"translator":{"hotkey":old,"custom_field":42}}},
+            "shortcut_overrides":{"clipboard:toggle_popup":"Ctrl+F9"}, "custom_root":true
+        }), 3).unwrap();
+        assert_eq!(
+            upgraded["modules"]["settings"]["translator"]["hotkey"],
+            expected
+        );
+        assert_eq!(
+            upgraded["modules"]["settings"]["translator"]["custom_field"],
+            42
+        );
+        assert_eq!(
+            upgraded["shortcut_overrides"]["clipboard:toggle_popup"],
+            "Ctrl+F9"
+        );
+        assert_eq!(upgraded["custom_root"], true);
+        assert_eq!(upgraded["config_version"], app_core::CURRENT_CONFIG_VERSION);
+    }
+}
+
+#[test]
 fn catalog_has_ten_slots_and_all_feature_modules_are_mounted() {
     let dir = tempfile::tempdir().unwrap();
     let host = DesktopHost::bootstrap(dir.path(), true).unwrap();

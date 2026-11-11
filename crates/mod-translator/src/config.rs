@@ -90,7 +90,7 @@ fn default_source_lang() -> String {
 }
 
 fn default_hotkey() -> String {
-    "PrimaryMod+Shift+T".to_string()
+    "PrimaryMod+SecondaryMod+Shift+T".to_string()
 }
 
 fn default_popover_width() -> f64 {

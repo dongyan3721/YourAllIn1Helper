@@ -165,6 +165,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import Icons from './Icons.vue';
 import { t } from '../utils/i18n';
+import { notify } from '../utils/toast';
 import {
   screenshotApi,
   type ExportOutcome,
@@ -281,6 +282,7 @@ async function saveSettings() {
     form.value = { ...saved.settings, save_directory: saved.settings.save_directory ?? '' };
     Object.assign(flags, saved.overlay);
     notice.value = { text: t('screenshot.panel.settingsSaved'), kind: 'ok' };
+    notify(t('feedback.settingsSaved'));
   } catch (err: any) {
     notice.value = { text: err?.message || String(err), kind: 'error' };
   } finally {

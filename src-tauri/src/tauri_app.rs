@@ -512,6 +512,7 @@ async fn ipc(app: AppHandle, window: tauri::WebviewWindow, mut request: IpcReque
             }
             Ok(())
         });
+        let _ = update_tray_menu(&app);
         emit_update(&app);
         return match result {
             Ok(value) => IpcResponse::success(value),
@@ -550,7 +551,11 @@ async fn ipc(app: AppHandle, window: tauri::WebviewWindow, mut request: IpcReque
         )
         .await;
     }
-    if request.cmd == "screenshot_pick_save_path" {
+    if request.cmd == "screenshot_pick_save_path" || request.cmd == "sticky_pick_save_path" {
+        request.args["owner_label"] = json!(window.label());
+        if request.cmd == "sticky_pick_save_path" {
+            request.args["kind"] = json!("md");
+        }
         // 截图「另存为」系统保存对话框（异步，不阻塞 UI）；截图导出分派由本任务维护。
         return crate::native_save_dialog::pick_screenshot_save_path(&app, &host, request.args)
             .await;
@@ -597,6 +602,24 @@ async fn ipc(app: AppHandle, window: tauri::WebviewWindow, mut request: IpcReque
     });
     let response = host.invoke_ipc(&request.cmd, request.args);
     if response.ok {
+        if matches!(
+            request.cmd.as_str(),
+            "sticky_save_markdown"
+                | "screenshot_pin_save"
+                | "screenshot_scroll_export"
+                | "screenshot_gif_confirm"
+                | "screenshot_gif_save_as"
+                | "ink_save_snapshot"
+        ) {
+            if let Some(path) = response
+                .data
+                .as_ref()
+                .and_then(|data| data.get("saved_path"))
+                .and_then(Value::as_str)
+            {
+                crate::save_feedback::notify_saved(&app, path);
+            }
+        }
         if let Some(shape) = ink_cursor_shape.as_deref() {
             crate::ink_window::apply_cursor_shape(&app, shape);
         }
@@ -870,8 +893,8 @@ fn register_global_shortcuts(app: &AppHandle) -> anyhow::Result<Vec<NativeShortc
     Ok(failures)
 }
 
-#[cfg(target_os = "macos")]
-/// 启动 macOS 外部窗口置顶守护与右上角微型图钉角标同步服务：
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+/// 启动外部窗口置顶守护与右上角微型图钉角标同步服务：
 /// 1. 彻底淘汰旧版 700ms 连续截屏录屏与大尺寸 WebView 镜像（消除高 CPU/GPU/电池开销）；
 /// 2. 纯事件驱动 + 极低频（1.5s）静默守护：利用 Accessibility AXRaise 原生将目标物理窗口提至最前；
 /// 3. 在被置顶物理窗口的右上角附着一个 28×28 像素的极微型原生图钉角标，点击直接解除置顶。
@@ -931,10 +954,32 @@ fn start_window_pin_guard_and_badges(app: &AppHandle) {
                     .window_controller
                     .get_window_info(pinned.info.handle)
                 {
-                    Ok(info) => badges.push(info),
+                    Ok(info) if info.process_id == pinned.info.process_id => {
+                        // Windows clients may temporarily reset their own extended style.
+                        // Reassert a managed pin without moving or activating the window.
+                        if host
+                            .window_pin
+                            .maintain_managed_pin(info.handle, !info.is_topmost)
+                            .unwrap_or(false)
+                        {
+                            badges.push(info);
+                        }
+                    }
+                    Ok(_) => host.window_pin.forget_closed_window(pinned.info.handle),
                     Err(_) => {
+                        #[cfg(target_os = "windows")]
+                        if unsafe {
+                            windows::Win32::UI::WindowsAndMessaging::IsWindow(Some(
+                                windows::Win32::Foundation::HWND(
+                                    pinned.info.handle as *mut std::ffi::c_void,
+                                ),
+                            ))
+                            .as_bool()
+                        } {
+                            continue;
+                        }
                         // 目标外部物理窗口已被用户在外部关闭，自动从置顶列表中解钉并清理
-                        let _ = host.window_pin.unpin_window(pinned.info.handle);
+                        host.window_pin.forget_closed_window(pinned.info.handle);
                     }
                 }
             }
@@ -950,7 +995,7 @@ fn start_window_pin_guard_and_badges(app: &AppHandle) {
     });
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn reconcile_pin_badges(app: &AppHandle, badges: Vec<ExternalWindowInfo>) {
     if is_exiting(app) {
         return;
@@ -962,13 +1007,34 @@ fn reconcile_pin_badges(app: &AppHandle, badges: Vec<ExternalWindowInfo>) {
         let label = format!("pin-badge-{}", info.handle);
         desired.insert(label.clone());
 
-        // 计算物理窗口右上角位置（向内缩进 36px）
-        let badge_x = (info.x + info.width as i32 - 36).max(info.x);
-        let badge_y = (info.y + 4).max(0);
+        // Windows enumeration reports physical pixels; leave caption buttons unobstructed.
+        let inset = if cfg!(target_os = "windows") {
+            148.0
+        } else {
+            36.0
+        };
+        let scale = if cfg!(target_os = "windows") {
+            app.monitor_from_point((info.x + info.width as i32 - 1) as f64, info.y as f64)
+                .ok()
+                .flatten()
+                .map(|m| m.scale_factor())
+                .unwrap_or(1.0)
+        } else {
+            1.0
+        };
+        let badge_x = (info.x + info.width as i32 - (inset * scale) as i32).max(info.x);
+        let badge_y = info.y + (4.0 * scale) as i32;
+        let position = if cfg!(target_os = "windows") {
+            tauri::Position::Physical(tauri::PhysicalPosition::new(badge_x, badge_y))
+        } else {
+            tauri::Position::Logical(tauri::LogicalPosition::new(badge_x as f64, badge_y as f64))
+        };
 
         if let Some(window) = app.get_webview_window(&label) {
-            let _ =
-                window.set_position(tauri::LogicalPosition::new(badge_x as f64, badge_y as f64));
+            let _ = window.set_position(position);
+            #[cfg(target_os = "windows")]
+            let _ = configure_badge_geometry(&window, badge_x, badge_y, scale);
+            let _ = show_passive_window(&window);
             continue;
         }
 
@@ -976,17 +1042,27 @@ fn reconcile_pin_badges(app: &AppHandle, badges: Vec<ExternalWindowInfo>) {
             "index.html?mode=native&window=pin-badge&handle={}",
             info.handle
         );
-        let _ = WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
+        let created = WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
             .title(format!("📌 {}", info.process_name))
             .inner_size(28.0, 28.0)
+            .min_inner_size(28.0, 28.0)
+            .max_inner_size(28.0, 28.0)
             .position(badge_x as f64, badge_y as f64)
             .decorations(false)
             .transparent(true)
             .always_on_top(true)
             .skip_taskbar(true)
             .focused(false)
+            .focusable(false)
+            .visible(false)
             .resizable(false)
             .build();
+        if let Ok(window) = created {
+            let _ = window.set_position(position);
+            #[cfg(target_os = "windows")]
+            let _ = configure_badge_geometry(&window, badge_x, badge_y, scale);
+            let _ = show_passive_window(&window);
+        }
     }
 
     // 自动清理已被取消置顶的角标窗口以及历史旧镜像窗口
@@ -997,6 +1073,58 @@ fn reconcile_pin_badges(app: &AppHandle, badges: Vec<ExternalWindowInfo>) {
             let _ = window.destroy();
         }
     }
+}
+
+#[cfg(target_os = "windows")]
+fn configure_badge_geometry(
+    window: &tauri::WebviewWindow,
+    x: i32,
+    y: i32,
+    scale: f64,
+) -> CoreResult<()> {
+    use windows::Win32::UI::WindowsAndMessaging::*;
+    let hwnd = window.hwnd().map_err(to_core_error)?;
+    let hwnd = windows::Win32::Foundation::HWND(hwnd.0);
+    let side = (28.0 * scale).round() as i32;
+    // Windows clamps very small windows to caption-button width during creation.
+    // Remove the frame before applying the physical size, without taking focus.
+    unsafe {
+        let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
+        let frame = WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU;
+        SetWindowLongPtrW(hwnd, GWL_STYLE, (style & !frame.0) as isize);
+        SetWindowPos(
+            hwnd,
+            Some(HWND_TOPMOST),
+            x,
+            y,
+            side,
+            side,
+            SWP_FRAMECHANGED | SWP_NOACTIVATE,
+        )
+        .map_err(to_core_error)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn show_passive_window(window: &tauri::WebviewWindow) -> CoreResult<()> {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::UI::WindowsAndMessaging::*;
+        let raw = window.hwnd().map_err(to_core_error)?;
+        let hwnd = windows::Win32::Foundation::HWND(raw.0);
+        unsafe {
+            let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
+            SetWindowLongPtrW(
+                hwnd,
+                GWL_EXSTYLE,
+                (style | WS_EX_NOACTIVATE.0 | WS_EX_TOOLWINDOW.0) as isize,
+            );
+            let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        }
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
+    window.show().map_err(to_core_error)
 }
 
 /// 启动系统剪贴板实时后台监听器（支持文本与图片双通道实时自动捕获）
@@ -1097,41 +1225,54 @@ fn build_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, tauri::Error> {
         .to_ascii_lowercase();
 
     let lbl_shot = if lang.starts_with("en") {
-        "Capture Region (F1)"
+        "Capture Region"
     } else if lang.starts_with("ja") || lang.starts_with("jp") {
-        "範囲スクリーンショット (F1)"
+        "範囲スクリーンショット"
     } else {
-        "区域截图 (F1)"
+        "区域截图"
     };
     let (lbl_dash, lbl_clip, lbl_ink, lbl_sticky, lbl_pin, lbl_quit) = if lang.starts_with("en") {
         (
             "Open Dashboard",
-            "Clipboard History (⇧⌘V)",
-            "Screen Annotation (⇧⌘D)",
-            "New Sticky Note (⇧⌘N)",
-            "Pin Active Window (⇧⌘P)",
+            "Clipboard History",
+            "Screen Annotation",
+            "New Sticky Note",
+            "Pin Active Window",
             "Quit",
         )
     } else if lang.starts_with("ja") || lang.starts_with("jp") {
         (
             "ダッシュボードを開く",
-            "クリップボード履歴 (⇧⌘V)",
-            "画面注釈 (⇧⌘D)",
-            "新規付箋ノート (⇧⌘N)",
-            "アクティブウィンドウを固定 (⇧⌘P)",
+            "クリップボード履歴",
+            "画面注釈",
+            "新規付箋ノート",
+            "アクティブウィンドウを固定",
             "終了",
         )
     } else {
         (
             "打开主控台",
-            "剪贴板历史 (⇧⌘V)",
-            "屏幕注释 (⇧⌘D)",
-            "新建置顶便笺 (⇧⌘N)",
-            "置顶当前窗口 (⇧⌘P)",
+            "剪贴板历史",
+            "屏幕注释",
+            "新建置顶便笺",
+            "置顶当前窗口",
             "退出",
         )
     };
 
+    let with_hotkey = |text: &str, action: &str| {
+        host.kernel()
+            .context()
+            .shortcut_registry
+            .get_by_action(action)
+            .map(|binding| format!("{} ({})", text, binding.display_label))
+            .unwrap_or_else(|| text.to_string())
+    };
+    let lbl_shot = with_hotkey(lbl_shot, mod_screenshot::ACTION_CAPTURE);
+    let lbl_clip = with_hotkey(lbl_clip, ACTION_CLIPBOARD);
+    let lbl_ink = with_hotkey(lbl_ink, ACTION_SCREEN_INK);
+    let lbl_sticky = with_hotkey(lbl_sticky, ACTION_STICKY);
+    let lbl_pin = with_hotkey(lbl_pin, ACTION_PIN_FOREGROUND);
     let dashboard = MenuItem::with_id(app, "tray_dashboard", lbl_dash, true, None::<&str>)?;
     let mut quick_scripts: Vec<(String, String)> = Vec::new();
     if host.kernel().registry().is_enabled("script_runner") {
@@ -1330,6 +1471,9 @@ pub fn run() {
                 TauriVaultEventSink(event_app.clone()),
             )));
             host.media_proc.set_event_sink(Some(Arc::new(move |job| {
+                if job.status == mod_media_proc::MediaJobStatus::Completed {
+                    if let Some(path) = &job.output_path { crate::save_feedback::notify_saved(&event_app, &path.to_string_lossy()); }
+                }
                 let _ = event_app.emit(
                     "media://job-progress",
                     serde_json::json!({
@@ -1392,7 +1536,7 @@ pub fn run() {
             crate::translator_mouse::start(app.handle());
             #[cfg(target_os = "windows")]
             crate::translator_mouse::start(app.handle());
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             if app
                 .state::<Arc<DesktopHost>>()
                 .os_hal

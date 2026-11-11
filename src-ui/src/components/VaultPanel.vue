@@ -221,6 +221,8 @@
 </template>
 
 <script setup lang="ts">
+import { notify } from '../utils/toast';
+import { t } from '../utils/i18n';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { invokeIpc } from '../api/ipc';
 import Icons from './Icons.vue';
@@ -502,6 +504,7 @@ async function saveEntry() {
     });
     if (!isCurrent(operation)) return;
     cancelEdit();
+    notify(t('feedback.saveSuccess'));
     busy.value = false;
     await refreshEntries();
   } catch (reason) {
@@ -533,6 +536,7 @@ async function deleteEntry() {
     await invokeIpc('vault_delete_entry', { id, expected_version: expectedVersion });
     if (!isCurrent(operation)) return;
     cancelEdit();
+    notify(t('feedback.saveSuccess'));
     busy.value = false;
     await refreshEntries();
   } catch (reason) {

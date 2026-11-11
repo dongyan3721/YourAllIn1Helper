@@ -58,6 +58,7 @@ export function applyTheme() {
     (currentThemeMode.value === 'system' && systemDarkMediaQuery.matches);
 
   isDarkActive.value = dark;
+  root.style.colorScheme = dark ? 'dark' : 'light';
 
   if (dark) {
     root.classList.add('dark');

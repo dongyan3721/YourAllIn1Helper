@@ -13,7 +13,11 @@ impl DesktopHost {
                     ShortcutSpec::new(
                         module.id,
                         format!("{}:open_panel", module.id),
-                        "",
+                        if module.id == "password_vault" {
+                            "PrimaryMod+SecondaryMod+E"
+                        } else {
+                            ""
+                        },
                         format!("打开{}面板", module.name),
                     )
                 }),
@@ -32,10 +36,11 @@ impl DesktopHost {
             let hotkey = config
                 .shortcut_overrides
                 .get(&spec.action_id)
-                .filter(|value| !value.trim().is_empty());
-            if self.kernel.registry().is_enabled(&spec.module_id) && hotkey.is_some() {
-                ctx.shortcut_registry
-                    .register(spec, hotkey.map(String::as_str))?;
+                .map(String::as_str)
+                .unwrap_or(&spec.default_logical_hotkey)
+                .to_string();
+            if self.kernel.registry().is_enabled(&spec.module_id) && !hotkey.trim().is_empty() {
+                ctx.shortcut_registry.register(spec, Some(&hotkey))?;
             } else {
                 ctx.shortcut_registry.unregister(&spec.action_id);
             }
@@ -66,7 +71,7 @@ impl DesktopHost {
         let mut rows = Vec::new();
         for spec in defaults {
             let preview = ShortcutRegistry::new(ctx.shortcut_registry.target_os());
-            let optional = is_panel_shortcut(&spec);
+            let optional = spec.default_logical_hotkey.is_empty();
             let override_hotkey = config
                 .shortcut_overrides
                 .get(&spec.action_id)
@@ -139,7 +144,7 @@ impl DesktopHost {
         let preview = ShortcutRegistry::new(ctx.shortcut_registry.target_os());
         for candidate in &specs {
             let hotkey = updated.get(&candidate.action_id).map(String::as_str);
-            if is_panel_shortcut(candidate) && hotkey.is_none() {
+            if candidate.is_unassigned(hotkey) {
                 continue;
             }
             preview.register(candidate.clone(), hotkey)?;
@@ -154,7 +159,7 @@ impl DesktopHost {
         self.kernel
             .update_config(|config| config.shortcut_overrides = updated.clone())?;
         let apply = (|| {
-            if is_panel_shortcut(&spec) && !updated.contains_key(action_id) {
+            if spec.is_unassigned(updated.get(action_id).map(String::as_str)) {
                 ctx.shortcut_registry.unregister(action_id);
             } else if self.kernel.registry().is_enabled(&spec.module_id) {
                 ctx.shortcut_registry
@@ -199,7 +204,6 @@ impl DesktopHost {
 
 fn is_panel_shortcut(spec: &ShortcutSpec) -> bool {
     spec.action_id == format!("{}:open_panel", spec.module_id)
-        && spec.default_logical_hotkey.is_empty()
 }
 
 pub(crate) fn feature_for_legacy_route(route: &str) -> Option<&'static str> {
@@ -225,7 +229,78 @@ pub(crate) fn feature_for_legacy_route(route: &str) -> Option<&'static str> {
 mod tests {
     use super::*;
     #[test]
-    fn every_feature_has_an_unassigned_panel_shortcut_without_reserving_keys() {
+    fn defaults_use_platform_modifiers_and_unassigned_actions_still_work_from_ui() {
+        let dir = tempfile::tempdir().unwrap();
+        let host = DesktopHost::bootstrap(dir.path(), true).unwrap();
+        let preferences = host.shortcut_preferences().unwrap();
+        for (action, logical) in [
+            ("screenshot:capture", "PrimaryMod+SecondaryMod+A"),
+            ("clipboard:toggle_popup", "PrimaryMod+SecondaryMod+D"),
+            (
+                "screen_ink:toggle_session",
+                "PrimaryMod+SecondaryMod+Shift+B",
+            ),
+            (
+                "screen_ink:toggle_passthrough",
+                "PrimaryMod+SecondaryMod+Shift+S",
+            ),
+            (
+                "translator:translate_selection",
+                "PrimaryMod+SecondaryMod+Shift+T",
+            ),
+            ("window_pin:pick_cursor", "PrimaryMod+SecondaryMod+Shift+W"),
+            (
+                "window_pin:toggle_foreground",
+                "PrimaryMod+SecondaryMod+Shift+C",
+            ),
+            ("password_vault:open_panel", "PrimaryMod+SecondaryMod+E"),
+        ] {
+            let row = preferences["shortcuts"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|r| r["spec"]["action_id"] == action)
+                .unwrap();
+            assert_eq!(row["active_logical_hotkey"], logical, "{action}");
+        }
+        let action = "sticky_note:create";
+        assert!(host
+            .kernel
+            .context()
+            .shortcut_registry
+            .get_by_action(action)
+            .is_none());
+        host.trigger_desktop_action(action).unwrap();
+        assert_eq!(host.kernel.context().window_pool.active_window_count(), 1);
+        host.kernel
+            .set_module_enabled("sticky_note", false)
+            .unwrap();
+        host.kernel.set_module_enabled("sticky_note", true).unwrap();
+        assert!(host
+            .kernel
+            .context()
+            .shortcut_registry
+            .get_by_action(action)
+            .is_none());
+        host.update_shortcut_preference(action, Some("Ctrl+Alt+F9"), || Ok(()))
+            .unwrap();
+        assert!(host
+            .kernel
+            .context()
+            .shortcut_registry
+            .get_by_action(action)
+            .is_some());
+        host.update_shortcut_preference(action, None, || Ok(()))
+            .unwrap();
+        assert!(host
+            .kernel
+            .context()
+            .shortcut_registry
+            .get_by_action(action)
+            .is_none());
+    }
+    #[test]
+    fn optional_actions_and_panels_reserve_no_keys_and_vault_has_a_default() {
         let dir = tempfile::tempdir().unwrap();
         let host = DesktopHost::bootstrap(dir.path(), true).unwrap();
         let before = host.kernel.context().shortcut_registry.list_all();
@@ -236,7 +311,7 @@ mod tests {
             .iter()
             .filter(|row| row["optional"] == true)
             .collect();
-        assert_eq!(optional.len(), 10);
+        assert_eq!(optional.len(), 13);
         for row in optional {
             assert_eq!(row["active_logical_hotkey"], "");
             assert_eq!(row["physical_accelerator"], "");
@@ -329,7 +404,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let host = DesktopHost::bootstrap(dir.path(), true).unwrap();
         assert!(host
-            .update_shortcut_preference("media_proc:open_panel", Some("F1"), || Ok(()))
+            .update_shortcut_preference(
+                "media_proc:open_panel",
+                Some("PrimaryMod+SecondaryMod+A"),
+                || Ok(())
+            )
             .is_err());
         host.update_shortcut_preference("media_proc:open_panel", Some("Ctrl+Alt+F10"), || Ok(()))
             .unwrap();
@@ -433,7 +512,11 @@ mod tests {
             .unwrap();
         host.kernel.set_module_enabled("screenshot", false).unwrap();
         assert!(host
-            .update_shortcut_preference("clipboard:toggle_popup", Some("F1"), || Ok(()))
+            .update_shortcut_preference(
+                "clipboard:toggle_popup",
+                Some("PrimaryMod+SecondaryMod+A"),
+                || Ok(())
+            )
             .is_err());
         let mut calls = 0;
         assert!(host

@@ -211,9 +211,11 @@ mod tests {
         host.kernel.set_module_enabled("screenshot", false).unwrap();
         let before = std::fs::read(dir.path().join("config.json")).unwrap_or(before);
         let check = host
-            .check_shortcut("clipboard:toggle_popup", Some("F1"), |_| {
-                panic!("internal conflict must not probe OS")
-            })
+            .check_shortcut(
+                "clipboard:toggle_popup",
+                Some("PrimaryMod+SecondaryMod+A"),
+                |_| panic!("internal conflict must not probe OS"),
+            )
             .unwrap();
         assert_eq!(check["status"], "internal_conflict");
         assert_eq!(
@@ -274,7 +276,7 @@ mod tests {
                 NativeCheck::NotChecked
             })
             .unwrap();
-        assert_eq!(count, 11);
+        assert_eq!(count, 8);
         assert_eq!(scan["checks"].as_array().unwrap().len(), 21);
         assert_eq!(
             scan["checks"]
@@ -283,7 +285,7 @@ mod tests {
                 .iter()
                 .filter(|v| v["status"] == "unassigned")
                 .count(),
-            10
+            13
         );
     }
 }

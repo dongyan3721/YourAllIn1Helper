@@ -5,7 +5,7 @@ use serde_json::{Map, Value};
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 /// Current schema version of `config.json`.
-pub const CURRENT_CONFIG_VERSION: u32 = 3;
+pub const CURRENT_CONFIG_VERSION: u32 = 4;
 
 /// Thread-safe shared configuration handle injected into `ModuleContext`.
 pub type SharedConfig = Arc<RwLock<AppConfig>>;

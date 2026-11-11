@@ -347,6 +347,7 @@ import {
   type ScriptRunStatus,
 } from '../api/ipc';
 import { t } from '../utils/i18n';
+import { notify } from '../utils/toast';
 import Icons from './Icons.vue';
 
 const ALL_TYPES: ScriptKind[] = [
@@ -523,6 +524,7 @@ async function saveScript() {
         output_handling: form.output_handling,
       },
     });
+    notify(t('feedback.saveSuccess'));
     formOpen.value = false;
     await refreshAll(true);
   } catch (err) {

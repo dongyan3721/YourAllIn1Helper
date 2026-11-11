@@ -8,6 +8,7 @@
  */
 
 import { ref } from 'vue';
+import { localShortcut } from './actionShortcuts';
 import {
   DEFAULT_LOCALE,
   LOCALE_OPTIONS,
@@ -88,7 +89,7 @@ export function translateWithLocale(
     resolveNestedKey(fallbackDict, key) ??
     key;
 
-  return interpolateTemplate(rawTemplate, params);
+  return interpolateTemplate(rawTemplate.replace(/⌘\/Ctrl|⌘(?=\+C)/g, localShortcut('PrimaryMod')), params);
 }
 
 /**

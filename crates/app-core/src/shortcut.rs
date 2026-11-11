@@ -49,6 +49,14 @@ pub struct ShortcutSpec {
 }
 
 impl ShortcutSpec {
+    /// An empty effective binding keeps the action available without reserving a key.
+    pub fn is_unassigned(&self, user_override: Option<&str>) -> bool {
+        user_override
+            .unwrap_or(&self.default_logical_hotkey)
+            .trim()
+            .is_empty()
+    }
+
     pub fn new(
         module_id: impl Into<String>,
         action_id: impl Into<String>,

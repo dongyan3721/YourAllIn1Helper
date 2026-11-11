@@ -95,6 +95,22 @@ impl ConfigMigrationPipeline {
                     current_version = 3;
                     obj.insert("config_version".to_string(), Value::from(current_version));
                 }
+                3 => {
+                    // Only the old built-in translator default migrates. Explicit shortcut
+                    // overrides and custom translator hotkeys are preserved verbatim.
+                    if let Some(hotkey) = obj
+                        .get_mut("modules")
+                        .and_then(|v| v.get_mut("settings"))
+                        .and_then(|v| v.get_mut("translator"))
+                        .and_then(|v| v.get_mut("hotkey"))
+                    {
+                        if hotkey.as_str() == Some("PrimaryMod+Shift+T") {
+                            *hotkey = Value::from("PrimaryMod+SecondaryMod+Shift+T");
+                        }
+                    }
+                    current_version = 4;
+                    obj.insert("config_version".to_string(), Value::from(current_version));
+                }
                 _ => {
                     current_version = CURRENT_CONFIG_VERSION;
                     obj.insert("config_version".to_string(), Value::from(current_version));

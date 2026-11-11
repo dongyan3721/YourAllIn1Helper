@@ -22,10 +22,10 @@
       @wheel.stop
     >
       <span class="pin-zoom">{{ formatPercent(zoom) }}</span>
-      <button class="pin-btn" :title="t('screenshot.pin.copy') + ' (⌘/Ctrl+C)'" @click="copyPin">
+      <button class="pin-btn" :title="t('screenshot.pin.copy') + ' (' + localShortcut('PrimaryMod+C') + ')'" @click="copyPin">
         <Icons name="copy" :size="13" />
       </button>
-      <button class="pin-btn" :disabled="saving" :title="t('screenshot.saveAs') + ' (⌘/Ctrl+S)'" @click="savePin()">
+      <button class="pin-btn" :disabled="saving" :title="t('screenshot.saveAs') + ' (' + localShortcut('PrimaryMod+S') + ')'" @click="savePin()">
         <Icons name="download" :size="13" />
       </button>
       <button class="pin-btn" :disabled="saving" :title="t('screenshot.quickSaveHint')" @click="savePin(true)">{{ t('screenshot.quickSave') }}</button>
@@ -49,6 +49,7 @@ import { onMounted, onUnmounted, ref } from 'vue';
 import Icons from './Icons.vue';
 import { t } from '../utils/i18n';
 import { fetchPinImage, screenshotApi } from '../api/screenshot';
+import { localShortcut } from '../utils/actionShortcuts';
 import { runSaveFlow } from '../utils/screenshot/save';
 import { formatPercent, pinWindowSize, stepOpacity, stepZoom, wheelDelta } from '../utils/screenshot/pinView';
 

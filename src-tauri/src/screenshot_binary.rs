@@ -79,6 +79,7 @@ pub(crate) async fn screenshot_export(
         _ => None,
     };
     let host = host(&app);
+    let feedback_app = app.clone();
     let response = tauri::async_runtime::spawn_blocking(move || {
         match host.screenshot_export(
             &meta.session_id,
@@ -87,7 +88,15 @@ pub(crate) async fn screenshot_export(
             overlay.as_deref(),
             meta.save_path.as_deref(),
         ) {
-            Ok(outcome) => IpcResponse::success(outcome),
+            Ok(outcome) => {
+                // The export destroys its originating WebView. Its async IPC future can
+                // be dropped before resuming; feedback must run in the export worker.
+                if let Some(path) = &outcome.saved_path {
+                    crate::save_feedback::notify_saved(&feedback_app, path);
+                }
+                let _ = feedback_app.emit("kernel://updated", serde_json::Value::Null);
+                IpcResponse::success(outcome)
+            }
             Err(error) => IpcResponse::err(error.to_string()),
         }
     })

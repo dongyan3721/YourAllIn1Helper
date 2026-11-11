@@ -707,7 +707,7 @@ impl AppModule for F1Holder {
         vec![ShortcutSpec::new(
             "f1_holder",
             "f1_holder:run",
-            "F1",
+            "PrimaryMod+SecondaryMod+A",
             "occupy",
         )]
     }
@@ -752,7 +752,7 @@ fn shortcut_conflict_on_enable_rolls_back_and_reports_error() {
             .get_by_action("f1_holder:run")
             .unwrap()
             .physical_accelerator,
-        "F1"
+        "Alt+Super+A"
     );
 
     // 改用自定义快捷键后可以启用。

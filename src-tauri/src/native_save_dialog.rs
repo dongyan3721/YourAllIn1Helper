@@ -23,6 +23,7 @@ use tauri::AppHandle;
 pub enum SaveKind {
     Png,
     Gif,
+    Markdown,
 }
 
 impl SaveKind {
@@ -30,6 +31,7 @@ impl SaveKind {
         match self {
             SaveKind::Png => "png",
             SaveKind::Gif => "gif",
+            SaveKind::Markdown => "md",
         }
     }
 
@@ -37,6 +39,7 @@ impl SaveKind {
         match value.trim().to_ascii_lowercase().as_str() {
             "png" => Ok(SaveKind::Png),
             "gif" => Ok(SaveKind::Gif),
+            "md" => Ok(SaveKind::Markdown),
             other => Err(CoreError::Config(format!("未知保存格式: {}", other))),
         }
     }
@@ -138,6 +141,7 @@ pub(crate) fn parse_spec(args: &Value) -> CoreResult<SaveDialogSpec> {
         .unwrap_or(match kind {
             SaveKind::Png => "PNG image",
             SaveKind::Gif => "GIF animation",
+            SaveKind::Markdown => "Markdown document",
         })
         .to_string();
     Ok(SaveDialogSpec {
@@ -229,8 +233,14 @@ async fn pick_screenshot_save_path_result(
     host: &Arc<DesktopHost>,
     args: Value,
 ) -> CoreResult<Option<PathBuf>> {
-    ensure_screenshot_enabled(host)?;
     let mut spec = parse_spec(&args)?;
+    if spec.kind == SaveKind::Markdown {
+        host.kernel()
+            .registry()
+            .with_enabled("sticky_note", || Ok(()))?;
+    } else {
+        ensure_screenshot_enabled(host)?;
+    }
     spec.owner_label = resolve_owner_label(app, args.get("owner_label").and_then(Value::as_str));
     let _active_dialog = SingleDialogGuard::acquire()?;
     let chosen = platform::show_save_dialog(app, &spec).await?;

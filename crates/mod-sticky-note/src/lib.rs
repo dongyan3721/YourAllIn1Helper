@@ -879,7 +879,7 @@ impl AppModule for StickyNoteModule {
         vec![ShortcutSpec::new(
             "sticky_note",
             "sticky_note:create",
-            "PrimaryMod+Shift+N",
+            "",
             "新建桌面置顶 Markdown + LaTeX 便笺",
         )]
     }

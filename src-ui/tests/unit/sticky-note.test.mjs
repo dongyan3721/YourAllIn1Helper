@@ -31,6 +31,7 @@ async function loadSticky(options = {}) {
     onMounted(fn) { hooks.mounted.push(fn); },
     onUnmounted(fn) { hooks.unmounted.push(fn); },
     t: (key) => key,
+    notify: (...args) => errors.push(args.join(" ")),
     URLSearchParams,
     window: options.window ?? {
       location: { search: options.search || '' },
@@ -73,6 +74,7 @@ async function loadSticky(options = {}) {
       if (defer.has(name)) {
         return new Promise((resolve, reject) => pending.push({ name, payload, resolve, reject }));
       }
+      if (name === 'sticky_pick_save_path') return { path: options.savePath ?? null };
       if (name === 'sticky_begin_session') {
         const configured = options.sessionId;
         const sessionId = typeof configured === 'function' ? configured() : (configured ?? 1);
@@ -737,4 +739,25 @@ test('a rejected theme or window write stays pending and blocks close', async ()
   assert.equal(sticky.run('note.value.is_pinned'), false);
   assert.equal(sticky.calls.some((call) => call.name === 'sticky_close_note'), false);
   assert.match(sticky.errors.join('\n'), /便笺写入已被拒绝/);
+});
+
+
+test('Markdown export flushes latest edits before choosing a path and cancellation writes no file', async () => {
+  const h = await loadSticky({ note: { id: 'qa-note', title: 'QA', content: 'latest' } });
+  h.scheduleSave();
+  await h.run('exportMarkdownFile()');
+  const names = h.calls.map(c => c.name);
+  assert.ok(names.includes('sticky_save_content'));
+  assert.ok(names.indexOf('sticky_save_content') < names.indexOf('sticky_pick_save_path'));
+  assert.equal(names.includes('sticky_save_markdown'), false);
+});
+test('Markdown export saves only after confirmation and a failed flush never opens the picker', async () => {
+  const ok = await loadSticky({ savePath: 'C:/QA/便笺.md', note: { id: 'qa-note', title: 'QA', content: 'latest' } });
+  await ok.run('exportMarkdownFile()');
+  assert.ok(ok.calls.some(c => c.name === 'sticky_save_markdown'));
+  const failed = await loadSticky({ fail: new Set(['sticky_save_content']), savePath: 'C:/QA/no.md', note: { id: 'qa-note', title: 'QA', content: 'latest' } });
+  failed.scheduleSave();
+  await failed.run('exportMarkdownFile()');
+  assert.equal(failed.calls.some(c => c.name === 'sticky_pick_save_path'), false);
+  assert.equal(failed.calls.some(c => c.name === 'sticky_save_markdown'), false);
 });

@@ -186,6 +186,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import Icons from './Icons.vue';
 import { invokeIpc } from '../api/ipc';
 import { t } from '../utils/i18n';
+import { notify } from '../utils/toast';
 
 interface ProviderMeta {
   id: string;
@@ -211,7 +212,7 @@ const config = ref({
   source_lang: 'auto',
   auto_copy_result: false,
   history_enabled: false,
-  hotkey: 'PrimaryMod+Shift+T',
+  hotkey: 'PrimaryMod+SecondaryMod+Shift+T',
   popover_width: 420.0,
   popover_height: 340.0,
   custom_providers: [] as Array<{
@@ -319,6 +320,7 @@ async function saveApiKey() {
       api_key: key,
     });
     inputApiKey.value = '';
+    notify(t('feedback.settingsSaved'));
     await loadData();
   } catch (e) {
     console.error('设置 API Key 失败:', e);
@@ -330,6 +332,7 @@ async function saveConfig() {
   config.value.source_lang = sourceLang.value;
   try {
     await invokeIpc('translator_update_config', config.value);
+    notify(t('feedback.settingsSaved'));
     await loadData();
   } catch (e) {
     console.error('保存设置失败:', e);
@@ -438,7 +441,7 @@ onUnmounted(() => {
   margin: 0;
   font-size: 20px;
   font-weight: 700;
-  color: var(--text-primary);
+  color: var(--macos-text-primary);
 }
 
 .module-number {
@@ -447,7 +450,7 @@ onUnmounted(() => {
   padding: 2px 6px;
   border-radius: 4px;
   background: rgba(0, 122, 255, 0.12);
-  color: var(--color-primary);
+  color: var(--macos-accent);
 }
 
 .header-badges {
@@ -459,8 +462,8 @@ onUnmounted(() => {
   font-size: 11px;
   padding: 3px 8px;
   border-radius: 12px;
-  background: var(--bg-hover, rgba(0, 0, 0, 0.05));
-  color: var(--text-secondary);
+  background: var(--macos-bg-card-hover, rgba(0, 0, 0, 0.05));
+  color: var(--macos-text-secondary);
 }
 
 .badge.active {
@@ -477,8 +480,8 @@ onUnmounted(() => {
 }
 
 .macos-card {
-  background: var(--bg-card, #ffffff);
-  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
+  background: var(--macos-bg-card, #ffffff);
+  border: 1px solid var(--macos-border-subtle, rgba(0, 0, 0, 0.08));
   border-radius: 10px;
   padding: 16px;
   box-sizing: border-box;
@@ -503,15 +506,15 @@ onUnmounted(() => {
 }
 
 .arrow-sep {
-  color: var(--text-secondary);
+  color: var(--macos-text-secondary);
   font-weight: 600;
 }
 
 .macos-select {
   padding: 5px 10px;
   border-radius: 6px;
-  border: 1px solid var(--border-color, #d1d1d6);
-  background: var(--bg-card);
+  border: 1px solid var(--macos-border-subtle, #d1d1d6);
+  background: var(--macos-bg-card);
   color: inherit;
   font-size: 12px;
   outline: none;
@@ -523,19 +526,19 @@ onUnmounted(() => {
   gap: 6px;
   padding: 6px 14px;
   border-radius: 6px;
-  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.12));
-  background: var(--bg-card);
+  border: 1px solid var(--macos-border-subtle, rgba(0, 0, 0, 0.12));
+  background: var(--macos-bg-card);
   font-size: 12px;
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--macos-text-primary);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .macos-btn.primary-btn {
-  background: var(--color-primary, #007aff);
+  background: var(--macos-accent, #007aff);
   color: #ffffff;
-  border-color: var(--color-primary, #007aff);
+  border-color: var(--macos-accent, #007aff);
 }
 
 .macos-btn.mini-btn {
@@ -569,13 +572,13 @@ onUnmounted(() => {
   justify-content: space-between;
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--macos-text-secondary);
 }
 
 .clear-btn {
   border: none;
   background: none;
-  color: var(--text-secondary);
+  color: var(--macos-text-secondary);
   cursor: pointer;
 }
 
@@ -583,18 +586,18 @@ onUnmounted(() => {
   box-sizing: border-box;
   padding: 10px 12px;
   border-radius: 8px;
-  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.1));
+  border: 1px solid var(--macos-border-subtle, rgba(0, 0, 0, 0.1));
   font-size: 13px;
   line-height: 1.5;
   color: inherit;
   font-family: inherit;
-  background: var(--bg-input, #f9f9f9);
+  background: var(--macos-bg-input, #f9f9f9);
 }
 
 .output-display {
   min-height: 120px;
   flex: 1;
-  background: rgba(0, 0, 0, 0.02);
+  background: var(--macos-bg-input);
   user-select: text;
 }
 
@@ -605,7 +608,7 @@ onUnmounted(() => {
 }
 
 .empty-text {
-  color: var(--text-secondary);
+  color: var(--macos-text-secondary);
   font-style: italic;
 }
 
@@ -619,8 +622,8 @@ onUnmounted(() => {
   margin: 0;
   font-size: 13px;
   font-weight: 700;
-  color: var(--text-primary);
-  border-bottom: 1px solid var(--border-color);
+  color: var(--macos-text-primary);
+  border-bottom: 1px solid var(--macos-border-subtle);
   padding-bottom: 6px;
 }
 
@@ -633,7 +636,7 @@ onUnmounted(() => {
 .form-label {
   font-size: 11px;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--macos-text-secondary);
 }
 
 .full-width {
@@ -668,8 +671,8 @@ onUnmounted(() => {
 .macos-input {
   padding: 5px 8px;
   border-radius: 6px;
-  border: 1px solid var(--border-color, #d1d1d6);
-  background: var(--bg-card);
+  border: 1px solid var(--macos-border-subtle, #d1d1d6);
+  background: var(--macos-bg-card);
   color: inherit;
   font-size: 12px;
   outline: none;
@@ -678,7 +681,7 @@ onUnmounted(() => {
 .form-hint {
   margin: 2px 0 0;
   font-size: 10px;
-  color: var(--text-secondary);
+  color: var(--macos-text-secondary);
   line-height: 1.4;
 }
 
@@ -687,7 +690,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: var(--text-primary);
+  color: var(--macos-text-primary);
   cursor: pointer;
 }
 
@@ -707,14 +710,14 @@ onUnmounted(() => {
 .sub-title {
   margin: 0;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--macos-text-secondary);
 }
 
 .text-btn {
   background: none;
   border: none;
   font-size: 11px;
-  color: var(--color-primary);
+  color: var(--macos-accent);
   cursor: pointer;
   padding: 0;
 }
@@ -725,7 +728,7 @@ onUnmounted(() => {
   gap: 6px;
   padding: 8px;
   border-radius: 6px;
-  background: rgba(0, 0, 0, 0.03);
+  background: var(--macos-bg-card-active);
 }
 
 .macos-input.mini {
@@ -740,7 +743,7 @@ onUnmounted(() => {
 }
 
 .mini-btn.primary {
-  background: var(--color-primary);
+  background: var(--macos-accent);
   color: #ffffff;
 }
 </style>

@@ -117,7 +117,7 @@
       <!-- 退出全屏注释 -->
       <button
         class="tb-btn close-btn"
-        :title="t('screen_ink.exitTooltip')"
+        :title="caption(t('screen_ink.exitTooltip'), 'screen_ink:toggle_session')"
         @click="exitSession"
       >
         <Icons name="close" size="13" />
@@ -140,6 +140,8 @@ import { type InkTool } from '../utils/ink';
 import Icons from './Icons.vue';
 import { invokeIpc } from '../api/ipc';
 import { t } from '../utils/i18n';
+import { useActionShortcuts } from '../utils/actionShortcuts';
+const { caption } = useActionShortcuts();
 
 interface ToolItem {
   id: InkTool;

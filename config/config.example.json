@@ -1,5 +1,5 @@
 {
-  "config_version": 3,
+  "config_version": 4,
   "general": {
     "launch_at_login": false,
     "show_tray_icon": true,

@@ -1,7 +1,8 @@
 <template>
   <div class="app-root" :class="{ 'native-window': isNativeWindowMode }">
     <!-- 剪贴板快速粘贴弹窗视图 -->
-    <ClipboardPopup v-if="nativeWindowType === 'clipboard-popup'" />
+    <SaveToast v-if="nativeWindowType.startsWith('save-toast-')" />
+    <ClipboardPopup v-else-if="nativeWindowType === 'clipboard-popup'" />
 
     <!-- 桌面置顶富文本便笺独立窗口视图 -->
     <StickyNote v-else-if="nativeWindowType === 'sticky-note'" :note-id="nativeStickyId" />
@@ -34,12 +35,15 @@
 
     <!-- 主窗口只包含功能与偏好设置 -->
     <Dashboard v-else />
+    <div v-if="toastMessage" class="app-toast" :class="{ error: toastMessage.error }" role="status">{{ toastMessage.text }}</div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, defineAsyncComponent } from 'vue';
 import Dashboard from './components/Dashboard.vue';
+import { toastMessage } from './utils/toast';
+const SaveToast = defineAsyncComponent(() => import('./components/SaveToast.vue'));
 const FeaturePanel = defineAsyncComponent(() => import('./components/FeaturePanel.vue'));
 const ClipboardPopup = defineAsyncComponent(() => import('./components/ClipboardPopup.vue'));
 const StickyNote = defineAsyncComponent(() => import('./components/StickyNote.vue'));
@@ -91,4 +95,6 @@ if (isNativeWindowMode.value) {
   height: 100vh;
   overflow: hidden;
 }
+.app-toast { position: fixed; z-index: 10000; bottom: 24px; left: 50%; transform: translateX(-50%); max-width: min(640px, calc(100vw - 32px)); padding: 12px 18px; background: var(--macos-bg-card-hover); color: var(--macos-text-primary); border: 1px solid var(--macos-border-subtle); box-shadow: var(--macos-shadow-popup); border-radius: 10px; overflow-wrap: anywhere; }
+.app-toast.error { border-color: var(--macos-danger); }
 </style>

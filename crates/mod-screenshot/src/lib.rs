@@ -1513,15 +1513,15 @@ impl AppModule for ScreenshotModule {
     /// 已实现的快捷键：区域截图、长截图、GIF、截图识字。
     fn default_shortcuts(&self) -> Vec<ShortcutSpec> {
         vec![
-            ShortcutSpec::new(MODULE_ID, ACTION_CAPTURE, "F1", "启动区域截图"),
-            ShortcutSpec::new(MODULE_ID, ACTION_SCROLL, "Shift+F1", "启动滚动长截图"),
-            ShortcutSpec::new(MODULE_ID, ACTION_GIF, "SecondaryMod+F1", "启动 GIF 录制"),
             ShortcutSpec::new(
                 MODULE_ID,
-                ACTION_OCR,
-                "PrimaryMod+Shift+O",
-                "截图并识别文字",
+                ACTION_CAPTURE,
+                "PrimaryMod+SecondaryMod+A",
+                "启动区域截图",
             ),
+            ShortcutSpec::new(MODULE_ID, ACTION_SCROLL, "", "启动滚动长截图"),
+            ShortcutSpec::new(MODULE_ID, ACTION_GIF, "", "启动 GIF 录制"),
+            ShortcutSpec::new(MODULE_ID, ACTION_OCR, "", "截图并识别文字"),
         ]
     }
 

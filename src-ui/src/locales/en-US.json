@@ -199,7 +199,7 @@
   "clipboard": {
     "searchPlaceholder": "Search clipboard history or source app...",
     "clearUnpinned": "Clear Unpinned",
-    "openPopupBtn": "Open Clipboard Popup (⇧⌘V)",
+    "openPopupBtn": "Open Clipboard Popup",
     "colType": "Type",
     "colPreview": "Content Preview",
     "colSource": "Source App",
@@ -232,7 +232,7 @@
   },
   "sticky": {
     "toolbarDesc": "Each open note runs in an independent topmost native window; closing marks is_open = 0 and immediately destroys the WebView.",
-    "newNoteBtn": "New Sticky Note (⇧⌘N)",
+    "newNoteBtn": "New Sticky Note",
     "defaultNewTitle": "New Sticky Note",
     "defaultNewContent": "Supports **Markdown** & LaTeX math: $E=mc^2$\n\n$$\\int_a^b f(x)dx$$",
     "colTitle": "Title",
@@ -280,8 +280,8 @@
     "refreshBtn": "Refresh",
     "refreshTooltip": "Rescan live system windows",
     "restoreAllBtn": "Restore All Pinned",
-    "pinForegroundBtn": "Pin Active Window (⇧⌘P)",
-    "pickerBtn": "Crosshair Picker (⌥⌘P)",
+    "pinForegroundBtn": "Pin Active Window",
+    "pickerBtn": "Crosshair Picker",
     "colId": "Window ID",
     "colApp": "Application",
     "colTitle": "Window Title",
@@ -318,7 +318,7 @@
     "passthroughActiveTooltip": "Operating desktop (clicks pass through, click to resume drawing)",
     "passthroughInactiveTooltip": "Switch to desktop mode (keep ink and interact with underlying apps)",
     "saveTooltip": "Composite screen background and save/copy",
-    "exitTooltip": "Exit Screen Annotation (⇧⌘D)",
+    "exitTooltip": "Exit Screen Annotation",
     "toastSaveSuccess": "Snapshot successfully composited and copied to clipboard",
     "toastSaveFailed": "Failed to composite snapshot",
     "toastSaveFileOnly": "Snapshot saved to file, but copying to clipboard failed",
@@ -351,12 +351,12 @@
       "sessionStateLabel": "Session State",
       "activeState": "Active (Ready)",
       "inactiveState": "Inactive (0 Memory)",
-      "sessionStateSub": "Toggle anytime with ⇧⌘D",
+      "sessionStateSub": "Start or stop anytime",
       "canvasModeLabel": "Interaction Mode",
       "drawingMode": "Ink Drawing Mode",
       "passthroughMode": "Desktop Passthrough Mode",
       "idleMode": "Not annotating",
-      "canvasModeSub": "Quickly switch with ⇧⌘E",
+      "canvasModeSub": "Switch drawing and mouse passthrough",
       "dualWindowLabel": "Dual Window Architecture",
       "dualWindowVal": "Canvas + Independent Toolbar",
       "dualWindowSub": "Resolves passthrough vs clicking conflict",
@@ -572,7 +572,7 @@
   },
   "screenshot": {
     "saveAs": "Save as…",
-    "quickSave": "Quick save",
+    "quickSave": "Save to default folder",
     "quickSaveHint": "Save to the default folder (⌘/Ctrl+Shift+S)",
     "pngFilter": "PNG image",
     "gifFilter": "GIF animation",
@@ -678,14 +678,14 @@
       },
       "guideTitle": "How to use",
       "guide": {
-        "select": "Press F1 or tray \"Capture Region\"; drag to select, click to take the highlighted region, right-click clears the selection, right-click again exits",
+        "select": "Press tray \"Capture Region\"; drag to select, click to take the highlighted region, right-click clears the selection, right-click again exits",
         "smart": "Before selecting, wheel or Tab / Shift+Tab switches between window and full screen",
         "adjust": "Arrow keys move 1 pixel, Shift+arrows resize, hold Space to drag the selection, 8 handles adjust edges",
         "tools": "Keys 1–5 pick rectangle/arrow/mosaic/counter/text; ⌘/Ctrl+Z undo, ⌘/Ctrl+Shift+Z redo",
         "export": "Enter, ⌘/Ctrl+C or double-click copies; ⌘/Ctrl+S saves (never overwrites); F3 pins; Esc cancels",
         "color": "The magnifier follows the cursor, WASD or arrows move one pixel; C copies HEX, Shift+C copies RGB",
         "pin": "Pins: drag to move, wheel to zoom, Shift+wheel for opacity, double-click to collapse, right-click keeps the toolbar, Esc closes",
-        "ocr": "⌘/Ctrl+Shift+O or \"Capture text\" enters text mode, press Enter after selecting; the toolbar OCR button works anytime, Esc closes the result panel first"
+        "ocr": "\"Capture text\" enters text mode, press Enter after selecting; the toolbar OCR button works anytime, Esc closes the result panel first"
       },
       "resultPin": "Pinned to screen ({size})",
       "resultCopy": "Copied as image ({size})",
@@ -984,5 +984,10 @@
       "probe_error": "Could not complete the check; retry",
       "not_checked": "System availability has not been checked"
     }
+  },
+  "feedback": {
+    "saved": "Saved to",
+    "settingsSaved": "Settings saved",
+    "saveSuccess": "Saved"
   }
 }

@@ -180,6 +180,19 @@ impl DesktopHost {
                 Ok(json!({ "id": id, "markdown": markdown }))
             }
 
+            "sticky_save_markdown" => {
+                let id = args.get("id").and_then(Value::as_str).unwrap_or("");
+                let path = args
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| CoreError::Config("Missing save path".into()))?;
+                let markdown = self.sticky_note.export_markdown(ctx, id)?;
+                self.save_paths()
+                    .consume(Path::new(path), crate::SaveKind::Markdown)?;
+                mod_screenshot::export::write_exact(Path::new(path), markdown.as_bytes())?;
+                Ok(json!({"id":id, "saved_path":path}))
+            }
+
             _ => Err(CoreError::Config(format!("Unknown IPC command: {}", cmd))),
         }
     }

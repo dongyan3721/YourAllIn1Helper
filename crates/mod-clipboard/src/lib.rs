@@ -641,7 +641,7 @@ impl AppModule for ClipboardModule {
         vec![ShortcutSpec::new(
             "clipboard",
             "clipboard:toggle_popup",
-            "PrimaryMod+Shift+V",
+            "PrimaryMod+SecondaryMod+D",
             "呼出/关闭剪切板历史弹窗",
         )]
     }

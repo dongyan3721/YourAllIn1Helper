@@ -33,6 +33,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { invokeIpc, type KernelStatus, type ShortcutPreference, type ShortcutCheck } from '../api/ipc';
 import { t, currentLocale, LOCALE_OPTIONS, setLocale, type SupportedLocale } from '../utils/i18n';
+import { notify } from '../utils/toast';
 import { currentThemeMode, currentAccent, isDarkActive, ACCENT_PALETTE, setThemeMode, setAccentColor, type ThemeMode } from '../utils/theme';
 import { FEATURES, shortcutFromEvent, displayRecordedShortcut } from '../utils/features';
 defineProps<{ status: KernelStatus | null }>();
@@ -149,6 +150,7 @@ async function saveShortcut(shortcut: ShortcutPreference, hotkey: string | null)
     shortcuts.value = result.shortcuts;
     delete draft.value[shortcut.spec.action_id];
     notice.value = t('desktop.shortcutSaved');
+    notify(notice.value);
     emit('changed');
   } catch (err) { showError(err); }
   finally { saving.value = null; }

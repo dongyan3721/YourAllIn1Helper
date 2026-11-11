@@ -155,6 +155,9 @@ impl AppKernelBuilder {
                 .shortcut_overrides
                 .get(&spec.action_id)
                 .map(String::as_str);
+            if spec.is_unassigned(user_override) {
+                continue;
+            }
             if let Err(err) = shortcut_registry.register(spec, user_override) {
                 warn!("Shortcut registration conflict or error (skipped): {}", err);
             }
@@ -219,16 +222,21 @@ impl AppKernel {
 
     /// Triggers a shortcut by its `action_id` (e.g., `"screenshot:capture"`, `"clipboard:toggle_popup"`).
     pub fn trigger_action(&self, action_id: &str) -> CoreResult<()> {
-        let reg = self
+        // UI/tray actions also work when their optional global shortcut is unset.
+        let spec = self
             .context
             .shortcut_registry
             .get_by_action(action_id)
+            .map(|r| r.spec)
+            .or_else(|| {
+                self.registry
+                    .collect_shortcut_preferences()
+                    .into_iter()
+                    .find(|s| s.action_id == action_id)
+            })
             .ok_or_else(|| CoreError::ShortcutActionNotFound(action_id.to_string()))?;
-        self.registry.dispatch_shortcut_action(
-            &reg.spec.module_id,
-            &reg.spec.action_id,
-            &self.context,
-        )
+        self.registry
+            .dispatch_shortcut_action(&spec.module_id, &spec.action_id, &self.context)
     }
 
     /// Triggers a shortcut by its physical or logical key combination (e.g., `"F1"`, `"Ctrl+Shift+V"`).

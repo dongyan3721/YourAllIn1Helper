@@ -338,6 +338,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { invokeIpc } from '../api/ipc';
 import { t } from '../utils/i18n';
+import { notify } from '../utils/toast';
 import Icons from './Icons.vue';
 
 type ImageFormat = 'png' | 'jpeg' | 'webp' | 'bmp' | 'ico';
@@ -531,6 +532,7 @@ async function saveConfig() {
     outputDir.value = config.output_dir || '';
     maxConcurrentJobs.value = config.max_concurrent_jobs;
     showNotice(t('media.output.saved'), 'success');
+    notify(t('feedback.settingsSaved'));
   } catch (error) {
     showNotice(t('media.errors.saveConfig', { message: errorMessage(error) }), 'error');
   } finally {
