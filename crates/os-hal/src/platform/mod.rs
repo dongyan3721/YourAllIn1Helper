@@ -38,6 +38,8 @@ pub struct NativeOsHal {
     paste_triggers: Arc<AtomicUsize>,
     /// 已登记的原生捕获排除窗口。Windows 为 64 位 HWND，macOS 不使用持久排除。
     capture_exclusion: Arc<parking_lot::Mutex<Option<WindowHandleId>>>,
+    #[cfg(target_os = "windows")]
+    live_capture_region: Arc<parking_lot::Mutex<Option<(WindowHandleId, app_core::SelectionBox)>>>,
     /// 锁屏/息屏/睡眠事件观察者；平台无关包装，业务模块只看到 trait。
     usage_events: usage::NativeUsageEvents,
 }

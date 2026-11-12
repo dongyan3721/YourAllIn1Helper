@@ -112,7 +112,8 @@ impl ScreenCapturer for NativeOsHal {
             }
             if let Some(previous) = registered.filter(|previous| Some(*previous) != next) {
                 // 旧窗口可能已销毁；不让失效句柄妨碍会话收尾。
-                let _ = set_windows_capture_exclusion(previous, false);
+                let _ = restore_windows_capture_overlay(previous);
+                self.live_capture_region.lock().take();
             }
         }
         *registered = next;
@@ -131,15 +132,31 @@ impl ScreenCapturer for NativeOsHal {
                     "Windows 实时捕获的遮罩排除未就绪，请取消截图后重试".to_string(),
                 )
             })?;
-            set_windows_capture_exclusion(window, true)?;
+            hwnd_from_window_handle(window)?;
         }
+        Ok(())
+    }
+
+    fn prepare_live_capture_region(&self, bounds: SelectionBox) -> HalResult<()> {
+        self.prepare_live_capture()?;
+        #[cfg(target_os = "windows")]
+        {
+            let registered = self.capture_exclusion.lock();
+            let window = registered.ok_or_else(|| {
+                HalError::NativeCallFailed("Windows 实时捕获的遮罩排除未就绪".into())
+            })?;
+            set_windows_capture_hole(window, bounds)?;
+            *self.live_capture_region.lock() = Some((window, bounds));
+        }
+        let _ = bounds;
         Ok(())
     }
 
     fn finish_live_capture(&self) -> HalResult<()> {
         #[cfg(target_os = "windows")]
         if let Some(window) = self.active_capture_exclusion() {
-            set_windows_capture_exclusion(window, false)?;
+            restore_windows_capture_overlay(window)?;
+            self.live_capture_region.lock().take();
         }
         Ok(())
     }
@@ -164,8 +181,11 @@ impl ScreenCapturer for NativeOsHal {
         {
             #[cfg(target_os = "windows")]
             if let Some(window) = exclusion {
-                // 注册时已设置；每帧重申一次，避免遮罩被其他代码重置后仍录到黑帧。
-                set_windows_capture_exclusion(window, true)?;
+                if *self.live_capture_region.lock() != Some((window, bounds)) {
+                    return Err(HalError::NativeCallFailed(
+                        "实时抓屏选区尚未从遮罩中移除，请重新开始录制".into(),
+                    ));
+                }
             }
             let _ = exclusion;
             self.capture_region(bounds)
@@ -207,21 +227,82 @@ fn hwnd_from_window_handle(handle: WindowHandleId) -> HalResult<windows::Win32::
     ))
 }
 
-/// 让遮罩窗口从抓屏结果中彻底消失，露出底下真实画面。
+/// 将全局物理像素转换为无边框遮罩的窗口坐标，支持负坐标副屏。
 #[cfg(target_os = "windows")]
-fn set_windows_capture_exclusion(handle: WindowHandleId, exclude: bool) -> HalResult<()> {
-    use windows::Win32::UI::WindowsAndMessaging::{
-        SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WDA_NONE,
-    };
+fn live_hole_rect(
+    bounds: SelectionBox,
+    window: windows::Win32::Foundation::RECT,
+) -> HalResult<windows::Win32::Foundation::RECT> {
+    use windows::Win32::Foundation::RECT;
+    let left = bounds.x as i64 - window.left as i64;
+    let top = bounds.y as i64 - window.top as i64;
+    let right = left + bounds.width as i64;
+    let bottom = top + bounds.height as i64;
+    if bounds.width == 0
+        || bounds.height == 0
+        || left < 0
+        || top < 0
+        || right > window.right as i64 - window.left as i64
+        || bottom > window.bottom as i64 - window.top as i64
+    {
+        return Err(HalError::NativeCallFailed(
+            "实时抓屏选区超出遮罩窗口范围".into(),
+        ));
+    }
+    Ok(RECT {
+        left: left as i32,
+        top: top as i32,
+        right: right as i32,
+        bottom: bottom as i32,
+    })
+}
 
+#[cfg(target_os = "windows")]
+fn restore_windows_capture_overlay(handle: WindowHandleId) -> HalResult<()> {
+    use windows::Win32::Graphics::Gdi::SetWindowRgn;
     let hwnd = hwnd_from_window_handle(handle)?;
-    let affinity = if exclude {
-        WDA_EXCLUDEFROMCAPTURE
-    } else {
-        WDA_NONE
+    unsafe {
+        if SetWindowRgn(hwnd, None, true) == 0 {
+            return Err(native_error(windows::core::Error::from_thread()));
+        }
+    }
+    Ok(())
+}
+
+/// 真正裁掉录制选区，避免 GDI 抓到全屏 DComp/WebView2 遮罩的冻结帧或黑面。
+/// 不使用 WDA_EXCLUDEFROMCAPTURE，因此控制 UI 在远程/虚拟显示器上也保持可见。
+#[cfg(target_os = "windows")]
+fn set_windows_capture_hole(handle: WindowHandleId, bounds: SelectionBox) -> HalResult<()> {
+    use windows::Win32::{
+        Foundation::RECT,
+        Graphics::{
+            Dwm::DwmFlush,
+            Gdi::{CombineRgn, CreateRectRgn, DeleteObject, SetWindowRgn, RGN_DIFF, RGN_ERROR},
+        },
+        UI::WindowsAndMessaging::GetWindowRect,
     };
-    // SAFETY: 句柄由 Tauri 拥有且属于当前进程；WDA 只影响抓屏，不改变窗口可见性。
-    unsafe { SetWindowDisplayAffinity(hwnd, affinity) }.map_err(native_error)
+    let hwnd = hwnd_from_window_handle(handle)?;
+    unsafe {
+        let mut window = RECT::default();
+        GetWindowRect(hwnd, &mut window).map_err(native_error)?;
+        let hole = live_hole_rect(bounds, window)?;
+        let outer = CreateRectRgn(0, 0, window.right - window.left, window.bottom - window.top);
+        let inner = CreateRectRgn(hole.left, hole.top, hole.right, hole.bottom);
+        if outer.is_invalid() || inner.is_invalid() {
+            let _ = DeleteObject(outer.into());
+            let _ = DeleteObject(inner.into());
+            return Err(native_error(windows::core::Error::from_thread()));
+        }
+        let combined = CombineRgn(Some(outer), Some(outer), Some(inner), RGN_DIFF);
+        let _ = DeleteObject(inner.into());
+        if combined == RGN_ERROR || SetWindowRgn(hwnd, Some(outer), true) == 0 {
+            let _ = DeleteObject(outer.into());
+            return Err(native_error(windows::core::Error::from_thread()));
+        }
+        // 成功后 outer 归系统所有；等待合成完成，首帧也不应是旧的冻结遮罩。
+        let _ = DwmFlush();
+    }
+    Ok(())
 }
 
 impl NativeOsHal {

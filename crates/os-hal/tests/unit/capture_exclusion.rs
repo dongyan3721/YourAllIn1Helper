@@ -32,3 +32,59 @@ fn windows_hwnd_keeps_all_64_bits() {
     assert_eq!(hwnd.0 as usize as WindowHandleId, handle);
     assert!(hwnd_from_window_handle(0).is_err());
 }
+
+#[cfg(target_os = "windows")]
+#[test]
+fn live_hole_uses_physical_pixels_on_negative_origin_monitors() {
+    use windows::Win32::Foundation::RECT;
+    let window = RECT {
+        left: -2560,
+        top: -120,
+        right: 0,
+        bottom: 1320,
+    };
+    let hole = live_hole_rect(
+        SelectionBox {
+            x: -2400,
+            y: 40,
+            width: 640,
+            height: 480,
+        },
+        window,
+    )
+    .unwrap();
+    assert_eq!(
+        (hole.left, hole.top, hole.right, hole.bottom),
+        (160, 160, 800, 640)
+    );
+    assert!(live_hole_rect(
+        SelectionBox {
+            x: -2561,
+            y: 0,
+            width: 640,
+            height: 480
+        },
+        window
+    )
+    .is_err());
+    assert!(live_hole_rect(
+        SelectionBox {
+            x: -100,
+            y: 0,
+            width: 640,
+            height: 480
+        },
+        window
+    )
+    .is_err());
+    assert!(live_hole_rect(
+        SelectionBox {
+            x: -2000,
+            y: 0,
+            width: 0,
+            height: 480
+        },
+        window
+    )
+    .is_err());
+}

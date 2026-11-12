@@ -3,6 +3,8 @@ use super::*;
 #[cfg(target_os = "windows")]
 mod shortcut_conflicts_smoke;
 #[cfg(target_os = "windows")]
+mod gif_capture_smoke;
+#[cfg(target_os = "windows")]
 #[path = "translator_bounds_smoke.rs"]
 mod translator_bounds_smoke;
 // Tauri 的 destroy 会异步提交到主线程，必须观察实际窗口移除后再断言。
@@ -195,6 +197,10 @@ pub(super) fn run_ui_smoke_checks(app: AppHandle, keep_open: bool) {
         let host = app.state::<Arc<DesktopHost>>().inner().clone();
         let data_dir = host.kernel().context().app_data_dir.clone();
         let result = (|| -> anyhow::Result<()> {
+            #[cfg(target_os = "windows")]
+            if std::env::var_os("ALL_IN_ONE_GIF_SMOKE_ONLY").is_some() {
+                return gif_capture_smoke::check(&app, &host);
+            }
             let dashboard = host.invoke_ipc("kernel_open_dashboard", serde_json::json!({}));
             anyhow::ensure!(
                 dashboard.ok && app.get_webview_window("dashboard").is_some(),

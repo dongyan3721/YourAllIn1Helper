@@ -911,7 +911,7 @@ impl ScreenshotModule {
             },
         };
         self.capturer
-            .prepare_live_capture()
+            .prepare_live_capture_region(capture_bounds)
             .map_err(|error| internal(error.to_string()))?;
         if let Err(error) = ctx.window_pool.open_window(spec) {
             let _ = self.capturer.finish_live_capture();
@@ -1201,7 +1201,7 @@ impl ScreenshotModule {
         let save_dir = self.save_directory(ctx, &settings);
         let sink = self.event_sink.read().clone();
         self.capturer
-            .prepare_live_capture()
+            .prepare_live_capture_region(capture_bounds)
             .map_err(|error| internal(error.to_string()))?;
         let recording = gif::GifRecordingSession::new(
             session_id.to_string(),
@@ -1540,6 +1540,15 @@ impl AppModule for ScreenshotModule {
             ACTION_OCR => (None, ocr::CaptureIntent::Ocr),
             _ => return Ok(()),
         };
+        // 全屏录制会裁掉整个遮罩，不能依赖选区之外的控制按钮。
+        // 再按截图/GIF 快捷键或点击托盘“截图”结束录制，保留当前会话和预览。
+        if matches!(action_id, ACTION_CAPTURE | ACTION_GIF)
+            && self.active_gif.read().as_ref().is_some_and(|session| session.status().is_recording)
+        {
+            self.stop_gif(ctx)?;
+            ctx.window_pool.set_window_visible(OVERLAY_LABEL, true)?;
+            return Ok(());
+        }
         match self.start_capture_with(ctx, None, false, mode, intent) {
             Ok(_) => Ok(()),
             Err(error) => {

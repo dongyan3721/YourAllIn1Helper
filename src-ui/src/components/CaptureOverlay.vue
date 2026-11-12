@@ -206,7 +206,7 @@
       </div>
     </div>
 
-    <div v-if="liveMode === 'gif'" class="capture-toolbar live-bar" :style="toolbarStyle" @pointerdown.stop>
+    <div v-if="liveMode === 'gif'" ref="toolbarEl" class="capture-toolbar live-bar" :style="toolbarStyle" @pointerdown.stop>
       <span class="rec-dot"></span>
       <span>{{ gifClock }}</span>
       <span>{{ gifFrames }} {{ t('screenshot.gif.frames') }}</span>
@@ -443,6 +443,7 @@ const idleHint = computed(() => {
 });
 
 const cursorClass = computed(() => {
+  if (liveMode.value || gifPreviewUrl.value) return 'cursor-default';
   if (spaceHeld.value && selection.value) return 'cursor-grab';
   if (dragging.value?.kind === 'move') return 'cursor-grabbing';
   if (selection.value && !tool.value && containsPoint(selection.value, probe.value)) return 'cursor-move';
@@ -1077,6 +1078,7 @@ async function startGifRecording() {
     return;
   }
   if (textEditor.value) commitText();
+  exporting.value = true;
   try {
     const png = await renderOverlayPng(sel);
     await screenshotApi.gifStart(session.value.session_id, sel, {
@@ -1091,18 +1093,30 @@ async function startGifRecording() {
     setLiveHole(true);
     requestRender();
     beginLivePoll();
+    await measureToolbar();
   } catch (err: any) {
     setLiveHole(false);
     showToast(err?.message || String(err), 'error');
+  } finally {
+    exporting.value = false;
   }
 }
 
 async function stopGifRecording() {
   if (liveMode.value !== 'gif') return;
+  // 先补回 Canvas 底图，原生窗口恢复完整区域时不会露出 WebView 的黑色底面。
+  // 原生洞口此时仍在，编码中的最后一帧依然抓取真实桌面。
+  setLiveHole(false);
   try {
     const status = await screenshotApi.gifStop();
     gifElapsedMs.value = status.duration_ms;
     gifFrames.value = status.frame_count;
+    // 大选区的量化可能超过后端的同步等待时限，继续轮询到编码完成。
+    // 不能退回截图界面，否则用户既看不到进度，也拿不到最终动画。
+    if (status.is_recording) {
+      beginLivePoll();
+      return;
+    }
     if (status.pending_path) await showGifPreview(status.auto_stopped);
     else {
       stopLiveTimer();
@@ -1111,6 +1125,7 @@ async function stopGifRecording() {
       if (status.error) showToast(status.error, 'error');
     }
   } catch (err: any) {
+    setLiveHole(true);
     showToast(err?.message || String(err), 'error');
   }
 }
@@ -1435,6 +1450,8 @@ onUnmounted(() => {
 }
 .capture-root.live-hole { background: transparent !important; }
 .cursor-cross { cursor: crosshair; }
+.cursor-default { cursor: default; }
+.capture-toolbar.live-bar { flex-direction: row; align-items: center; gap: 12px; color: #f5f5f7; white-space: nowrap; }
 .cursor-move { cursor: move; }
 .cursor-grab { cursor: grab; }
 .cursor-grabbing { cursor: grabbing; }

@@ -19,7 +19,7 @@ pub(crate) fn present_capture_overlay(app: &AppHandle, overlay: &WebviewWindow) 
     Ok(())
 }
 
-/// Windows：登记遮罩 HWND，实时采集开始时才启用 WDA_EXCLUDEFROMCAPTURE。
+/// Windows：登记遮罩 HWND，实时采集开始时由原生窗口裁剪露出选区。
 /// 普通选区与结果预览保持正常可捕获；登记失败会由实时采集预检明确报错。
 #[cfg(target_os = "windows")]
 fn register_windows_capture_exclusion(app: &AppHandle, overlay: &WebviewWindow) {

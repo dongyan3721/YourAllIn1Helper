@@ -32,8 +32,8 @@ pub trait ScreenCapturer: Send + Sync + 'static {
 
     /// 登记一个原生窗口，使后续区域抓取不再包含它的内容。
     ///
-    /// Windows 使用 `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)`：遮罩从抓屏中消失，
-    /// 露出底下真实画面；macOS 的排除由 [`Self::capture_region_excluding`] 的窗口号参数完成。
+    /// Windows 在实时采集区域裁掉遮罩的原生窗口区域，露出底层动态桌面；
+    /// macOS 的排除由 [`Self::capture_region_excluding`] 的窗口号参数完成。
     /// 默认实现不维护原生状态，调用方仍可显式传入排除标识。
     fn set_capture_exclusion(&self, _handle: Option<WindowHandleId>) -> HalResult<()> {
         Ok(())
@@ -48,6 +48,11 @@ pub trait ScreenCapturer: Send + Sync + 'static {
     /// 测试适配器及不要求预登记的平台保持默认行为。
     fn prepare_live_capture(&self) -> HalResult<()> {
         Ok(())
+    }
+
+    /// 在首帧采集前让选区真正露出桌面，而不是只清空 WebView 的 CSS/Canvas。
+    fn prepare_live_capture_region(&self, _bounds: SelectionBox) -> HalResult<()> {
+        self.prepare_live_capture()
     }
 
     /// 实时采集结束后恢复窗口的正常捕获；保留登记，允许当前选区重新录制。

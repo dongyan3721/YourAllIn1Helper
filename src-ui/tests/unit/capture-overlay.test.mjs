@@ -7,7 +7,7 @@ import ts from 'typescript';
 import * as geometry from '../../src/utils/screenshot/geometry.ts';
 import * as annotations from '../../src/utils/screenshot/annotations.ts';
 
-async function mountOverlay({ brokenFrame = false } = {}) {
+async function mountOverlay({ brokenFrame = false, gifStopStatus } = {}) {
   const source = await readFile(new URL('../../src/components/CaptureOverlay.vue', import.meta.url), 'utf8');
   const script = source.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1];
   const parsed = ts.createSourceFile('CaptureOverlay.ts', script, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
@@ -27,11 +27,12 @@ async function mountOverlay({ brokenFrame = false } = {}) {
   const context = vm.createContext({
     ...geometry, ...annotations,
     window: { innerWidth: 2, innerHeight: 2, addEventListener() {} },
-    document: { body: { classList: { add() {} } } },
+    document: { body: { classList: { add() {}, toggle() {} } } },
     ref: (value) => ({ value }), shallowRef: (value) => ({ value }), reactive: (value) => value,
     computed: (get) => ({ get value() { return get(); } }), watch() {},
     onMounted: (callback) => { mounted = callback; }, onUnmounted() {},
     nextTick: async () => { calls.push('dom-flush'); },
+    setInterval: () => { calls.push('poll'); return 123; }, clearInterval() {},
     // 模拟 WebKit 隐藏窗口：记录 rAF，但绝不执行；不能靠定时器掩盖互相等待。
     requestAnimationFrame: (callback) => animationFrames.push(callback),
     ImageData: class { constructor(pixels, width, height) { Object.assign(this, { pixels, width, height }); } },
@@ -42,12 +43,13 @@ async function mountOverlay({ brokenFrame = false } = {}) {
       }),
       overlayReady: async (id) => { assert.equal(id, 'hidden-session'); calls.push('present'); },
       cancel: async () => { calls.push('cancel'); },
+      gifStop: async () => { calls.push('gif-stop'); return gifStopStatus; },
     },
     fetchFrozenFrame: async () => new ArrayBuffer(brokenFrame ? 0 : 16),
     t: (key) => key, canvas, calls,
   });
   vm.runInContext(code, context);
-  vm.runInContext('baseCanvas.value = canvas; uiCanvas.value = canvas; rootEl.value = { focus() { calls.push("focus"); } };', context);
+  vm.runInContext('baseCanvas.value = canvas; uiCanvas.value = canvas; rootEl.value = { classList: { toggle() {} }, focus() { calls.push("focus"); } };', context);
   let completed = false;
   const initialization = mounted().then(() => { completed = true; });
   // 只推进普通 JS 任务；正确初始化不应等待隐藏窗口的动画帧。
@@ -75,4 +77,17 @@ test('invalid frozen frame shows a visible error instead of leaving a hidden ses
   assert.equal(overlay.get('loadError.value'), 'screenshot.overlay.frameSizeMismatch');
   assert.equal(overlay.get('ready.value'), false);
   assert.deepEqual(overlay.calls, ['present']);
+});
+
+test('slow GIF finalization stays in recording mode and polls instead of returning to screenshot tools', async () => {
+  const overlay = await mountOverlay({ gifStopStatus: { is_recording: true, frame_count: 12, duration_ms: 1200 } });
+  await overlay.initialization;
+  overlay.get("liveMode.value = 'gif'");
+  assert.equal(overlay.get('cursorClass.value'), 'cursor-default');
+  await overlay.get('stopGifRecording()');
+  assert.ok(overlay.calls.lastIndexOf('pixels') < overlay.calls.indexOf('gif-stop'), 'restore frozen canvas before the native overlay region is restored');
+  assert.equal(overlay.get('liveMode.value'), 'gif');
+  assert.equal(overlay.get('gifFrames.value'), 12);
+  assert.equal(overlay.get('liveTimer'), 123);
+  assert.equal(overlay.get('gifPreviewUrl.value'), null);
 });

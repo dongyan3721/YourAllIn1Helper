@@ -221,7 +221,10 @@ fn test_gif_full_lifecycle_and_file_creation() {
 
     std::thread::sleep(Duration::from_millis(200));
 
-    let stop_status = module.stop_gif(ctx).expect("stop_gif");
+    kernel.trigger_action(mod_screenshot::ACTION_CAPTURE).expect("screenshot shortcut stops active GIF");
+    assert_eq!(module.session_info(ctx, None).unwrap().session_id, session_info.session_id,
+        "stopping through the shortcut must not discard the recording and create another screenshot");
+    let stop_status = module.gif_status().expect("gif_status");
     assert!(!stop_status.is_recording);
     assert!(stop_status.pending_path.is_some());
     assert!(stop_status.saved_path.is_none());
