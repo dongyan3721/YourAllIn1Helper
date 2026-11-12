@@ -14,7 +14,7 @@
 
 ## 版本与安装身份
 
-同步修改工作区 Cargo 版本、两个 package.json 和 tauri.conf.json 的应用版本。应用使用 SemVer（当前 `0.1.1-beta`）；MSI 使用三段数字版本（当前 `0.1.1`）。后续更新须递增 MSI 三段数字版本，例如 `0.1.2-beta` 配合 `0.1.2`；不要仅递增 beta 后缀后推送自动更新。
+同步修改工作区 Cargo 版本、两个 package.json 和 tauri.conf.json 的应用版本。应用使用 SemVer（当前 `0.1.3-beta`）；MSI 使用三段数字版本（当前 `0.1.3`）。后续更新须递增 MSI 三段数字版本，例如 `0.1.2-beta` 配合 `0.1.2`；不要仅递增 beta 后缀后推送自动更新。
 
 以下身份必须保持稳定：
 
@@ -28,10 +28,10 @@
 ## 准备、推送与发布
 
 ```powershell
-python scripts/publish_windows_release.py --prepare "target/release/bundle/msi/<实际文件名>.msi" --notes docs/releases/0.1.1-beta.md
+python scripts/publish_windows_release.py --prepare "target/release/bundle/msi/<实际文件名>.msi" --notes docs/releases/0.1.3-beta.md
 ```
 
-这会生成 `dist/v0.1.1-beta` 下的 MSI、签名、校验和、公开公钥、说明和 `latest.json`，同时更新受版本控制的 `updates/windows-beta.json`。检查文件和签名、完成回归和升级兼容性验证后，将代码及 feed 提交在发布分支，推送该分支及 `v0.1.1-beta` 标签。先不要更新 master 上的 feed。
+这会生成 `dist/v0.1.3-beta` 下的 MSI、签名、校验和、公开公钥、说明和 `latest.json`，同时更新受版本控制的 `updates/windows-beta.json`。检查文件和签名、完成回归和升级兼容性验证后，将代码及 feed 提交在发布分支，推送该分支及 `v0.1.3-beta` 标签。先不要更新 master 上的 feed。
 
 ```powershell
 python scripts/publish_windows_release.py --publish --finalize

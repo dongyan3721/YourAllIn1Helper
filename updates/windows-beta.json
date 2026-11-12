@@ -1,11 +1,11 @@
 {
-  "version": "0.1.1-beta",
-  "notes": "# All-in-One Toolbox 0.1.1.beta\n\nWindows x64 beta 修复版本，重点解决 GIF 录制黑屏、静止画面，以及网易 UU 远程虚拟屏中的录制问题。\n\n## 修复\n\n- GIF 录制改为原生窗口区域裁剪，直接捕获选区下方的动态桌面，避免把全屏冻结遮罩录入 GIF；不再依赖会影响远程抓屏的窗口内容保护标记。\n- 修复停止录制时编码尚未完成，却退回普通截图界面的问题；等待编码完成后进入动画预览。\n- 修复录制时仍显示十字光标、控制条竖排和文字不清晰的问题。\n- 全屏录制中，再次触发截图/GIF 快捷键，或点击托盘“截图”，会结束录制并保留当前预览。截图默认快捷键为 Ctrl+Alt+A，以偏好设置中的实际配置为准。\n- GIF 和长截图共用原生选区处理，支持负坐标副屏，并在采集结束后恢复遮罩。\n\n## 安装与升级\n\n下载 `All-in-One-Toolbox_0.1.1-beta_windows_x64.msi`。新用户直接安装；已有版本也可正常退出软件后运行 MSI 覆盖升级。安装范围、应用标识和数据目录保持不变，保留原有设置、历史记录、便笺和密码本。\n\n已安装 0.1.0-beta 的用户可通过应用后台自动更新升级：启动后约 15 秒首次检查，此后每 6 小时检查；后台下载并校验签名后，在用户正常“退出”时静默安装，下次打开生效。关闭主窗口可能仅隐藏到托盘。\n\n## 验证\n\n- 截图/GIF、系统适配、生命周期和前端回归测试通过。\n- 真实 WebView2 动画经区域与全屏录制后解码验证，帧中包含持续变化的桌面像素。\n- 用户已确认此前报告的问题修复。\n\n本版继续使用每用户 Windows x64 MSI 及独立 updater 签名，未配置 Authenticode 发布者证书。下载附件中的 `SHA256SUMS.txt` 可用于校验文件。媒体处理仍需自行安装 FFmpeg/FFprobe。\n",
-  "pub_date": "2026-11-12T05:50:09.327123Z",
+  "version": "0.1.3-beta",
+  "notes": "# All-in-One Toolbox 0.1.3.beta\n\nWindows x64 beta 版本，密码本新增类似 Google Authenticator 的一次性验证码。\n\n## 新增\n\n- 密码本条目的「TOTP 密钥」支持 Base32 密钥和 `otpauth://totp`、`otpauth://hotp` 链接，覆盖时间型（TOTP）与计数器型（HOTP），支持 SHA-1/256/512、6–8 位验证码和自定义周期。\n- 打开条目即可看到当前验证码：时间型带倒计时并自动换新，最后 5 秒变红；计数器型点「下一个」才推进计数，新的计数会随条目加密保存，重复点击不会跳号。\n- 验证码在后端解密密钥后计算，密钥不会因此额外发送到界面；列表里用盾牌图标标记已配置验证码的条目。\n- 「复制验证码」使用与复制密码相同的安全剪贴板，30 秒后仅清除仍未被改动的内容。\n- 密钥无效时只在验证码卡片内提示，不会锁定密码本。\n\n## 安装与升级\n\n下载 `All-in-One-Toolbox_0.1.3-beta_windows_x64.msi`。新用户直接安装；已有版本也可正常退出软件后运行 MSI 覆盖升级。安装范围、应用标识和数据目录保持不变，保留原有设置、历史记录、便笺和密码本，已保存的条目无需迁移。\n\n已安装 0.1.1-beta 的用户可通过应用后台自动更新升级：启动后约 15 秒首次检查，此后每 6 小时检查；后台下载并校验签名后，在用户正常“退出”时静默安装，下次打开生效。关闭主窗口可能仅隐藏到托盘。\n\n## 验证\n\n- 验证码算法通过 RFC 4226（HOTP）与 RFC 6238（TOTP，SHA-1/256/512）官方测试向量。\n- 密码本服务、IPC 锁定、前端面板自动化测试通过。\n- 尚未用真实服务商的密钥做人工对码验收；云端备份与导入导出暂未提供。\n\n本版继续使用每用户 Windows x64 MSI 及独立 updater 签名，未配置 Authenticode 发布者证书。下载附件中的 `SHA256SUMS.txt` 可用于校验文件。媒体处理仍需自行安装 FFmpeg/FFprobe。\n",
+  "pub_date": "2026-11-12T06:49:38.623752Z",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/dongyan3721/YourAllIn1Helper/releases/download/v0.1.1-beta/All-in-One-Toolbox_0.1.1-beta_windows_x64.msi",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTc0xaN0VobThidzJHL2VIRDlPYTVZcTBNa0ZyMW5mbDVyRGU3aEJ0V2tMUGdCb3ZydmJRUnZSclhjb0hYL2ZsemNPTExaaEtidDdkTTA1bHBFUnk5ay8wR1JvNEdKSVF3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NDYyNTMzCWZpbGU6QWxsLWluLU9uZSBUb29sYm94XzAuMS4xLWJldGFfeDY0X3poLUNOLm1zaQl2ZXJzaW9uOjAuMS4xLWJldGEKRVI2Y1AvdGRwSnFuVnBuU3VSMitzWUFjeDZEaVgyWkNVWlZ0SElKQnUrWFRhWFoyUldGL3F5Y2NsZ29oeXAzejQxTmtIRnV6N2kzVkdla0x6ZE5rQWc9PQo="
+      "url": "https://github.com/dongyan3721/YourAllIn1Helper/releases/download/v0.1.3-beta/All-in-One-Toolbox_0.1.3-beta_windows_x64.msi",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTc0xaN0VobThidzJpamFTaGdtTzFJbWlrK3dJMFYzUnlOYWhDQkh6d2pEbFZxNFhmK3RjQjZ0Z2ZZSUI3WnBlbHRFV2V0Wm15c0s0TEJ2QlhFbUI5WnA1SktSeittRlFrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NDY2MTY0CWZpbGU6QWxsLWluLU9uZSBUb29sYm94XzAuMS4zLWJldGFfeDY0X3poLUNOLm1zaQl2ZXJzaW9uOjAuMS4zLWJldGEKODRqYUx3N2dWdVhEamJwdGZXR3VKeER6SzNNaEV3QU9MbGpBcnpiTDVNNlJBMFpYTzROM1FvcGd4T2RXbHZ5dml3a0FGSEpCNWtLd29SMjNSU1VLQ2c9PQo="
     }
   }
 }
