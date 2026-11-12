@@ -14,7 +14,7 @@
 
 ## 版本与安装身份
 
-同步修改工作区 Cargo 版本、两个 package.json 和 tauri.conf.json 的应用版本。应用使用 SemVer（本版 `0.1.0-beta`）；MSI 使用三段数字版本（本版 `0.1.0`）。后续更新须递增 MSI 三段数字版本，例如 `0.1.1-beta` 配合 `0.1.1`；不要仅递增 beta 后缀后推送自动更新。
+同步修改工作区 Cargo 版本、两个 package.json 和 tauri.conf.json 的应用版本。应用使用 SemVer（当前 `0.1.1-beta`）；MSI 使用三段数字版本（当前 `0.1.1`）。后续更新须递增 MSI 三段数字版本，例如 `0.1.2-beta` 配合 `0.1.2`；不要仅递增 beta 后缀后推送自动更新。
 
 以下身份必须保持稳定：
 
@@ -28,16 +28,18 @@
 ## 准备、推送与发布
 
 ```powershell
-python scripts/publish_windows_release.py --prepare "target/release/bundle/msi/<实际文件名>.msi" --notes docs/releases/0.1.0-beta.md
+python scripts/publish_windows_release.py --prepare "target/release/bundle/msi/<实际文件名>.msi" --notes docs/releases/0.1.1-beta.md
 ```
 
-这会生成 `dist/v0.1.0-beta` 下的 MSI、签名、校验和、公开公钥、说明和 `latest.json`，同时更新受版本控制的 `updates/windows-beta.json`。检查文件和签名、完成安装/覆盖升级测试后，将代码及 feed 提交并推送到 master，建立并推送 `v0.1.0-beta` 标签。
+这会生成 `dist/v0.1.1-beta` 下的 MSI、签名、校验和、公开公钥、说明和 `latest.json`，同时更新受版本控制的 `updates/windows-beta.json`。检查文件和签名、完成回归和升级兼容性验证后，将代码及 feed 提交在发布分支，推送该分支及 `v0.1.1-beta` 标签。先不要更新 master 上的 feed。
 
 ```powershell
 python scripts/publish_windows_release.py --publish --finalize
 ```
 
-发布脚本通过现有 Git Credential Manager 或 `GITHUB_TOKEN` 认证，不输出凭据；先创建草稿、上传附件，再公开为 prerelease。标签必须指向当前提交。脚本不会替换已公开 release 的附件。更新 feed 使用 master 上的静态 JSON，因此支持 beta 发布；feed 对应的 release 附件必须发布成功。
+可先运行 `--publish` 上传草稿附件并核对 GitHub 返回的 SHA256，再运行 `--publish --finalize` 公开 prerelease。确认附件可下载后，将发布提交快进合并并推送到 master，使自动更新 feed 指向已就绪的附件。
+
+发布脚本通过现有 Git Credential Manager 或 `GITHUB_TOKEN` 认证，不输出凭据。标签必须指向当前提交。脚本不会替换已公开 release 的附件。更新 feed 使用 master 上的静态 JSON，因此支持 beta 发布；master 的 feed 只能在对应附件公开后更新。
 
 ## 自动升级行为
 
