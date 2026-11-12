@@ -51,6 +51,27 @@ def api(method, path, payload=None, *, binary=None):
         return json.loads(body) if body else None
 
 
+def find_release(tag):
+    try:
+        return api('GET', '/releases/tags/' + tag)
+    except urllib.error.HTTPError as error:
+        if error.code != 404:
+            raise
+    # GitHub's tag endpoint can return 404 for drafts, including our own drafts.
+    # The authenticated list includes them, so a second publish call can resume safely.
+    page = 1
+    while True:
+        releases = api('GET', f'/releases?per_page=100&page={page}')
+        matches = [release for release in releases if release['tag_name'] == tag]
+        if len(matches) > 1:
+            raise SystemExit('Multiple draft releases match the tag; refusing to choose one')
+        if matches:
+            return matches[0]
+        if len(releases) < 100:
+            return None
+        page += 1
+
+
 def prepare(msi, notes):
     config = release_config()
     version = config['version']
@@ -93,20 +114,22 @@ def publish(finalize):
         remote = {'object': api('GET', '/git/tags/' + remote['object']['sha'])['object']}
     if remote['object']['sha'] != local_sha:
         raise SystemExit('The pushed release tag must point at the current version commit')
-    try:
-        release = api('GET', '/releases/tags/' + tag)
-    except urllib.error.HTTPError as error:
-        if error.code != 404:
-            raise
+    release = find_release(tag)
+    if release is None:
         release = api('POST', '/releases', {'tag_name': tag, 'target_commitish': local_sha,
                       'name': config['version'].replace('-beta', '.beta'), 'body': body,
                       'draft': True, 'prerelease': True})
     if not release['draft']:
         raise SystemExit('Refusing to replace assets on an already published release')
-    existing = {asset['name'] for asset in release['assets']}
+    existing = {asset['name']: asset for asset in release['assets']}
     upload_url = release['upload_url'].split('{')[0]
     for file in sorted(output.iterdir()):
-        if file.name not in existing:
+        if file.name in existing:
+            asset = existing[file.name]
+            digest = asset.get('digest')
+            if asset['size'] != file.stat().st_size or (digest and digest != 'sha256:' + hashlib.sha256(file.read_bytes()).hexdigest()):
+                raise SystemExit('Existing draft asset does not match local file: ' + file.name)
+        else:
             asset = api('POST', upload_url + '?' + urllib.parse.urlencode({'name': file.name}), binary=file.read_bytes())
             if asset['size'] != file.stat().st_size:
                 raise SystemExit('Uploaded asset size mismatch: ' + file.name)
