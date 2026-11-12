@@ -7,11 +7,12 @@ use crate::{
     error::{VaultError, VaultResult},
     keystore::{self, production_keystore, VaultKeyStore},
     model::{
-        DeviceKeyKind, FieldId, LockReason, PasswordPolicy, SecretString, VaultEntry,
-        VaultEntryInput, VaultEntryPage, VaultEntrySummary, VaultEvent, VaultMutationResult,
-        VaultStatus, AUTO_LOCK_SECONDS,
+        DeviceKeyKind, FieldId, HotpAdvanceResult, LockReason, PasswordPolicy, SecretString,
+        VaultEntry, VaultEntryInput, VaultEntryPage, VaultEntrySummary, VaultEvent,
+        VaultMutationResult, VaultStatus, AUTO_LOCK_SECONDS,
     },
     store::{self, DeviceSlot, EntryMetadata, FieldEnvelope, MasterSlot, StoredEntry},
+    totp::{OtpCode, OtpConfig, OtpKind},
 };
 use app_core::ModuleContext;
 use chrono::Utc;
@@ -453,6 +454,7 @@ impl VaultService {
                 url: text(FieldId::Url)?,
                 category: text(FieldId::Category)?,
                 username: text(FieldId::Username)?,
+                has_totp: !text(FieldId::TotpSecret)?.trim().is_empty(),
             },
             text(FieldId::Notes)?,
         ))
@@ -671,6 +673,125 @@ impl VaultService {
                 Self::check_context(&stored.metadata, &vault_id)?;
                 Self::validate_envelope_versions(&stored)?;
                 plaintext_to_string(Self::decrypt_one(dek, &stored, FieldId::Password)?)
+            })();
+            let event = service.integrity_event(&mut state, &result);
+            drop(state);
+            service.emit(event);
+            result
+        })
+        .await
+        .map_err(|_| VaultError::TaskJoin)?
+    }
+
+    /// 在后端解密 TOTP 密钥并计算当前验证码；密钥本身不会因此离开后端。
+    /// HOTP 只返回当前计数对应的验证码，不推进计数。
+    pub async fn otp_code(
+        self: &Arc<Self>,
+        ctx: ModuleContext,
+        entry_id: &str,
+    ) -> VaultResult<OtpCode> {
+        let entry_id = parse_entry_id(entry_id)?;
+        let service = Arc::clone(self);
+        tokio::task::spawn_blocking(move || {
+            let mut state = service.state.lock();
+            let result = (|| {
+                let (vault_id, dek, _) = Self::unlocked_parts(&state)?;
+                let conn = ctx.db.lock();
+                let stored = store::load_entry(&conn, &entry_id)?;
+                Self::check_context(&stored.metadata, &vault_id)?;
+                Self::validate_envelope_versions(&stored)?;
+                let secret =
+                    plaintext_to_string(Self::decrypt_one(dek, &stored, FieldId::TotpSecret)?)?;
+                if secret.trim().is_empty() {
+                    return Err(VaultError::OtpNotConfigured);
+                }
+                let config = OtpConfig::parse(secret.as_str()).map_err(VaultError::OtpInvalid)?;
+                config
+                    .generate(Utc::now().timestamp_millis())
+                    .map_err(VaultError::OtpInvalid)
+            })();
+            let event = service.integrity_event(&mut state, &result);
+            drop(state);
+            service.emit(event);
+            result
+        })
+        .await
+        .map_err(|_| VaultError::TaskJoin)?
+    }
+
+    /// 推进计数器型密钥的计数并把新计数加密写回。
+    /// `expected_counter` 是调用方当前显示验证码的计数，重复点击或多窗口竞争时不会跳号。
+    pub async fn otp_advance_counter(
+        self: &Arc<Self>,
+        ctx: ModuleContext,
+        entry_id: &str,
+        expected_counter: u64,
+    ) -> VaultResult<HotpAdvanceResult> {
+        let entry_id = parse_entry_id(entry_id)?;
+        let service = Arc::clone(self);
+        tokio::task::spawn_blocking(move || {
+            let mut state = service.state.lock();
+            let (vault_id, _, _) = Self::unlocked_parts(&state)?;
+            let result = (|| {
+                let mut conn = ctx.db.lock();
+                let tx = conn.transaction()?;
+                let stored = store::load_entry(&tx, &entry_id)?;
+                Self::check_context(&stored.metadata, &vault_id)?;
+                let dek = state.dek.as_deref().ok_or(VaultError::Locked)?;
+                let entry = Self::decrypt_entry(dek, &stored)?;
+                if entry.totp_secret.trim().is_empty() {
+                    return Err(VaultError::OtpNotConfigured);
+                }
+                let config =
+                    OtpConfig::parse(entry.totp_secret.as_str()).map_err(VaultError::OtpInvalid)?;
+                if config.kind != OtpKind::Hotp {
+                    return Err(VaultError::OtpInvalid("secret is not counter based"));
+                }
+                if config.counter != expected_counter {
+                    return Err(VaultError::OtpCounterConflict);
+                }
+                let (next_counter, new_secret) = config
+                    .advanced_secret(entry.totp_secret.as_str())
+                    .map_err(VaultError::OtpInvalid)?;
+                let advanced = OtpConfig::parse(new_secret.as_str()).map_err(VaultError::OtpInvalid)?;
+                debug_assert_eq!(advanced.counter, next_counter);
+                let code = advanced
+                    .generate(Utc::now().timestamp_millis())
+                    .map_err(VaultError::OtpInvalid)?;
+
+                let expected_version = stored.metadata.record_version;
+                let record_version = expected_version
+                    .checked_add(1)
+                    .ok_or(VaultError::InvalidInput("record version overflow"))?;
+                let input = VaultEntryInput {
+                    title: entry.title,
+                    url: entry.url,
+                    category: entry.category,
+                    username: entry.username,
+                    password: entry.password,
+                    totp_secret: SecretString::new(new_secret.as_str().to_string()),
+                    notes: entry.notes,
+                    archived: entry.archived,
+                };
+                // 计数自动推进不是用户编辑，保留原有的修改时间。
+                let metadata = EntryMetadata {
+                    record_version,
+                    ..stored.metadata
+                };
+                let fields = service.encrypt_fields(
+                    &mut state,
+                    &vault_id,
+                    &entry_id,
+                    record_version,
+                    &input,
+                )?;
+                store::replace_entry(&tx, expected_version, &metadata, &fields)?;
+                tx.commit()?;
+                Ok(HotpAdvanceResult {
+                    code,
+                    record_version,
+                    totp_secret: new_secret,
+                })
             })();
             let event = service.integrity_event(&mut state, &result);
             drop(state);

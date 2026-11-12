@@ -12,6 +12,7 @@ mod model;
 pub mod native;
 mod service;
 mod store;
+mod totp;
 
 #[cfg(target_os = "windows")]
 mod windows_hello;
@@ -25,11 +26,12 @@ mod unit_tests;
 
 pub use error::{VaultError, VaultResult};
 pub use model::{
-    DeviceKeyKind, LockReason, PasswordPolicy, SecretString, VaultEntry, VaultEntryInput,
-    VaultEntryPage, VaultEntrySummary, VaultEvent, VaultMutationResult, VaultStatus,
-    AUTO_LOCK_SECONDS, MODULE_ID, REVEAL_SECONDS,
+    DeviceKeyKind, HotpAdvanceResult, LockReason, PasswordPolicy, SecretString, VaultEntry,
+    VaultEntryInput, VaultEntryPage, VaultEntrySummary, VaultEvent, VaultMutationResult,
+    VaultStatus, AUTO_LOCK_SECONDS, MODULE_ID, REVEAL_SECONDS,
 };
 pub use service::{VaultEventSink, VaultService};
+pub use totp::{OtpCode, OtpKind};
 
 use app_core::{AppModule, CoreError, CoreResult, ModuleContext, ModuleMigration};
 use os_hal::ActiveAppWatcher;

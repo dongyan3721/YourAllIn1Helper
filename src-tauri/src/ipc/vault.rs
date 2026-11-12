@@ -26,6 +26,12 @@ struct EntryArgs {
 }
 
 #[derive(Deserialize)]
+struct HotpAdvanceArgs {
+    id: String,
+    expected_counter: u64,
+}
+
+#[derive(Deserialize)]
 struct DeleteArgs {
     id: String,
     expected_version: u64,
@@ -202,6 +208,37 @@ impl DesktopHost {
                     .ok_or_else(|| "secure clipboard is unavailable".to_string())?;
                 let mut last_copy = self.last_vault_copy.lock();
                 *last_copy = Some(copy_secret_with_lease(&ctx, clipboard, password.as_str())?);
+                Ok(json!({ "copied": true, "clear_after_secs": 30 }))
+            }
+            "vault_totp_code" => {
+                let args = parse::<EntryArgs>(args)?;
+                let code = service
+                    .otp_code(ctx, &args.id)
+                    .await
+                    .map_err(vault_error)?;
+                to_json(code)
+            }
+            "vault_hotp_advance" => {
+                let args = parse::<HotpAdvanceArgs>(args)?;
+                let result = service
+                    .otp_advance_counter(ctx, &args.id, args.expected_counter)
+                    .await
+                    .map_err(vault_error)?;
+                to_json(result)
+            }
+            "vault_copy_totp" => {
+                let args = parse::<EntryArgs>(args)?;
+                let code = service
+                    .otp_code(ctx.clone(), &args.id)
+                    .await
+                    .map_err(vault_error)?;
+                let clipboard = self
+                    .vault_clipboard
+                    .read()
+                    .clone()
+                    .ok_or_else(|| "secure clipboard is unavailable".to_string())?;
+                let mut last_copy = self.last_vault_copy.lock();
+                *last_copy = Some(copy_secret_with_lease(&ctx, clipboard, code.code.as_str())?);
                 Ok(json!({ "copied": true, "clear_after_secs": 30 }))
             }
             "vault_upsert_entry" => {

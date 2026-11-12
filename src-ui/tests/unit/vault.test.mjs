@@ -22,6 +22,7 @@ async function loadComponent(invokeIpc, timers = []) {
       username: '', password: '', totp_secret: '', notes: '',
     }),
     VAULT_REVEAL_MS: 15_000,
+    formatOtpCode: (code) => (code.length === 6 ? `${code.slice(0, 3)} ${code.slice(3)}` : code),
     vaultText: (key) => key,
     vaultErrorText: (reason) => `localized:${String(reason)}`,
     setTimeout: (callback, delay) => {
@@ -297,4 +298,135 @@ test('VaultPanel clears delete confirmation on lock and editor replacement', asy
     run(cleanup);
     assert.equal(run('deleteConfirmation.value'), null);
   }
+});
+
+const totpCode = (overrides = {}) => ({
+  kind: 'totp', code: '287082', digits: 6, period_secs: 30, remaining_ms: 12_000, counter: null, ...overrides,
+});
+const editedEntry = (overrides = {}) => ({
+  id: 'fiction-otp', record_version: 1, archived: false, title: 'Fiction', url: '', category: '',
+  username: '', password: 'fiction-pass', totp_secret: 'GEZDGNBVGY3TQOJQ', notes: '', ...overrides,
+});
+
+test('VaultPanel shows the backend-computed TOTP code when an entry with a secret is opened', async () => {
+  const timers = [];
+  const calls = [];
+  const { run } = await loadComponent(async (cmd, args) => {
+    calls.push({ cmd, args });
+    if (cmd === 'vault_get_entry') return editedEntry();
+    if (cmd === 'vault_totp_code') return totpCode();
+    return {};
+  }, timers);
+  await run("editEntry('fiction-otp')");
+  await Promise.resolve();
+  assert.equal(run('otpVisible.value'), true);
+  assert.equal(run('otp.value.code'), '287082');
+  assert.equal(run('otpDisplay.value'), '287 082');
+  assert.equal(run('otpSeconds.value'), 12);
+  assert.deepEqual(
+    calls.filter(({ cmd }) => cmd === 'vault_totp_code').map(({ args }) => JSON.parse(JSON.stringify(args))),
+    [{ id: 'fiction-otp' }],
+  );
+  // The countdown uses a 250 ms tick and refetches the code once the period is over.
+  assert.equal(timers.at(-1).delay, 250);
+});
+
+test('VaultPanel refetches the TOTP code when the countdown reaches zero and stops after lock', async () => {
+  const timers = [];
+  let fetches = 0;
+  const { run } = await loadComponent(async (cmd) => {
+    if (cmd === 'vault_get_entry') return editedEntry();
+    if (cmd === 'vault_totp_code') { fetches += 1; return totpCode({ remaining_ms: fetches === 1 ? 1 : 30_000 }); }
+    return {};
+  }, timers);
+  await run("editEntry('fiction-otp')");
+  await new Promise((resolve) => globalThis.setTimeout(resolve, 5));
+  timers.at(-1).callback();
+  await new Promise((resolve) => globalThis.setTimeout(resolve, 5));
+  assert.equal(fetches, 2);
+  assert.equal(run('otpRemainingMs.value') > 25_000, true);
+  const pending = timers.at(-1);
+  run('clearSensitiveState()');
+  assert.equal(pending.cleared, true);
+  assert.equal(run('otp.value'), null);
+  assert.equal(run('loadedTotp.value'), '');
+});
+
+test('VaultPanel drops a late TOTP response after lock and hides the card while the secret is edited', async () => {
+  const pending = [];
+  const { run } = await loadComponent(async (cmd) => {
+    if (cmd === 'vault_get_entry') return editedEntry();
+    if (cmd === 'vault_totp_code') return new Promise((resolve) => pending.push(resolve));
+    return {};
+  });
+  await run("editEntry('fiction-otp')");
+  run('clearSensitiveState()');
+  pending.shift()(totpCode());
+  await Promise.resolve();
+  assert.equal(run('otp.value'), null);
+
+  run('status.value = { ...status.value, locked: false }');
+  await run("editEntry('fiction-otp')");
+  assert.equal(run('otpVisible.value'), true);
+  run("form.value.totp_secret = 'CHANGED'");
+  assert.equal(run('otpVisible.value'), false);
+});
+
+test('VaultPanel keeps an invalid TOTP secret as an inline error instead of resetting the panel', async () => {
+  const { run } = await loadComponent(async (cmd) => {
+    if (cmd === 'vault_get_entry') return editedEntry();
+    if (cmd === 'vault_totp_code') throw new Error('one-time password secret is invalid: secret is not valid Base32');
+    return {};
+  });
+  await run("editEntry('fiction-otp')");
+  await new Promise((resolve) => globalThis.setTimeout(resolve, 5));
+  assert.equal(run('otp.value'), null);
+  assert.match(run('otpError.value'), /one-time password secret is invalid/);
+  assert.equal(run('form.value.id'), 'fiction-otp');
+  assert.equal(run('status.value.locked'), false);
+});
+
+test('VaultPanel adopts the re-encrypted secret and version after advancing an HOTP counter', async () => {
+  const calls = [];
+  const hotpSecret = 'otpauth://hotp/Fiction?secret=GEZDGNBVGY3TQOJQ&counter=0';
+  const { run } = await loadComponent(async (cmd, args) => {
+    calls.push({ cmd, args: JSON.parse(JSON.stringify(args ?? {})) });
+    if (cmd === 'vault_get_entry') return editedEntry({ totp_secret: hotpSecret });
+    if (cmd === 'vault_totp_code') {
+      return { kind: 'hotp', code: '755224', digits: 6, period_secs: null, remaining_ms: null, counter: 0 };
+    }
+    if (cmd === 'vault_hotp_advance') {
+      return {
+        code: { kind: 'hotp', code: '287082', digits: 6, period_secs: null, remaining_ms: null, counter: 1 },
+        record_version: 2,
+        totp_secret: hotpSecret.replace('counter=0', 'counter=1'),
+      };
+    }
+    return {};
+  });
+  await run("editEntry('fiction-otp')");
+  await new Promise((resolve) => globalThis.setTimeout(resolve, 5));
+  assert.equal(run('otp.value.code'), '755224');
+  await run('advanceHotp()');
+  assert.deepEqual(calls.find(({ cmd }) => cmd === 'vault_hotp_advance').args, { id: 'fiction-otp', expected_counter: 0 });
+  assert.equal(run('otp.value.code'), '287082');
+  assert.equal(run('form.value.record_version'), 2);
+  assert.match(run('form.value.totp_secret'), /counter=1/);
+  // Not marked as an unsaved edit: the card stays visible.
+  assert.equal(run('otpVisible.value'), true);
+});
+
+test('VaultPanel copies the one-time code through the secure clipboard IPC only', async () => {
+  const calls = [];
+  const { run } = await loadComponent(async (cmd, args) => {
+    calls.push({ cmd, args: JSON.parse(JSON.stringify(args ?? {})) });
+    if (cmd === 'vault_get_entry') return editedEntry();
+    if (cmd === 'vault_totp_code') return totpCode();
+    return {};
+  });
+  await run("editEntry('fiction-otp')");
+  await new Promise((resolve) => globalThis.setTimeout(resolve, 5));
+  await run('copyOtp()');
+  assert.deepEqual(calls.find(({ cmd }) => cmd === 'vault_copy_totp').args, { id: 'fiction-otp' });
+  assert.equal(run('notice.value'), 'otpCopied');
 });

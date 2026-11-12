@@ -32,6 +32,12 @@ pub enum VaultError {
     InvalidInput(&'static str),
     #[error("entry was not found")]
     NotFound,
+    #[error("one-time password secret is not configured")]
+    OtpNotConfigured,
+    #[error("one-time password secret is invalid: {0}")]
+    OtpInvalid(&'static str),
+    #[error("one-time password counter changed, refresh and retry")]
+    OtpCounterConflict,
     #[error("entry version conflict")]
     VersionConflict,
     #[error("operating system random source failed")]

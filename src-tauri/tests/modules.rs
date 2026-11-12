@@ -138,6 +138,24 @@ async fn vault_async_ipc_enforces_lock_and_module_switch() {
         .await;
     assert!(!copy.ok);
     assert!(copy.error.unwrap().contains("locked"));
+    for (command, args) in [
+        (
+            "vault_totp_code",
+            json!({"id": "00000000-0000-0000-0000-000000000001"}),
+        ),
+        (
+            "vault_copy_totp",
+            json!({"id": "00000000-0000-0000-0000-000000000001"}),
+        ),
+        (
+            "vault_hotp_advance",
+            json!({"id": "00000000-0000-0000-0000-000000000001", "expected_counter": 0}),
+        ),
+    ] {
+        let response = host.invoke_vault_ipc(command, args).await;
+        assert!(!response.ok, "{command} must reject a locked vault");
+        assert!(response.error.unwrap().contains("locked"));
+    }
 
     toggle(&host, "password_vault", false);
     let disabled = host.invoke_vault_ipc("vault_get_status", json!({})).await;

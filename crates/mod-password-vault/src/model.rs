@@ -1,3 +1,4 @@
+use crate::totp::OtpCode;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use zeroize::Zeroizing;
 
@@ -146,6 +147,8 @@ pub struct VaultEntrySummary {
     pub url: SecretString,
     pub category: SecretString,
     pub username: SecretString,
+    /// 该条目是否配置了一次性密码密钥；密钥本身不进入列表。
+    pub has_totp: bool,
 }
 
 #[derive(Serialize)]
@@ -158,6 +161,15 @@ pub struct VaultEntryPage {
 pub struct VaultMutationResult {
     pub id: String,
     pub record_version: u64,
+}
+
+/// 推进 HOTP 计数器后的结果。`totp_secret` 是改写了计数的新字段值，
+/// 调用方的编辑表单必须同步更新，否则下一次保存会把计数写回旧值。
+#[derive(Serialize)]
+pub struct HotpAdvanceResult {
+    pub code: OtpCode,
+    pub record_version: u64,
+    pub totp_secret: SecretString,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]

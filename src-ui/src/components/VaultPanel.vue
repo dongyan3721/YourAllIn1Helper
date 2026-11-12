@@ -123,6 +123,9 @@
                 <span>{{ entry.username }}</span>
                 <small>{{ entry.url }}</small>
               </span>
+              <span v-if="entry.has_totp" class="vault-otp-badge" :title="vaultText('otpTitle')">
+                <Icons name="shield" size="12" />
+              </span>
               <span class="vault-reveal-action" :title="vaultText('reveal')" @click.stop="revealPassword(entry.id)">
                 <Icons :name="revealedId === entry.id && revealedPassword ? 'eye-off' : 'eye'" size="14" />
               </span>
@@ -139,13 +142,36 @@
               <span>{{ vaultText('copy') }}</span>
             </button>
           </div>
+          <section v-if="otpVisible" class="vault-otp" :class="{ expiring: otpExpiring }" :aria-label="vaultText('otpTitle')">
+            <div class="vault-otp-row">
+              <div class="vault-otp-main">
+                <small>{{ vaultText(otp && otp.kind === 'hotp' ? 'otpCounterBased' : 'otpTimeBased') }}</small>
+                <code v-if="otp" class="vault-otp-code">{{ otpDisplay }}</code>
+                <span v-else-if="otpError" class="vault-otp-error" role="alert">{{ localizedOtpError }}</span>
+                <span v-else class="vault-otp-pending">{{ vaultText('busy') }}</span>
+              </div>
+              <div v-if="otp" class="vault-otp-side">
+                <span v-if="otp.kind === 'totp'" class="vault-otp-timer">{{ otpSeconds }}s</span>
+                <span v-else class="vault-otp-timer">#{{ otp.counter }}</span>
+                <button v-if="otp.kind === 'hotp'" class="macos-button subtle" :disabled="busy" :title="vaultText('otpNext')" @click="advanceHotp">
+                  <Icons name="refresh" size="12" />
+                  <span>{{ vaultText('otpNext') }}</span>
+                </button>
+                <button class="macos-button subtle" :disabled="busy" @click="copyOtp">
+                  <Icons name="copy" size="12" />
+                  <span>{{ vaultText('otpCopy') }}</span>
+                </button>
+              </div>
+            </div>
+            <div v-if="otp && otp.kind === 'totp'" class="vault-otp-bar"><span :style="{ width: otpProgress + '%' }"></span></div>
+          </section>
           <div class="vault-form-grid">
             <label class="vault-field"><span>{{ vaultText('titleField') }}</span><input v-model="form.title" /></label>
             <label class="vault-field"><span>{{ vaultText('url') }}</span><input v-model="form.url" /></label>
             <label class="vault-field"><span>{{ vaultText('category') }}</span><input v-model="form.category" /></label>
             <label class="vault-field"><span>{{ vaultText('username') }}</span><input v-model="form.username" /></label>
             <label class="vault-field"><span>{{ vaultText('password') }}</span><input v-model="form.password" type="password" autocomplete="new-password" /></label>
-            <label class="vault-field"><span>{{ vaultText('totp') }}</span><input v-model="form.totp_secret" type="password" autocomplete="off" /></label>
+            <label class="vault-field"><span>{{ vaultText('totp') }}</span><input v-model="form.totp_secret" type="password" autocomplete="off" :placeholder="vaultText('totpPlaceholder')" /></label>
             <label class="vault-field full"><span>{{ vaultText('notes') }}</span><textarea v-model="form.notes" rows="4"></textarea></label>
             <label class="vault-check full"><input v-model="form.archived" type="checkbox" /><span>{{ vaultText('archived') }}</span></label>
           </div>
@@ -228,11 +254,14 @@ import { invokeIpc } from '../api/ipc';
 import Icons from './Icons.vue';
 import {
   emptyVaultEntry,
+  formatOtpCode,
   VAULT_REVEAL_MS,
   type VaultEntryDraft,
   type VaultEntryPage,
   type VaultEntrySummary,
+  type VaultHotpAdvance,
   type VaultMutationResult,
+  type VaultOtpCode,
   type VaultStatus,
 } from '../api/vault';
 import { vaultErrorText, vaultText } from '../utils/vault/text';
@@ -272,6 +301,27 @@ const error = ref('');
 const localizedError = computed(() => error.value ? vaultErrorText(error.value, status.value.device_key_kind) : '');
 const notice = ref('');
 const busy = ref(true);
+// One-time password card state. The secret never leaves the backend; only the current code is shown.
+const otp = ref<VaultOtpCode | null>(null);
+const otpError = ref('');
+const otpRemainingMs = ref(0);
+const otpDeadline = ref(0);
+// Secret as loaded/saved; the card is hidden while the field has unsaved edits.
+const loadedTotp = ref('');
+const otpVisible = computed(
+  () => form.value.id !== '' && form.value.totp_secret.trim() !== '' && form.value.totp_secret === loadedTotp.value,
+);
+const otpDisplay = computed(() => (otp.value ? formatOtpCode(otp.value.code) : ''));
+const otpSeconds = computed(() => Math.ceil(otpRemainingMs.value / 1000));
+const otpProgress = computed(() => {
+  const period = otp.value?.period_secs;
+  if (!period) return 0;
+  return Math.min(100, Math.max(0, (otpRemainingMs.value / (period * 1000)) * 100));
+});
+const otpExpiring = computed(() => otp.value?.kind === 'totp' && otpRemainingMs.value <= 5000);
+const localizedOtpError = computed(() => (otpError.value ? vaultErrorText(otpError.value, status.value.device_key_kind) : ''));
+let otpToken = 0;
+let otpTimer: ReturnType<typeof setTimeout> | undefined;
 let disposed = false;
 let operationEpoch = 0;
 let revealTimer: ReturnType<typeof setTimeout> | undefined;
@@ -292,8 +342,105 @@ function scheduleRevealClear() {
   revealTimer = timer;
 }
 
+function clearOtp() {
+  otpToken += 1;
+  if (otpTimer) clearTimeout(otpTimer);
+  otpTimer = undefined;
+  otp.value = null;
+  otpError.value = '';
+  otpRemainingMs.value = 0;
+  otpDeadline.value = 0;
+  loadedTotp.value = '';
+}
+
+function otpCurrent(token: number) {
+  return !disposed && token === otpToken && !status.value.locked;
+}
+
+function scheduleOtpTick(id: string, token: number) {
+  if (otpTimer) clearTimeout(otpTimer);
+  const timer = setTimeout(() => {
+    if (otpTimer !== timer || !otpCurrent(token)) return;
+    otpRemainingMs.value = Math.max(0, otpDeadline.value - Date.now());
+    if (otpRemainingMs.value <= 0) void loadOtp(id, token);
+    else scheduleOtpTick(id, token);
+  }, 250);
+  otpTimer = timer;
+}
+
+function applyOtp(next: VaultOtpCode, id: string, token: number) {
+  otp.value = next;
+  otpError.value = '';
+  if (next.kind === 'totp' && next.remaining_ms !== null) {
+    otpDeadline.value = Date.now() + next.remaining_ms;
+    otpRemainingMs.value = next.remaining_ms;
+    scheduleOtpTick(id, token);
+  } else if (otpTimer) {
+    clearTimeout(otpTimer);
+    otpTimer = undefined;
+  }
+}
+
+function handleOtpError(reason: unknown) {
+  const message = reason instanceof Error ? reason.message : String(reason);
+  if (message.includes('locked') || message.includes('disabled')) {
+    reportError(reason);
+    return;
+  }
+  // Configuration problems stay inside the card instead of replacing the whole panel state.
+  if (otpTimer) clearTimeout(otpTimer);
+  otpTimer = undefined;
+  otp.value = null;
+  otpError.value = message;
+}
+
+async function loadOtp(id: string, token: number) {
+  try {
+    const next = await invokeIpc<VaultOtpCode>('vault_totp_code', { id });
+    if (otpCurrent(token)) applyOtp(next, id, token);
+  } catch (reason) {
+    if (otpCurrent(token)) handleOtpError(reason);
+  }
+}
+
+async function advanceHotp() {
+  const current = otp.value;
+  const id = form.value.id;
+  if (!id || !otpVisible.value || !current || current.kind !== 'hotp' || current.counter === null) return;
+  const token = otpToken;
+  try {
+    const result = await invokeIpc<VaultHotpAdvance>('vault_hotp_advance', {
+      id, expected_counter: current.counter,
+    });
+    if (!otpCurrent(token) || form.value.id !== id) return;
+    // The backend re-encrypted the entry; adopt its version and secret so a later save is not stale.
+    form.value.record_version = result.record_version;
+    form.value.totp_secret = result.totp_secret;
+    loadedTotp.value = result.totp_secret;
+    applyOtp(result.code, id, token);
+  } catch (reason) {
+    if (otpCurrent(token)) handleOtpError(reason);
+  }
+}
+
+async function copyOtp() {
+  if (!form.value.id || !otpVisible.value) return;
+  const operation = currentOperation();
+  busy.value = true;
+  try {
+    await invokeIpc('vault_copy_totp', { id: form.value.id });
+    if (!isCurrent(operation)) return;
+    notice.value = vaultText('otpCopied');
+  } catch (reason) {
+    if (!disposed && operation === operationEpoch) reportError(reason);
+  } finally {
+    if (!disposed && operation === operationEpoch) busy.value = false;
+  }
+}
+
 function clearSensitiveState() {
   operationEpoch += 1;
+  clearOtp();
   clearReveal();
   masterPassword.value = '';
   masterConfirmation.value = '';
@@ -452,6 +599,7 @@ async function refreshEntries() {
 
 function startNew() {
   cancelDelete();
+  clearOtp();
   clearReveal();
   form.value = emptyVaultEntry();
   newEntryOpen.value = true;
@@ -459,6 +607,7 @@ function startNew() {
 
 function cancelEdit() {
   cancelDelete();
+  clearOtp();
   clearReveal();
   form.value = emptyVaultEntry();
   newEntryOpen.value = false;
@@ -469,6 +618,7 @@ async function editEntry(id: string) {
   const operation = currentOperation();
   busy.value = true;
   clearReveal();
+  clearOtp();
   try {
     const entry = await invokeIpc<VaultEntryDraft>('vault_get_entry', { id });
     if (!isCurrent(operation)) return;
@@ -479,6 +629,8 @@ async function editEntry(id: string) {
       totp_secret: entry.totp_secret, notes: entry.notes,
     };
     newEntryOpen.value = false;
+    loadedTotp.value = entry.totp_secret;
+    if (entry.totp_secret.trim() !== '') void loadOtp(entry.id, otpToken);
   } catch (reason) {
     if (!disposed && operation === operationEpoch) reportError(reason);
   } finally {
@@ -883,6 +1035,43 @@ onUnmounted(() => {
 }
 .vault-reveal-action:hover { color: var(--macos-accent); background: var(--macos-accent-subtle); }
 .vault-empty { padding: 34px 12px; color: var(--macos-text-tertiary); text-align: center; }
+.vault-otp-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--macos-text-tertiary);
+}
+
+.vault-otp {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: var(--macos-accent-subtle);
+  border: 1px solid rgba(var(--macos-accent-rgb), 0.18);
+  border-radius: var(--macos-radius-md);
+}
+.vault-otp-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.vault-otp-main { display: grid; gap: 2px; min-width: 0; }
+.vault-otp-main small { color: var(--macos-text-secondary); font-size: 10px; }
+.vault-otp-code {
+  color: var(--macos-accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+  user-select: all;
+}
+.vault-otp-error { color: var(--macos-danger); }
+.vault-otp-pending { color: var(--macos-text-tertiary); }
+.vault-otp-side { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.vault-otp-timer { min-width: 30px; color: var(--macos-text-secondary); font-variant-numeric: tabular-nums; text-align: right; }
+.vault-otp-bar { height: 3px; overflow: hidden; border-radius: 2px; background: rgba(128, 128, 128, 0.18); }
+.vault-otp-bar span { display: block; height: 100%; background: var(--macos-accent); transition: width 0.25s linear; }
+.vault-otp.expiring .vault-otp-code,
+.vault-otp.expiring .vault-otp-timer { color: var(--macos-danger); }
+.vault-otp.expiring .vault-otp-bar span { background: var(--macos-danger); }
 
 .vault-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px 12px; }
 .vault-field { display: grid; gap: 5px; min-width: 0; color: var(--macos-text-secondary); font-size: 11px; }
