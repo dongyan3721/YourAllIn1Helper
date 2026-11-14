@@ -124,6 +124,28 @@ impl ScreenCapturer for NativeOsHal {
         *self.capture_exclusion.lock()
     }
 
+    fn capture_exclusion_alive(&self, handle: WindowHandleId) -> bool {
+        if handle == 0 {
+            return false;
+        }
+        #[cfg(target_os = "macos")]
+        {
+            macos_capture_window_visible(handle)
+        }
+        #[cfg(target_os = "windows")]
+        {
+            hwnd_from_window_handle(handle)
+                .map(|hwnd| unsafe {
+                    windows::Win32::UI::WindowsAndMessaging::IsWindow(hwnd).as_bool()
+                })
+                .unwrap_or(false)
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            true
+        }
+    }
+
     fn prepare_live_capture(&self) -> HalResult<()> {
         #[cfg(target_os = "windows")]
         {
@@ -400,6 +422,50 @@ impl NativeOsHal {
             ))
         }
     }
+}
+
+/// 判断 macOS 排除窗口（遮罩 CGWindowID）是否仍在屏幕上存活。
+/// 用于 GIF 实时录制的 fail-closed 复核：窗口被销毁或重建后不能继续沿用旧号抓屏。
+#[cfg(target_os = "macos")]
+fn macos_capture_window_visible(handle: WindowHandleId) -> bool {
+    use objc2_core_foundation::{CFDictionary, CFNumber, CFNumberType, CFString};
+    use objc2_core_graphics::{CGWindowListCopyWindowInfo, CGWindowListOption};
+    use std::ffi::c_void;
+
+    let Ok(target) = u32::try_from(handle) else {
+        return false;
+    };
+    if target == 0 {
+        return false;
+    }
+    unsafe {
+        let Some(cf_array) = CGWindowListCopyWindowInfo(CGWindowListOption::OptionOnScreenOnly, 0)
+        else {
+            return false;
+        };
+        let count = cf_array.count();
+        for index in 0..count {
+            let dict_ref = cf_array.value_at_index(index) as *const CFDictionary;
+            if dict_ref.is_null() {
+                continue;
+            }
+            let dict = &*dict_ref;
+            let key = CFString::from_str("kCGWindowNumber");
+            let value = dict.value(key.as_ref() as *const CFString as *const c_void);
+            if value.is_null() {
+                continue;
+            }
+            let mut number: i32 = 0;
+            if (*(value as *const CFNumber))
+                .value(CFNumberType::IntType, &mut number as *mut _ as *mut c_void)
+                && number > 0
+                && number as u32 == target
+            {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// 只抓指定窗口之下的全局桌面矩形，避免 GIF / 长截图把遮罩自己拍进去。

@@ -721,3 +721,64 @@ fn test_gif_recording_rejects_overflow_exclusion_without_partial_file() {
     assert!(status.saved_path.is_none());
     assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
 }
+
+/// 显式排除窗口在首帧后失效；抓屏始终成功，证明录制循环因 liveness 复核主动停止。
+struct ExplicitLivenessCapturer {
+    alive_checks: AtomicUsize,
+}
+
+impl ScreenCapturer for ExplicitLivenessCapturer {
+    fn list_monitors(&self) -> HalResult<Vec<DisplayMonitorInfo>> {
+        Ok(vec![])
+    }
+
+    fn capture_monitor(&self, _id: Option<u32>) -> HalResult<CapturedFrame> {
+        Err(os_hal::HalError::NativeCallFailed(
+            "monitor capture is not used".into(),
+        ))
+    }
+
+    fn capture_region(&self, bounds: app_core::SelectionBox) -> HalResult<CapturedFrame> {
+        Ok(solid_frame(bounds))
+    }
+
+    fn capture_exclusion_alive(&self, _handle: WindowHandleId) -> bool {
+        self.alive_checks.fetch_add(1, Ordering::SeqCst) == 0
+    }
+}
+
+#[test]
+fn test_gif_recording_stops_when_explicit_overlay_disappears() {
+    let dir = tempdir().unwrap();
+    let capturer = Arc::new(ExplicitLivenessCapturer {
+        alive_checks: AtomicUsize::new(0),
+    });
+    let selection = tiny_selection();
+    let session = GifRecordingSession::new(
+        "explicit-overlay-lost".into(),
+        selection,
+        selection,
+        dir.path().to_path_buf(),
+        "Screenshot".into(),
+        recording_config(),
+        capturer.clone(),
+        None,
+        None,
+        77,
+    )
+    .unwrap();
+    wait_recording_ended(&session);
+    let status = session.status();
+    assert!(!status.is_recording);
+    let error = status
+        .error
+        .expect("disappearing explicit overlay must fail the recording");
+    assert!(
+        error.contains("排除窗口已失效"),
+        "unexpected error: {error}"
+    );
+    assert!(status.pending_path.is_none());
+    assert!(status.saved_path.is_none());
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+    assert!(capturer.alive_checks.load(Ordering::SeqCst) >= 2);
+}

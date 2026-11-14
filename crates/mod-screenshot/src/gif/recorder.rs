@@ -301,6 +301,15 @@ impl GifRecordingSession {
         let mut recording_error = None;
 
         while !stop_signal.load(Ordering::SeqCst) {
+            // macOS 传入显式 CGWindowID；句柄失效时必须停止，不能把重新出现的遮罩拍进 GIF。
+            if let Some(handle) = explicit_exclusion {
+                if !capturer.capture_exclusion_alive(handle) {
+                    let message = "遮罩捕获排除窗口已失效，GIF 录制已停止".to_string();
+                    warn!(session_id = %session_id, %message);
+                    recording_error = Some(message);
+                    break;
+                }
+            }
             if explicit_exclusion.is_none() {
                 if let Some(initial) = initial_registered {
                     match capturer.active_capture_exclusion() {

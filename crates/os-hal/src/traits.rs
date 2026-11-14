@@ -44,6 +44,14 @@ pub trait ScreenCapturer: Send + Sync + 'static {
         None
     }
 
+    /// 显式排除窗口是否仍然存活。
+    ///
+    /// macOS GIF 录制直接传入 `CGWindowID`，不经过登记槽；录制循环必须能确认遮罩窗口
+    /// 没有被销毁或替换。默认把非 0 句柄视为存活，供确定性测试适配器使用。
+    fn capture_exclusion_alive(&self, handle: WindowHandleId) -> bool {
+        handle != 0
+    }
+
     /// 实时录制前检查原生遮罩排除是否就绪；普通冻结截图不依赖此能力。
     /// 测试适配器及不要求预登记的平台保持默认行为。
     fn prepare_live_capture(&self) -> HalResult<()> {
