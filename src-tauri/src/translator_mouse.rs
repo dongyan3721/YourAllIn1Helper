@@ -490,7 +490,9 @@ pub use windows::{start, stop};
 /// 建窗后以实际外框校正位置；Windows 的无标题栏可调整窗口仍有系统尺寸边框。
 /// 初始逻辑尺寸只表示内容区，不能用它假定 HWND 的外框同样大小。
 pub(crate) fn constrain_native_popover(window: &tauri::WebviewWindow) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
+    // Tauri 的 Monitor::work_area 与 WebviewWindow 外框接口都以物理像素报告，
+    // 因此 Windows 与 macOS 统一按物理坐标做二次夹取，防止可调整窗口的系统边框越出工作区。
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     {
         let monitor = window
             .current_monitor()
@@ -512,7 +514,7 @@ pub(crate) fn constrain_native_popover(window: &tauri::WebviewWindow) -> Result<
                 .map_err(|error| error.to_string())?;
         }
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     let _ = window;
     Ok(())
 }
