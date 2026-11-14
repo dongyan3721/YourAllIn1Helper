@@ -52,31 +52,18 @@ fn is_installed_release() -> bool {
     }
     std::env::current_exe()
         .ok()
-        .is_some_and(|exe| is_macos_app_bundle_exe(&exe))
+        .and_then(|exe| exe.canonicalize().ok())
+        .is_some_and(|exe| {
+            is_macos_app_bundle_exe(&exe, std::env::var_os("HOME").as_deref().map(Path::new))
+        })
 }
 
 /// 判断可执行文件是否位于标准 macOS 应用包中。
 #[cfg(target_os = "macos")]
-fn is_macos_app_bundle_exe(executable: &Path) -> bool {
-    use std::ffi::OsStr;
-    if executable.file_name() != Some(OsStr::new("all-in-one-desktop")) {
-        return false;
-    }
-    let Some(macos_dir) = executable.parent() else {
-        return false;
-    };
-    if macos_dir.file_name() != Some(OsStr::new("MacOS")) {
-        return false;
-    }
-    let Some(contents_dir) = macos_dir.parent() else {
-        return false;
-    };
-    if contents_dir.file_name() != Some(OsStr::new("Contents")) {
-        return false;
-    }
-    contents_dir
-        .parent()
-        .is_some_and(|bundle| bundle.extension() == Some(OsStr::new("app")))
+fn is_macos_app_bundle_exe(executable: &Path, home: Option<&Path>) -> bool {
+    let suffix = Path::new("All-in-One Toolbox.app/Contents/MacOS/all-in-one-desktop");
+    executable == Path::new("/Applications").join(suffix)
+        || home.is_some_and(|home| executable == home.join("Applications").join(suffix))
 }
 
 /// 其他平台暂不开放自动更新，避免把更新包误装到不受支持的运行环境。
@@ -131,7 +118,7 @@ async fn check_and_download(
 }
 
 /// Called only after the existing exit transaction has flushed notes and shut down modules.
-/// Windows starts msiexec /quiet; macOS replaces the signed .app bundle after this process exits.
+/// Windows starts msiexec /quiet; macOS replaces the signed .app bundle here, before the process exits.
 pub(crate) fn install_after_shutdown(app: &AppHandle) {
     let Some(state) = app.try_state::<Arc<UpdateState>>() else {
         return;
@@ -139,43 +126,11 @@ pub(crate) fn install_after_shutdown(app: &AppHandle) {
     let pending = state.pending.lock().take();
     if let Some((update, bytes)) = pending {
         if let Err(error) = update.install(bytes) {
-            tracing::error!(%error, "Update installation did not start; the installed version is retained");
+            tracing::error!(%error, "Update installation failed; inspect permissions and the installed bundle before retrying");
         }
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn installed_path_match_rejects_portable_and_sibling_copies() {
-        assert!(same_install_directory(
-            Path::new(
-                r"C:\Users\QA\AppData\Local\Programs\All-in-One Toolbox\all-in-one-desktop.exe"
-            ),
-            Path::new(r"c:\users\qa\appdata\local\programs\All-in-One Toolbox\")
-        ));
-        assert!(!same_install_directory(
-            Path::new(r"D:\Downloads\all-in-one-desktop.exe"),
-            Path::new(r"C:\Users\QA\AppData\Local\Programs\All-in-One Toolbox")
-        ));
-        assert!(!same_install_directory(
-            Path::new(r"C:\Apps\All-in-One Toolbox-old\all-in-one-desktop.exe"),
-            Path::new(r"C:\Apps\All-in-One Toolbox")
-        ));
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn macos_bundle_detection_rejects_bare_binary_and_accepts_standard_app() {
-        assert!(is_macos_app_bundle_exe(Path::new(
-            "/Applications/All-in-One Toolbox.app/Contents/MacOS/all-in-one-desktop"
-        )));
-        assert!(!is_macos_app_bundle_exe(Path::new(
-            "/Users/qa/Downloads/all-in-one-desktop"
-        )));
-        assert!(!is_macos_app_bundle_exe(Path::new(
-            "/Applications/All-in-One Toolbox.app/Contents/MacOS/other-binary"
-        )));
-    }
-}
+#[path = "../tests/unit/updates.rs"]
+mod tests;

@@ -12,7 +12,7 @@
         "silent": true
       },
       "wix": {
-        "version": "0.1.3",
+        "version": "0.1.4",
         "upgradeCode": "a3a2c967-c2d8-50a2-9db5-8a8a436126bb",
         "language": [
           "zh-CN"

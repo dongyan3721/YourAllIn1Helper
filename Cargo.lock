@@ -84,7 +84,7 @@ dependencies = [
 
 [[package]]
 name = "all-in-one-host"
-version = "0.1.3-beta"
+version = "0.1.4-beta"
 dependencies = [
  "anyhow",
  "app-core",
@@ -169,7 +169,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "app-core"
-version = "0.1.3-beta"
+version = "0.1.4-beta"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3140,7 +3140,7 @@ dependencies = [
 
 [[package]]
 name = "mod-app-usage"
-version = "0.1.3-beta"
+version = "0.1.4-beta"
 dependencies = [
  "anyhow",
  "app-core",
@@ -3157,7 +3157,7 @@ dependencies = [
 
 [[package]]
 name = "mod-clipboard"
-version = "0.1.3-beta"
+version = "0.1.4-beta"
 dependencies = [
  "anyhow",
  "app-core",
@@ -3177,7 +3177,7 @@ dependencies = [
 
 [[package]]
 name = "mod-media-proc"
-version = "0.1.3-beta"
+version = "0.1.4-beta"
 dependencies = [
  "anyhow",
  "app-core",
@@ -3194,7 +3194,7 @@ dependencies = [
 
 [[package]]
 name = "mod-password-vault"
-version = "0.1.3-beta"
+version = "0.1.4-beta"
 dependencies = [
  "aes-gcm",
  "app-core",
@@ -3226,7 +3226,7 @@ dependencies = [
 
 [[package]]
 name = "mod-screen-ink"
-version = "0.1.3-beta"
+version = "0.1.4-beta"
 dependencies = [
  "anyhow",
  "app-core",
@@ -3245,7 +3245,7 @@ dependencies = [
 
 [[package]]
 name = "mod-screenshot"
-version = "0.1.3-beta"
+version = "0.1.4-beta"
 dependencies = [
  "anyhow",
  "app-core",
@@ -3281,7 +3281,7 @@ dependencies = [
 
 [[package]]
 name = "mod-sticky-note"
-version = "0.1.3-beta"
+version = "0.1.4-beta"
 dependencies = [
  "anyhow",
  "app-core",
@@ -3297,7 +3297,7 @@ dependencies = [
 
 [[package]]
 name = "mod-translator"
-version = "0.1.3-beta"
+version = "0.1.4-beta"
 dependencies = [
  "anyhow",
  "app-core",
@@ -3316,7 +3316,7 @@ dependencies = [
 
 [[package]]
 name = "mod-window-pin"
-version = "0.1.3-beta"
+version = "0.1.4-beta"
 dependencies = [
  "anyhow",
  "app-core",
@@ -3977,7 +3977,7 @@ dependencies = [
 
 [[package]]
 name = "os-hal"
-version = "0.1.3-beta"
+version = "0.1.4-beta"
 dependencies = [
  "anyhow",
  "app-core",

@@ -7,8 +7,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"
 
-SIGNING_KEY="${TAURI_SIGNING_PRIVATE_KEY_PATH:-$HOME/Library/Application Support/YourAllIn1Helper/release-keys/updater.key}"
-NOTES_FILE="${1:-$ROOT_DIR/docs/releases/0.1.3-beta.md}"
+SIGNING_KEY="${TAURI_SIGNING_PRIVATE_KEY_PATH:-$HOME/Library/Application Support/YourAllIn1Helper/release-keys/macos-updater.key}"
+NOTES_FILE="${1:-$ROOT_DIR/docs/releases/0.1.4-beta.md}"
 
 if [ ! -f "$SIGNING_KEY" ]; then
   echo "未找到 updater 私钥：$SIGNING_KEY" >&2
@@ -20,6 +20,7 @@ if [ ! -f "$NOTES_FILE" ]; then
   exit 1
 fi
 
+cd "$ROOT_DIR"
 python3 "$ROOT_DIR/scripts/macos_signing.py" check
 
 echo "[1/5] 安装并检查前端..."
@@ -62,11 +63,27 @@ esac
 
 ARTIFACT_NAME="All-in-One-Toolbox_${VERSION}_macos_${ARCH}.app.tar.gz"
 echo "[4/5] 打包并签名 updater 产物：$ARTIFACT_NAME"
-tar -czf "$APP_DIR/$ARTIFACT_NAME" -C "$APP_DIR" "$APP_NAME"
+COPYFILE_DISABLE=1 tar -czf "$APP_DIR/$ARTIFACT_NAME" -C "$APP_DIR" "$APP_NAME"
 "$ROOT_DIR/src-ui/node_modules/.bin/tauri" signer sign \
   --private-key-path "$SIGNING_KEY" \
+  --password "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" \
   --app-version "$VERSION" \
   "$APP_DIR/$ARTIFACT_NAME"
+
+echo "验证真实 updater 签名与篡改拒绝..."
+ALL_IN_ONE_RELEASE_MACOS="$APP_DIR/$ARTIFACT_NAME" cargo test -p all-in-one-host \
+  --test updater_artifact --locked -- --ignored
+
+echo "创建只读 DMG..."
+DMG_NAME="All-in-One-Toolbox_${VERSION}_macos_${ARCH}.dmg"
+DMG_STAGE="$(mktemp -d "$ROOT_DIR/.runtime_data/dmg-stage.XXXXXX")"
+trap 'rm -rf "$DMG_STAGE"' EXIT
+ditto "$APP_SRC" "$DMG_STAGE/$APP_NAME"
+ln -s /Applications "$DMG_STAGE/Applications"
+hdiutil create -volname "All-in-One Toolbox $VERSION" -srcfolder "$DMG_STAGE" \
+  -format UDZO -ov "$APP_DIR/$DMG_NAME"
+hdiutil verify "$APP_DIR/$DMG_NAME"
+codesign --verify --deep --strict "$DMG_STAGE/$APP_NAME"
 
 echo "[5/5] 更新 feed 与 dist 发布目录..."
 python3 - "$APP_DIR/$ARTIFACT_NAME" "$NOTES_FILE" "$VERSION" "$ARCH" "$ROOT_DIR" <<'PY'
@@ -91,12 +108,6 @@ if not artifact.is_file() or not signature.is_file():
 
 feed_path = root / "updates" / "macos-beta.json"
 platforms = {}
-if feed_path.is_file():
-    existing = json.loads(feed_path.read_text(encoding="utf-8"))
-    # 同一版本可跨架构合并；换版本后旧架构附件必须重新构建，不能沿用。
-    if existing.get("version") == version:
-        platforms = existing.get("platforms", {})
-
 platforms[target] = {
     "url": f"https://github.com/{repo}/releases/download/{tag}/{artifact.name}",
     "signature": signature.read_text().strip(),
@@ -112,16 +123,20 @@ feed_path.write_text(serialized, encoding="utf-8")
 
 output = root / "dist" / tag
 output.mkdir(parents=True, exist_ok=True)
-for src in (artifact, signature):
+dmg = artifact.with_name(artifact.name.replace(".app.tar.gz", ".dmg"))
+for src in (artifact, signature, dmg):
     shutil.copy2(src, output / src.name)
 build_manifest = artifact.parent / "macos-build.json"
 if build_manifest.is_file():
     shutil.copy2(build_manifest, output / "macos-build.json")
+shutil.copy2(notes_file, output / "RELEASE_NOTES.md")
+config = json.loads((root / "src-tauri/tauri.macos.conf.json").read_text())
+(output / "macos-updater.pub").write_text(config["plugins"]["updater"]["pubkey"] + "\n")
 (output / "macos-beta.json").write_text(serialized, encoding="utf-8")
 sums = "\n".join(
     f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}"
     for path in sorted(output.iterdir())
-    if path.name != "SHA256SUMS.txt"
+    if path.is_file() and path.name != "SHA256SUMS.txt"
 ) + "\n"
 (output / "SHA256SUMS.txt").write_text(sums, encoding="utf-8")
 print(output)
