@@ -24,3 +24,7 @@
 | OpenAI Codex | 并行审查、平台与生命周期修正、冲突集成、测试、实际 GUI、构建与验收记录 |
 
 本轮审查修正提交：f9063be（统计）、0c0f5bf / 53e1900（截图及宿主退出）、8122ecb（翻译）。原始交付提交全部保留。验收范围以 [本轮报告](testing/ROUND2_INTEGRATION_REPORT_2026-10-25.md) 为准。
+
+## 2026-11-14：统一 Zed ACP 协作
+
+后续协作入口统一为 Zed 已配置的 antigravity、qoder、Cursor、Copilot、opencode，模型保持用户选择。Codex 负责统筹、集成、GUI 回归和发布。提交可附带真实共同作者的 Co-authored-by 标记；未确认邮箱时在正文记录实际 Agent/审查来源。完整纪律见根目录 AGENTS.md。历史条目仅记录当时参与情况，不代表当前模型配置。
