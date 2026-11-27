@@ -142,7 +142,7 @@ impl ScreenCapturer for NativeOsHal {
         {
             hwnd_from_window_handle(handle)
                 .map(|hwnd| unsafe {
-                    windows::Win32::UI::WindowsAndMessaging::IsWindow(hwnd).as_bool()
+                    windows::Win32::UI::WindowsAndMessaging::IsWindow(Some(hwnd)).as_bool()
                 })
                 .unwrap_or(false)
         }
