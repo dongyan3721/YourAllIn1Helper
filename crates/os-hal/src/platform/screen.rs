@@ -50,6 +50,12 @@ impl ScreenCapturer for NativeOsHal {
         })
     }
 
+    #[cfg(target_os = "windows")]
+    fn capture_region(&self, bounds: SelectionBox) -> HalResult<CapturedFrame> {
+        capture_windows_region(bounds)
+    }
+
+    #[cfg(not(target_os = "windows"))]
     fn capture_region(&self, bounds: SelectionBox) -> HalResult<CapturedFrame> {
         if bounds.width == 0 || bounds.height == 0 {
             return Err(HalError::NativeCallFailed("抓取区域尺寸为 0".to_string()));
@@ -223,6 +229,62 @@ impl ScreenCapturer for NativeOsHal {
     fn request_capture_permission(&self) -> HalResult<()> {
         super::screen_permission::request()
     }
+}
+
+/// Windows coordinates are physical pixels, including negative monitor origins.
+/// Capture each intersecting display at its native resolution, leaving gaps black.
+#[cfg(target_os = "windows")]
+fn capture_windows_region(bounds: SelectionBox) -> HalResult<CapturedFrame> {
+    if bounds.width == 0 || bounds.height == 0 {
+        return Err(HalError::NativeCallFailed("抓取区域尺寸为 0".into()));
+    }
+    let mut composite = None;
+    let mut scale_factor_milli = 1000;
+    for monitor in Monitor::all().map_err(native_error)? {
+        let x = monitor.x().map_err(native_error)? as i64;
+        let y = monitor.y().map_err(native_error)? as i64;
+        let left = x.max(bounds.x as i64);
+        let top = y.max(bounds.y as i64);
+        let right = (x + monitor.width().map_err(native_error)? as i64)
+            .min(bounds.x as i64 + bounds.width as i64);
+        let bottom = (y + monitor.height().map_err(native_error)? as i64)
+            .min(bounds.y as i64 + bounds.height as i64);
+        if left >= right || top >= bottom {
+            continue;
+        }
+        let width = (right - left) as u32;
+        let height = (bottom - top) as u32;
+        let image = monitor
+            .capture_region((left - x) as u32, (top - y) as u32, width, height)
+            .map_err(native_error)?;
+        if image.dimensions() != (width, height) {
+            return Err(HalError::NativeCallFailed(
+                "系统返回的区域像素尺寸不符".into(),
+            ));
+        }
+        if width == bounds.width && height == bounds.height {
+            return Ok(CapturedFrame {
+                width,
+                height,
+                scale_factor_milli: (monitor.scale_factor().unwrap_or(1.0) * 1000.0) as u32,
+                rgba_bytes: image.into_raw(),
+            });
+        }
+        if composite.is_none() {
+            scale_factor_milli = (monitor.scale_factor().unwrap_or(1.0) * 1000.0) as u32;
+        }
+        let frame = composite.get_or_insert_with(|| {
+            image::RgbaImage::from_pixel(bounds.width, bounds.height, image::Rgba([0, 0, 0, 255]))
+        });
+        image::imageops::replace(frame, &image, left - bounds.x as i64, top - bounds.y as i64);
+    }
+    let frame = composite.ok_or_else(|| HalError::NotFound("选区不在任何显示器内".into()))?;
+    Ok(CapturedFrame {
+        width: bounds.width,
+        height: bounds.height,
+        scale_factor_milli,
+        rgba_bytes: frame.into_raw(),
+    })
 }
 
 /// 旧 `u32` 遮罩号优先；为 0 时退回已登记的原生排除句柄（Windows 64 位 HWND）。

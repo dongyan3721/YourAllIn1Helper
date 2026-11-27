@@ -379,7 +379,7 @@ impl ScreenshotModule {
             .request_capture_permission()
             .map_err(|e| ScreenshotFailure::from_hal(&e))?;
 
-        // 2. 选择显示器：指定 ID → 主屏 → 第一块。
+        // Windows defaults to the extended desktop; an explicit ID still selects one display.
         let monitors = self
             .capturer
             .list_monitors()
@@ -390,6 +390,27 @@ impl ScreenshotModule {
                 None => "没有可用显示器".to_string(),
             }))
         })?;
+        let multiple_displays =
+            cfg!(target_os = "windows") && monitor_id.is_none() && monitors.len() > 1;
+        #[cfg(target_os = "windows")]
+        let info = if multiple_displays {
+            let desktop = geometry::virtual_desktop(&monitors)
+                .ok_or_else(|| ScreenshotFailure::internal("扩展桌面尺寸无效"))?;
+            DisplayMonitorInfo {
+                name: monitors
+                    .iter()
+                    .map(|display| display.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" + "),
+                x: desktop.x,
+                y: desktop.y,
+                width: desktop.width,
+                height: desktop.height,
+                ..info
+            }
+        } else {
+            info
+        };
 
         // 3. 冻结帧先于遮罩：此时遮罩尚未创建，帧中只有用户真实桌面。
         let frame = {
@@ -402,9 +423,17 @@ impl ScreenshotModule {
             } else {
                 Vec::new()
             };
-            self.capturer
-                .capture_monitor(Some(info.id))
-                .map_err(|e| ScreenshotFailure::from_hal(&e))?
+            let capture = if multiple_displays {
+                self.capturer.capture_region(SelectionBox {
+                    x: info.x,
+                    y: info.y,
+                    width: info.width,
+                    height: info.height,
+                })
+            } else {
+                self.capturer.capture_monitor(Some(info.id))
+            };
+            capture.map_err(|e| ScreenshotFailure::from_hal(&e))?
         };
         let expected = frame.width as usize * frame.height as usize * 4;
         if frame.rgba_bytes.len() != expected {
@@ -447,21 +476,30 @@ impl ScreenshotModule {
         } else {
             (Vec::new(), RegionCapabilities::disabled())
         };
-        let session = Arc::new(
-            CaptureSession::new(monitor, frame, detected, capabilities)
-                .with_target_mode(target_mode),
-        );
+        let mut session = CaptureSession::new(monitor, frame, detected, capabilities)
+            .with_target_mode(target_mode);
+        if multiple_displays {
+            session.set_displays(&monitors);
+        }
+        let session = Arc::new(session);
 
         // 5. 记录会话后再创建隐藏遮罩；创建失败时丢弃会话，冻结帧随之释放。
         *self.session.write() = Some(session.clone());
         self.overlay_visible.store(false, Ordering::SeqCst);
-        let rect = session.monitor.overlay_logical_rect();
-        if let Err(error) = ctx.window_pool.open_window(WindowSpec::capture_overlay(
-            rect.x,
-            rect.y,
-            rect.width,
-            rect.height,
-        )) {
+        // The Windows backend applies pixel bounds directly to the hidden HWND.
+        #[cfg(target_os = "windows")]
+        let (x, y, width, height) = (
+            info.x as f64,
+            info.y as f64,
+            info.width as f64,
+            info.height as f64,
+        );
+        #[cfg(not(target_os = "windows"))]
+        let geometry::LogicalRect { x, y, width, height } = session.monitor.overlay_logical_rect();
+        if let Err(error) = ctx
+            .window_pool
+            .open_window(WindowSpec::capture_overlay(x, y, width, height))
+        {
             *self.session.write() = None;
             let _ = ctx.window_pool.destroy_window(OVERLAY_LABEL);
             return Err(ScreenshotFailure::internal(format!(

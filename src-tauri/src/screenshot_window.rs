@@ -8,8 +8,49 @@
 use app_core::{CoreError, CoreResult};
 use tauri::{AppHandle, Manager, WebviewWindow};
 
-/// 显示遮罩并尽量取得键盘焦点。层级提升失败时返回错误，由调用方销毁遮罩。
-/// 焦点失败不阻断：主窗口最小化时系统可能拒绝把键焦点交给新窗口，但遮罩已经置于前台。
+#[cfg(target_os = "windows")]
+pub(crate) fn position_capture_overlay(
+    window: &WebviewWindow,
+    spec: &app_core::WindowSpec,
+) -> CoreResult<()> {
+    use windows::Win32::{
+        Foundation::{HWND, RECT},
+        UI::WindowsAndMessaging::*,
+    };
+    let hwnd = window.hwnd().map_err(to_core_error)?;
+    let hwnd = HWND(hwnd.0);
+    let x = spec.x.unwrap_or_default() as i32;
+    let y = spec.y.unwrap_or_default() as i32;
+    let width = spec.width as i32;
+    let height = spec.height as i32;
+    // A spanning window has one DPI, which may differ from every other display's DPI.
+    // Apply the desktop pixel rectangle as a single Win32 operation.
+    for _ in 0..2 {
+        unsafe {
+            SetWindowPos(
+                hwnd,
+                None,
+                x,
+                y,
+                width,
+                height,
+                SWP_NOACTIVATE | SWP_NOZORDER,
+            )
+            .map_err(to_core_error)?;
+            let mut actual = RECT::default();
+            GetWindowRect(hwnd, &mut actual).map_err(to_core_error)?;
+            if (actual.left, actual.top, actual.right, actual.bottom)
+                == (x, y, x + width, y + height)
+            {
+                return Ok(());
+            }
+        }
+        // Moving the HWND can synchronously apply a suggested WM_DPICHANGED rectangle.
+    }
+    Err(to_core_error("无法将截图遮罩放置到显示器范围"))
+}
+
+/// 显示遮罩并尽量取得键盘焦点。
 pub(crate) fn present_capture_overlay(app: &AppHandle, overlay: &WebviewWindow) -> CoreResult<()> {
     overlay.show().map_err(to_core_error)?;
     #[cfg(target_os = "windows")]

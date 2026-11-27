@@ -76,6 +76,7 @@ impl WindowSpec {
     /// Preset for Module 01: Fullscreen screenshot & Snipaste smart-region overlay.
     /// 窗口本身透明，平时由页面黑底和冻结帧铺满；GIF / 长截图只挖开选区，才能看到底下的动态画面。
     /// 宿主先隐藏创建，前端画完帧再显示，避免闪出桌面。
+    /// Bounds are desktop pixels on Windows and logical points on macOS.
     pub fn capture_overlay(x: f64, y: f64, width: f64, height: f64) -> Self {
         Self {
             label: "capture-overlay".to_string(),

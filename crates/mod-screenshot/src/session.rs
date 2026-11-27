@@ -20,7 +20,7 @@ fn intersect(a: &SelectionBox, b: &SelectionBox) -> Option<SelectionBox> {
         height: (bottom - top as i64) as u32,
     })
 }
-use os_hal::CapturedFrame;
+use os_hal::{CapturedFrame, DisplayMonitorInfo};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -98,6 +98,7 @@ pub struct CaptureSession {
     pub frame: CapturedFrame,
     /// 帧像素坐标的窗口区域，按 HAL 返回的前→后 Z 序排列。
     pub windows: Vec<DetectedRegionRect>,
+    displays: Vec<DetectedRegionRect>,
     pub capabilities: RegionCapabilities,
     pub target_mode: Option<String>,
     pub created_at: i64,
@@ -111,11 +112,13 @@ impl CaptureSession {
         capabilities: RegionCapabilities,
     ) -> Self {
         let windows = Self::project_windows(&monitor, detected);
+        let displays = vec![monitor.monitor_region(MONITOR_REGION_ID)];
         Self {
             id: uuid::Uuid::new_v4().simple().to_string(),
             monitor,
             frame,
             windows,
+            displays,
             capabilities,
             target_mode: None,
             created_at: chrono::Utc::now().timestamp_millis(),
@@ -125,6 +128,30 @@ impl CaptureSession {
     pub fn with_target_mode(mut self, mode: Option<String>) -> Self {
         self.target_mode = mode;
         self
+    }
+
+    pub(crate) fn set_displays(&mut self, monitors: &[DisplayMonitorInfo]) {
+        self.displays = monitors
+            .iter()
+            .filter_map(|monitor| {
+                let rect = self.monitor.desktop_rect_to_frame(
+                    monitor.x,
+                    monitor.y,
+                    monitor.width,
+                    monitor.height,
+                )?;
+                Some(DetectedRegionRect {
+                    region_id: MONITOR_REGION_ID,
+                    parent_id: None,
+                    level: RegionHierarchyLevel::Monitor,
+                    x: rect.x,
+                    y: rect.y,
+                    width: rect.width,
+                    height: rect.height,
+                    label: Some(monitor.name.clone()),
+                })
+            })
+            .collect();
     }
 
     /// 只保留顶层窗口，换算到帧像素并裁到本显示器；保持输入顺序（前→后）。
@@ -180,12 +207,15 @@ impl CaptureSession {
         level_steps: usize,
         ui_chain: &[DetectedRegionRect],
     ) -> Option<DetectedRegionRect> {
-        let root = self.monitor.monitor_region(MONITOR_REGION_ID);
+        let root = self
+            .displays
+            .iter()
+            .find(|display| display.contains_point(x, y))?;
         let front = self.front_window_at(x, y).cloned();
         let container = front
             .as_ref()
             .map(|w| w.to_selection_box())
-            .unwrap_or_else(|| self.frame_bounds());
+            .unwrap_or_else(|| root.to_selection_box());
         let top_parent = front
             .as_ref()
             .map(|w| w.region_id)
@@ -234,7 +264,7 @@ impl CaptureSession {
         if let Some(window) = front {
             candidates.push(window);
         }
-        candidates.push(root);
+        candidates.push(root.clone());
         resolve_smart_region_at_point(&candidates, x, y, level_steps)
     }
 
@@ -287,6 +317,11 @@ impl CaptureSession {
             logical_height: logical.height,
             monitor_id: self.monitor.monitor_id,
             monitor_name: self.monitor.name.clone(),
+            display_bounds: self
+                .displays
+                .iter()
+                .map(DetectedRegionRect::to_selection_box)
+                .collect(),
             window_region_count: self.windows.len(),
             capabilities: self.capabilities.clone(),
             target_mode: self.target_mode.clone(),
@@ -329,6 +364,7 @@ pub struct SessionInfo {
     pub logical_height: f64,
     pub monitor_id: u32,
     pub monitor_name: String,
+    pub display_bounds: Vec<SelectionBox>,
     pub window_region_count: usize,
     pub capabilities: RegionCapabilities,
     #[serde(default)]

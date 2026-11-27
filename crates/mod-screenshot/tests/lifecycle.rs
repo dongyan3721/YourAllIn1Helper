@@ -33,6 +33,7 @@ struct FakeScreen {
     fail_regions: AtomicBool,
     /// 模拟已授予辅助功能权限，L2 返回固定控件链。
     ui_trusted: AtomicBool,
+    extended_desktop: AtomicBool,
 }
 
 impl FakeScreen {
@@ -44,12 +45,37 @@ impl FakeScreen {
             permission_requests: AtomicUsize::new(0),
             fail_regions: AtomicBool::new(false),
             ui_trusted: AtomicBool::new(false),
+            extended_desktop: AtomicBool::new(false),
         }
     }
 }
 
 impl ScreenCapturer for FakeScreen {
     fn list_monitors(&self) -> HalResult<Vec<DisplayMonitorInfo>> {
+        if self.extended_desktop.load(Ordering::SeqCst) {
+            return Ok(vec![
+                DisplayMonitorInfo {
+                    id: 7,
+                    name: "Left".into(),
+                    x: -60,
+                    y: -20,
+                    width: 60,
+                    height: 40,
+                    scale_factor: 1.0,
+                    is_primary: false,
+                },
+                DisplayMonitorInfo {
+                    id: 42,
+                    name: "Right".into(),
+                    x: 0,
+                    y: 0,
+                    width: 80,
+                    height: 60,
+                    scale_factor: 1.5,
+                    is_primary: true,
+                },
+            ]);
+        }
         Ok(vec![DisplayMonitorInfo {
             id: 42,
             name: "Fake Retina".into(),
@@ -81,7 +107,32 @@ impl ScreenCapturer for FakeScreen {
         })
     }
 
-    fn capture_region(&self, _bounds: SelectionBox) -> HalResult<CapturedFrame> {
+    fn capture_region(&self, bounds: SelectionBox) -> HalResult<CapturedFrame> {
+        if self.extended_desktop.load(Ordering::SeqCst) {
+            assert_eq!(
+                bounds,
+                SelectionBox {
+                    x: -60,
+                    y: -20,
+                    width: 140,
+                    height: 80
+                }
+            );
+            self.log.lock().push("capture:desktop".into());
+            let frame = image::RgbaImage::from_fn(bounds.width, bounds.height, |x, _| {
+                if x < 60 {
+                    image::Rgba([255, 0, 0, 255])
+                } else {
+                    image::Rgba([0, 0, 255, 255])
+                }
+            });
+            return Ok(CapturedFrame {
+                width: bounds.width,
+                height: bounds.height,
+                scale_factor_milli: 1000,
+                rgba_bytes: frame.into_raw(),
+            });
+        }
         Err(HalError::Unsupported("not used by screenshot module"))
     }
 
@@ -330,6 +381,68 @@ fn frozen_frame_is_captured_before_hidden_overlay_is_created_and_shown_once() {
         h.module.frame_bytes(&info.session_id).unwrap().len(),
         80 * 60 * 4
     );
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn extended_desktop_supports_cross_display_export_and_per_display_hit_testing() {
+    let h = harness();
+    h.screen.extended_desktop.store(true, Ordering::SeqCst);
+    let ctx = h.kernel.context();
+    let single = h.module.start_capture(ctx, Some(42), false).unwrap();
+    assert_eq!((single.frame_width, single.frame_height), (80, 60));
+    assert_eq!(single.display_bounds.len(), 1);
+
+    let info = h.module.start_capture(ctx, None, false).unwrap();
+    assert_eq!((info.frame_width, info.frame_height), (140, 80));
+    let events = events(&h);
+    assert!(events
+        .windows(2)
+        .any(|pair| pair[0] == "capture:desktop"
+            && pair[1] == "create:capture-overlay@-60,-20,140x80"));
+
+    let left = h
+        .module
+        .resolve_region(&info.session_id, 10, 10, 0)
+        .unwrap()
+        .unwrap();
+    let right = h
+        .module
+        .resolve_region(&info.session_id, 120, 65, 0)
+        .unwrap()
+        .unwrap();
+    assert_eq!((left.x, left.y, left.width, left.height), (0, 0, 60, 40));
+    assert_eq!(
+        (right.x, right.y, right.width, right.height),
+        (60, 20, 80, 60)
+    );
+    assert!(h
+        .module
+        .resolve_region(&info.session_id, 80, 5, 0)
+        .unwrap()
+        .is_none());
+
+    let path = h.data_dir.join("cross-display.png");
+    let outcome = h
+        .module
+        .export(
+            ctx,
+            &info.session_id,
+            SelectionBox {
+                x: 50,
+                y: 24,
+                width: 20,
+                height: 10,
+            },
+            None,
+            ExportAction::Save,
+            Some(&path),
+        )
+        .unwrap();
+    assert_eq!((outcome.width, outcome.height), (20, 10));
+    let exported = image::open(path).unwrap().into_rgba8();
+    assert_eq!(exported.get_pixel(9, 0).0, [255, 0, 0, 255]);
+    assert_eq!(exported.get_pixel(10, 0).0, [0, 0, 255, 255]);
 }
 
 #[test]

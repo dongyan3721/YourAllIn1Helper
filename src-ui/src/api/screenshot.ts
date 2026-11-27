@@ -20,6 +20,7 @@ export interface ScreenshotSessionInfo {
   logical_height: number;
   monitor_id: number;
   monitor_name: string;
+  display_bounds?: Rect[];
   window_region_count: number;
   capabilities: {
     window_tree: CapabilityState;

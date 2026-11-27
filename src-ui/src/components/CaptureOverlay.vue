@@ -475,9 +475,23 @@ const magnifierStyle = computed(() => {
 });
 
 const toolbarStyle = computed(() => {
-  if (!selectionCss.value) return {};
-  const p = placeToolbar(selectionCss.value, toolbarSize, viewport);
-  return { left: `${p.x}px`, top: `${p.y}px` };
+  const rect = selectionCss.value;
+  if (!rect) return {};
+  const displays = (session.value?.display_bounds ?? []).map((box) => frameRectToCss(box, scale.value));
+  let screen: Rect = { x: 0, y: 0, ...viewport };
+  let largestOverlap = 0;
+  for (const display of displays) {
+    const width = Math.min(rect.x + rect.width, display.x + display.width) - Math.max(rect.x, display.x);
+    const height = Math.min(rect.y + rect.height, display.y + display.height) - Math.max(rect.y, display.y);
+    const area = Math.max(0, width) * Math.max(0, height);
+    if (area > largestOverlap) {
+      screen = display;
+      largestOverlap = area;
+    }
+  }
+  const local = { ...rect, x: rect.x - screen.x, y: rect.y - screen.y };
+  const p = placeToolbar(local, toolbarSize, screen);
+  return { left: `${p.x + screen.x}px`, top: `${p.y + screen.y}px` };
 });
 
 const gifClock = computed(() => {

@@ -5,8 +5,8 @@
     @click="unpinWindow"
   >
     <div class="pin-badge-disc">
-      <Icons name="pin-fill" size="13" class="pin-icon" />
-      <Icons name="close" size="11" class="unpin-hover-icon" />
+      <Icons name="pin-fill" class="pin-icon" />
+      <Icons name="close" class="unpin-hover-icon" />
     </div>
   </div>
 </template>
@@ -36,11 +36,10 @@ async function unpinWindow() {
 <style scoped>
 /* 整个窗口保持完全透明且无边框 */
 .pin-badge-container {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 100vw;
+  height: 100vh;
+  display: grid;
+  place-items: center;
   cursor: pointer;
   user-select: none;
   background: transparent;
@@ -48,19 +47,26 @@ async function unpinWindow() {
 
 /* 经典 macOS 原生高质感悬浮图钉微圆盘 */
 .pin-badge-disc {
-  width: 24px;
-  height: 24px;
+  box-sizing: border-box;
+  width: min(24px, 86vmin);
+  aspect-ratio: 1;
   border-radius: 50%;
   background: var(--macos-bg-card, rgba(255, 255, 255, 0.9));
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--macos-border-subtle, rgba(0, 0, 0, 0.12));
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(var(--macos-accent-rgb, 0, 122, 255), 0.2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
-  position: relative;
+}
+
+.pin-badge-disc :is(.pin-icon, .unpin-hover-icon) {
+  grid-area: 1 / 1;
+  display: block;
+  width: 58%;
+  height: auto;
+  aspect-ratio: 1;
 }
 
 .pin-icon {
@@ -68,8 +74,8 @@ async function unpinWindow() {
   transition: opacity 0.15s ease;
 }
 
-.unpin-hover-icon {
-  position: absolute;
+.pin-badge-disc .unpin-hover-icon {
+  width: 50%;
   color: var(--macos-danger, #ff3b30);
   opacity: 0;
   transition: opacity 0.15s ease;

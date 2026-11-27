@@ -14,6 +14,28 @@ use app_core::{CoreResult, DetectedRegionRect, RegionHierarchyLevel, SelectionBo
 use os_hal::DisplayMonitorInfo;
 use serde::{Deserialize, Serialize};
 
+/// Bounding rectangle of a Windows extended desktop, in physical pixels.
+#[cfg(target_os = "windows")]
+pub(crate) fn virtual_desktop(monitors: &[DisplayMonitorInfo]) -> Option<SelectionBox> {
+    let mut displays = monitors.iter().filter(|m| m.width > 0 && m.height > 0);
+    let first = displays.next()?;
+    let (mut left, mut top) = (first.x, first.y);
+    let mut right = first.x as i64 + first.width as i64;
+    let mut bottom = first.y as i64 + first.height as i64;
+    for display in displays {
+        left = left.min(display.x);
+        top = top.min(display.y);
+        right = right.max(display.x as i64 + display.width as i64);
+        bottom = bottom.max(display.y as i64 + display.height as i64);
+    }
+    Some(SelectionBox {
+        width: u32::try_from(right - left as i64).ok()?,
+        height: u32::try_from(bottom - top as i64).ok()?,
+        x: left,
+        y: top,
+    })
+}
+
 /// 被截显示器的几何信息。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MonitorGeometry {

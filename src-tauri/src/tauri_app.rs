@@ -202,8 +202,13 @@ impl WindowBackend for TauriWindowBackend {
             builder = builder.position(x, y);
         }
         if spec.label == mod_screenshot::OVERLAY_LABEL {
-            // 冻结帧先于遮罩：遮罩隐藏创建，位置与尺寸已由模块按被截显示器的逻辑坐标给出。
+            // The overlay stays hidden until the frozen frame has been rendered.
             builder = builder.visible(false).shadow(false);
+            #[cfg(target_os = "windows")]
+            {
+                // Start small; the hidden HWND is positioned with exact physical bounds below.
+                builder = builder.inner_size(640.0, 480.0).position(0.0, 0.0);
+            }
         }
         if spec.label == "window-pin-picker" || spec.label == "screen-ink-canvas" {
             if let Ok(Some(monitor)) = self.app.primary_monitor() {
@@ -241,6 +246,13 @@ impl WindowBackend for TauriWindowBackend {
         }
 
         let window = builder.build().map_err(to_core_error)?;
+        #[cfg(target_os = "windows")]
+        if spec.label == mod_screenshot::OVERLAY_LABEL {
+            if let Err(error) = crate::screenshot_window::position_capture_overlay(&window, spec) {
+                let _ = window.destroy();
+                return Err(error);
+            }
+        }
         if spec.label == "translate-popover" {
             if let Err(reason) = crate::translator_mouse::constrain_native_popover(&window) {
                 let _ = window.destroy();
